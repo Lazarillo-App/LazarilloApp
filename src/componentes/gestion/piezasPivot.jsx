@@ -90,7 +90,7 @@ export function SectionDivider({ label, icon: Icon, colSpan }) {
  * Las celdas muestran SIEMPRE lo real; la proyección del mes en curso va en el tooltip, también en
  * Resultado OP y Gastos / Ventas. "Lo que falta cargar" de los meses cerrados llega con Sin carga.
  */
-export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady }) {
+export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady, sinTotal = false }) {
   const { year, abrirVentas } = usePanelGestion();
   // Mes con ventas incompletas → tooltip con la proyección de cierre. Para el color del mapa de
   // calor ese mes cuenta con lo proyectado, no con lo facturado a medias.
@@ -128,7 +128,8 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
   const celdaNombre = (texto, sx) => (
     <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 0.75, whiteSpace: 'nowrap', ...sx }}>{texto}</TableCell>
   );
-  const celda = (key, contenido, sx, onClick) => <TableCell key={key} onClick={onClick} sx={{ ...sxNum, px: 1.5, py: 0.75, ...sx, ...(onClick ? { cursor: 'pointer', '&:hover': { opacity: 0.75 } } : {}) }}>{contenido}</TableCell>;
+  // Columna Total oculta para el rol (sinTotal): la celda 't' no se dibuja.
+  const celda = (key, contenido, sx, onClick) => (sinTotal && key === 't' ? null : <TableCell key={key} onClick={onClick} sx={{ ...sxNum, px: 1.5, py: 0.75, ...sx, ...(onClick ? { cursor: 'pointer', '&:hover': { opacity: 0.75 } } : {}) }}>{contenido}</TableCell>);
 
   const resTotal = (ingresosTotal ?? 0) - egresosTotal;
   const ratioTotal = (ingresosTotal ?? 0) > 0 ? (egresosTotal / ingresosTotal) * 100 : null;

@@ -25,6 +25,7 @@ import {
   ToggleButton, ToggleButtonGroup, Slider, Popover, InputBase,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import RemoveIcon from '@mui/icons-material/Remove';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -53,6 +54,9 @@ import ExcluirListasModal from '../ExcluirListasModal';
 import { createOrMoveAgrupacion } from '@/servicios/apiAgrupaciones';
 import { PromocionesAPI, BusinessesAPI } from '@/servicios/apiBusinesses';
 import { sanitizeDecimal, parseDecimal } from '@/utils/decimales';
+import PanelGemelos from './PanelGemelos';
+import BloqueRendimiento from './BloqueRendimiento';
+import DescripcionArticulo from './DescripcionArticulo';
 import { aplicarRedondeo } from '@/utils/redondeoUtils';
 import { mapConLimite } from '@/utils/mapConLimite';
 
@@ -65,6 +69,7 @@ import VistaPreviaFotoModal from './VistaPreviaFotoModal';
 import VistaCocinaModal from './VistaCocinaModal';
 import ItemRow from './ItemRow';
 import PieCostos from './PieCostos';
+import { BotonesReceta, RecorridoReceta, DialogosReceta } from './AccionesReceta';
 import ModalReemplazarInsumo from './ModalReemplazarInsumo';
 import TabMermaInsumo from './TabMermaInsumo';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
@@ -97,6 +102,8 @@ export default function RecetaModal({
   onPriceConfigSave = null,
   onNavigate = null,
   canNavigate = { prev: false, next: false },
+  // ⓘ del encabezado: abre la ficha del artículo («Editar artículo») encima del modal (Diego 12/11/2026).
+  onVerFicha = null,
   // "Top por gasto" dentro de la pestaña Compras (solo modoInsumo): saltar a
   // otro insumo sin cerrar el modal. Recibe la fila del ranking {id, nombre, unidad_med}.
   onSaltarAInsumo = null,
@@ -155,6 +162,9 @@ export default function RecetaModal({
   const [reemplazarModalOpen, setReemplazarModalOpen] = useState(false);
   const [reemplazarAviso, setReemplazarAviso] = useState(false);
   const [nombre, setNombre] = useState('');
+  const [fichaArt, setFichaArt] = useState(null); // GET /articles/:id (lo trae DescripcionArticulo) → ⓘ del encabezado
+  useEffect(() => { setFichaArt(null); }, [articulo?.id]);
+  const fmtPrecio = (v) => `$${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
   const [rendimiento, setRendimiento] = useState(1);
   const [rendimientoUnidad, setRendimientoUnidad] = useState('porcion');
   const [rendimientoPeso, setRendimientoPeso] = useState(null);
@@ -394,7 +404,22 @@ export default function RecetaModal({
       : lista.findIndex(it => String(it.supplyId) === pend.supplyId);
     if (idx < 0 || lista[idx].unidad === pend.nueva) return lista;
     const copia = lista.slice();
-    copia[idx] = { ...lista[idx], unidad: pend.nueva };
+    // La cantidad se pasa a la unidad nueva (75 gr → 1 «dip y medio» de 75 gr), así el costo no cambia.
+    const FAM = { gr: ['p', 1], kg: ['p', 1000], ml: ['v', 1], lt: ['v', 1000], u: ['u', 1] };
+    const tam = (u) => {
+      const eq = pend.eq && String(pend.eq.nombre).toLowerCase() === String(u || '').toLowerCase() ? pend.eq : null;
+      const b = FAM[canonicalUnit(eq ? eq.unidad : u)];
+      return b ? { f: b[0], v: (eq ? Number(eq.contenido) || 0 : 1) * b[1] } : null;
+    };
+    const a = tam(lista[idx].unidad), b = tam(pend.nueva);
+    const cant = Number(lista[idx].cantidad);
+    const cantidad = a && b && a.f === b.f && b.v > 0 && Number.isFinite(cant)
+      ? Math.round((cant * a.v / b.v) * 1000) / 1000 : lista[idx].cantidad;
+    copia[idx] = { ...lista[idx], unidad: pend.nueva, cantidad };
+    // Una sola vez: después llegan más avisos del insumo (el «Reemplazar en las recetas que
+    // usan esa medida», la recarga tras guardar) y volver a convertir partía la cantidad de
+    // nuevo (1 media porción → 0,004). FALLA Diego 12/11/2026, reproducida en Negocio DEMO.
+    eqPendienteRef.current = null;
     setGuardarMermaPendiente(t => t + 1);
     return copia;
   };
@@ -463,7 +488,10 @@ export default function RecetaModal({
     if (!businessId || !articulo?.id || esElaborado || promoMode) return;
     setGemelosLoading(true);
     const token = localStorage.getItem('token') || '';
-    return fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}`, {
+    // POST …/auto: si hay artículos con la receta idéntica, los vincula solos (Diego 12/11)
+    // y devuelve el grupo de receta igual que GET by-article.
+    return fetch(`${BASE}/businesses/${businessId}/article-links/by-article/${articulo.id}/auto`, {
+      method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
     })
       .then(r => r.json())
@@ -772,11 +800,14 @@ export default function RecetaModal({
       });
       const data = await res.json().catch(() => null);
 
-      // Borrar la receta del artículo desvinculado
-      await fetch(`${BASE}/businesses/${businessId}/articles/${targetArticleId}/receta`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
-      }).catch(e => console.warn('[quitarGemelo] no se pudo borrar receta:', e.message));
+      // Borrar la receta del artículo desvinculado — salvo que se haya vinculado solo
+      // (receta idéntica): esa receta era suya y la conserva (Diego 12/11).
+      if (!data?.eraAuto) {
+        await fetch(`${BASE}/businesses/${businessId}/articles/${targetArticleId}/receta`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+        }).catch(e => console.warn('[quitarGemelo] no se pudo borrar receta:', e.message));
+      }
 
       // Con 2 miembros, sacar a uno borra el grupo entero en el backend (queda un
       // solo miembro = ya no hay vínculo). Sin chequear `groupDeleted`, el otro
@@ -1015,7 +1046,9 @@ export default function RecetaModal({
         if (cancelled) return;
         setReceta(rec);
         if (rec) {
-          setNombre(rec.nombre || artNombre);
+          // El nombre que se muestra es el del artículo/insumo (el de la tabla), no el guardado en la receta:
+          // si difieren, el modal mostraba uno que la tabla no tenía (Diego 12/11/2026, promo #571).
+          setNombre(artNombre || rec.nombre);
           setRendimiento(Number(rec.porciones) || Number(rec.rendimiento) || 1);
           setRendimientoUnidad(rec.rendimiento_unidad || 'porcion');
           setRendimientoPeso(rec.rendimiento_peso != null ? Number(rec.rendimiento_peso) : null);
@@ -1260,10 +1293,9 @@ export default function RecetaModal({
     [items]
   );
 
-  const hasDuplicates = useMemo(() =>
-    items.some((it, i) => it.supplyId && items.findIndex(x => String(x.supplyId) === String(it.supplyId)) !== i),
-    [items]
-  );
+  // El mismo insumo puede ir más de una vez (Diego 12/11/2026: 20 g con mamadera para decorar y 50 g
+  // en un dip aparte); cada renglón con su cantidad y su observación. Ya no se bloquea el guardado.
+  const hasDuplicates = false;
 
   // ── Ítems con "unidad rota": la unidad guardada ya no es una opción válida para su
   // insumo/elaborado (ej. se corrigió el rendimiento de una sub-receta y la unidad con la
@@ -1395,6 +1427,7 @@ export default function RecetaModal({
   const labelPorUnidad = useMemo(() => {
     const unidadStr = {
       porcion: 'porción',
+      media_porcion: 'media porción',
       u: 'unidad',
       lt: 'litro',
       kg: 'kilo',
@@ -1452,6 +1485,11 @@ export default function RecetaModal({
   }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera, pctCostoIdeal, items]);
 
   const pristineSnapshotRef = useRef(null);
+  // Lo último que se autoguardó sin cerrar (keepOpen: cambio de pestaña, flechas, cascada).
+  // Ese guardado no avisa al padre; si después se cierra «sin cambios», se avisa con esto
+  // para que la tabla / el tablero refresquen (Diego 12/11/2026: borraba un ingrediente, se
+  // autoguardaba y al cerrar no se actualizaba la pantalla de atrás).
+  const autoguardadoSinAvisarRef = useRef(null);
   // Bump-only: fuerza a re-evaluar hayCambiosSinGuardar DESPUÉS de que el efecto de
   // abajo actualiza pristineSnapshotRef — un ref no dispara re-render por sí solo, así
   // que sin esto, el primer render tras cargar/guardar comparaba el snapshot NUEVO
@@ -1631,14 +1669,30 @@ export default function RecetaModal({
     if (!itemsOverride && !modoPromoNueva && !convertirEnPromo && pristineSnapshotRef.current != null && !costoGuardadoDesactualizado) {
       const snapshotActual = buildDirtySnapshot();
       if (snapshotActual === pristineSnapshotRef.current) {
-        if (!keepOpen) onClose?.();
+        if (!keepOpen) {
+          if (autoguardadoSinAvisarRef.current) {
+            const aviso = autoguardadoSinAvisarRef.current;
+            autoguardadoSinAvisarRef.current = null;
+            onSaved?.(aviso);
+          }
+          onClose?.();
+        }
         return;
       }
     }
 
     // ── Modo promo nueva: crear artículo-promo vía endpoint dedicado ──
-    if (modoPromoNueva || convertirEnPromo) {
+    // «Convertir en promo» un artículo que YA existe no crea otro: arma la promo sobre ese mismo artículo
+    // (rama de abajo, PUT). Antes hacía POST y quedaba un artículo manual duplicado con el mismo nombre
+    // (Diego 12/11/2026: «crear una promo duplicaba el producto»).
+    if (modoPromoNueva || (convertirEnPromo && !articulo?.id)) {
       if (!nombre.trim()) { setError('Poné un nombre para la promoción'); return; }
+      // Mismo nombre que un artículo que ya existe = duplicado (así quedaron 3 «Merienda kidspark alfajor negro»).
+      const yaExiste = (allArticulos || []).find(a => String(a.nombre || '').trim().toLowerCase() === nombre.trim().toLowerCase());
+      if (yaExiste) {
+        setError(`Ya existe «${String(yaExiste.nombre).trim()}» (#${yaExiste.id ?? yaExiste.articulo_id}). Para que sea promo, abrí ese artículo y pasalo a Promoción; si es otra promo, cambiale el nombre.`);
+        return;
+      }
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
         .filter(it => Number(it.articleRefId) !== Number(articulo?.id))   // nunca la promo dentro de sí misma
@@ -1696,7 +1750,7 @@ export default function RecetaModal({
     // Con itemsOverride (deshacer la promo → producto) NO: tiene que ir al guardado común, que deja
     // es_promo = FALSE. Antes esta rama lo agarraba igual y la volvía a guardar como promo (Diego 11/11/2026:
     // «si quiero deshacer la promo no me deja»).
-    if (esPromo && articulo?.id && !itemsOverride) {
+    if ((esPromo || convertirEnPromo) && articulo?.id && !itemsOverride) {
       const comps = items
         .filter(it => Number(it.articleRefId) && Number(it.articleRefId) !== 0)
         .filter(it => Number(it.articleRefId) !== Number(articulo.id))   // nunca la promo dentro de sí misma
@@ -1733,6 +1787,20 @@ export default function RecetaModal({
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
           throw new Error(d?.error || d?.message || `Error ${res.status}`);
+        }
+        // El PUT de la promo solo renombra la receta: el nombre del ARTÍCULO (el que muestra la tabla)
+        // se cambia aparte, igual que en un producto (Diego 12/11/2026: «cambié el nombre y no impactó en la tabla»).
+        const nombrePromoNuevo = (nombre || '').trim();
+        if (nombrePromoNuevo && nombrePromoNuevo !== (artNombre || '').trim()) {
+          const rn = await fetch(`${BASE}/businesses/${businessId}/articles/${articulo.id}`, {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre: nombrePromoNuevo }),
+          });
+          if (!rn.ok) {
+            const d = await rn.json().catch(() => ({}));
+            throw new Error('La promoción se guardó, pero no se pudo cambiar el nombre: ' + (d?.message || d?.error || `Error ${rn.status}`));
+          }
         }
         setSuccess(true);
         try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { }
@@ -1898,6 +1966,11 @@ export default function RecetaModal({
 
       const saved = json?.receta ?? json;
       setReceta(saved);
+      // Quedó idéntica a la receta de otros artículos → se vincularon solos: mostrarlos.
+      if (json?.autoVinculo) {
+        loadGemelosGroup();
+        try { window.dispatchEvent(new CustomEvent('article:links-changed')); } catch { }
+      }
       setSuccess(true);
 
       // Promo atada (% off o llevás N pagás M): su nuevo precio es el que sale de la regla, directo
@@ -1977,8 +2050,19 @@ export default function RecetaModal({
       }
 
       // En autoguardado (keepOpen) no propagamos onSaved: el padre refetchea/cierra
-      // y desmonta el modal en medio de la edición. Solo propagamos al guardar de verdad.
+      // y desmonta el modal en medio de la edición. Solo propagamos al guardar de verdad
+      // (lo autoguardado se avisa al cerrar: ver autoguardadoSinAvisarRef).
+      const avisoGuardado = {
+          ...saved,
+          article_id: articulo.id,
+          costo_total: saved?.costo_total ?? costoTotal,
+          costo_por_porcion: saved?.costo_unitario ?? costoXRendimiento,
+          precio_sugerido: json?.precio_sugerido ?? precioSugerido,
+          porciones: Math.max(1, Number(rendimiento) || 1),
+      };
+      if (keepOpen) autoguardadoSinAvisarRef.current = avisoGuardado;
       if (!keepOpen) {
+        autoguardadoSinAvisarRef.current = null;
         onSaved?.({
           ...saved,
           article_id: articulo.id,
@@ -2091,6 +2175,11 @@ export default function RecetaModal({
     if (tieneContenido && !hasDuplicates && !items.some(it => !it.supplyId && !it.articleRefId)) {
       await handleSave();
     } else {
+      if (autoguardadoSinAvisarRef.current) {
+        const aviso = autoguardadoSinAvisarRef.current;
+        autoguardadoSinAvisarRef.current = null;
+        onSaved?.(aviso);
+      }
       onClose();
     }
   }, [saving, deleting, items, notas, foto, hasDuplicates, handleSave]);
@@ -2226,7 +2315,7 @@ export default function RecetaModal({
           const pend = eqPendienteRef.current;
           if (pend && pend.supplyId === String(insId) && !pend.nueva) {
             const nueva = eqs.find(e => e?.nombre && !pend.antes.has(e.nombre));
-            if (nueva) { pend.nueva = nueva.nombre; pend.hasta = Date.now() + 60000; }
+            if (nueva) { pend.nueva = nueva.nombre; pend.eq = nueva; pend.hasta = Date.now() + 60000; }
           }
           setItems(prev => aplicarEqPendiente(prev.map(it => {
             if (String(it.supplyId) !== String(insId)) return it;
@@ -2316,6 +2405,31 @@ export default function RecetaModal({
 
   const fotoEnHeader = !modoInsumo || (entradaElegida && tab === 'receta');
 
+  // Ingredientes-insumo de esta receta, en su orden, para las flechas del insumo abierto desde acá.
+  const insumosDeLaReceta = (() => {
+    const vistos = new Set();
+    return (items || []).filter(it => it.supplyId && !it.articleRefId)
+      .map(it => ({ id: Number(it.supplyId), nombre: it.supplyNombre || '' }))
+      .filter(x => (vistos.has(x.id) ? false : (vistos.add(x.id), true)));
+  })();
+
+
+  // Pie de costos visible (misma condición de antes, ahora con nombre para usarla también en el footer).
+  const pieVisible = !(modoInsumo && !entradaElegida)
+    && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
+    && !(modoInsumo && ['ficha', 'merma', 'compras', 'equivalencias', 'uso'].includes(tab))
+    && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada);
+  // PR 2 del pie (Diego 10/11): en ARTÍCULOS los botones van en la misma franja que los costos y
+  // desaparece el renglón del footer. Elaborado, promo, staff y el modo «Marcar» quedan como estaban.
+  const accionesEnPie = pieVisible && esArticuloComun && !isStaff && !marcarModo;
+  const botonesReceta = (enPie = false) => (
+    <BotonesReceta
+      enPie={enPie} receta={receta} promoMode={promoMode} modoPromoNueva={modoPromoNueva}
+      saving={saving} deleting={deleting} loading={loading} hasDuplicates={hasDuplicates}
+      onBorrar={() => setConfirmDelete(true)} onCancel={handleCancel} onSave={() => handleSave()} guardarRef={recGuardarRef}
+    />
+  );
+
   return (
     <>
       <Modal open={open} onClose={handleClose}>
@@ -2336,7 +2450,9 @@ export default function RecetaModal({
             px: 3, py: 1.5,
             // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
             ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
-            position: 'relative', zIndex: 2,
+            // zIndex 4: por encima del encabezado fijo de las tablas del cuerpo (z 2–3). Con 2, el
+            // desplegable del ranking de compras quedaba tapado por la cabecera de la tabla (FALLA 12/11).
+            position: 'relative', zIndex: 4,
             bgcolor: PRIMARY, color: ON_PRIMARY,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             // `gap` asegura un mínimo entre los 3 grupos (nombre, pestañas,
@@ -2346,24 +2462,57 @@ export default function RecetaModal({
             flexShrink: 0,
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={1.5}>
-              {/* Flecha anterior — a la izquierda del nombre */}
-              {onNavigate && (
+              {/* Flecha anterior — a la izquierda del nombre (con foto en el header van pegadas al nombre, más abajo) */}
+              {onNavigate && !fotoEnHeader && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
                   disabled={!canNavigate.prev}
-                  onClick={async () => { await autoSave(); onNavigate('prev'); }}>
+                  onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
                   <KeyboardArrowLeftIcon />
                 </IconButton>
               )}
 
               {fotoEnHeader ? (
                 <Box sx={{ minWidth: modoInsumo ? 150 : 260, flex: 1 }}>
-                  <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, display: 'block', lineHeight: 1.2 }}>
-                    {promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
-                  </Typography>
-                  {/* El nombre se edita acá (ya no hay campo «Nombre» en el cuerpo) */}
+                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ lineHeight: 1.2 }}>
+                    <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, lineHeight: 1.2 }}>
+                      {modoInsumo ? 'INSUMO' : promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
+                    </Typography>
+                    {/* ⓘ Ficha del artículo (Diego 12/11/2026): cómo se llama en MaxiRest, rubro y precio; al tocarla abre la ficha. */}
+                    {!modoInsumo && articulo?.id && (
+                      <Tooltip arrow placement="bottom-start" title={
+                        <Box sx={{ fontSize: 12, lineHeight: 1.5, p: 0.25 }}>
+                          {Number(articulo.id) > 0 ? (<>
+                            <div>En MaxiRest: <b>{fichaArt?.nombre_maxi || fichaArt?.nombre_original || fichaArt?.nombre || artNombre}</b></div>
+                            <div>Código MaxiRest: <b>{articulo.id}</b></div>
+                          </>) : <div>Artículo creado en Lazarillo (no está en MaxiRest)</div>}
+                          {fichaArt && (fichaArt.rubro || fichaArt.subrubro) && <div>Rubro: <b>{[fichaArt.rubro, fichaArt.subrubro].filter(Boolean).join(' › ')}</b></div>}
+                          {fichaArt && fichaArt.precio != null && <div>Precio de lista: <b>{fmtPrecio(fichaArt.precio)}</b></div>}
+                          {onVerFicha && <div style={{ marginTop: 4, opacity: 0.8 }}>Tocá para abrir la ficha</div>}
+                        </Box>}>
+                        <IconButton size="small" onClick={onVerFicha ? () => onVerFicha(articulo.id) : undefined}
+                          sx={{ p: '1px', color: 'inherit', opacity: 0.85, cursor: onVerFicha ? 'pointer' : 'default', '&:hover': { opacity: 1 } }}>
+                          <InfoOutlinedIcon sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Stack>
+                  {/* El nombre se edita acá (ya no hay campo «Nombre» en el cuerpo). Las flechas ‹ › van pegadas
+                      al nombre (Diego 12/11): antes la › quedaba al final del encabezado y la ‹ corría la descripción. */}
+                  <Stack direction="row" alignItems="center" sx={{ ml: onNavigate ? '-4px' : 0, maxWidth: '100%' }}>
+                  {onNavigate && (
+                    <IconButton size="small" sx={{ p: 0.25, color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3, flexShrink: 0 }}
+                      disabled={!canNavigate.prev}
+                      onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
+                      <KeyboardArrowLeftIcon />
+                    </IconButton>
+                  )}
+                  <Box sx={{ display: 'inline-grid', minWidth: 0, maxWidth: '100%',
+                    // ancho = el del texto (truco del span espejo), así la › queda pegada al nombre
+                    '&::after': { content: 'attr(data-v)', gridArea: '1 / 1', visibility: 'hidden', whiteSpace: 'pre', fontWeight: 800, fontSize: '1.2rem', pr: '2px', overflow: 'hidden' } }}
+                    data-v={(nombre || artNombre || ' ') + (modoInsumo ? ' × XX' : '')}>
                   <InputBase value={nombre} onChange={e => setNombre(e.target.value)} placeholder={artNombre}
                     inputProps={{ 'aria-label': 'Nombre' }}
-                    sx={{ color: 'inherit', fontWeight: 800, fontSize: '1.2rem', width: '100%', minWidth: modoInsumo ? 0 : 280,
+                    sx={{ gridArea: '1 / 1', color: 'inherit', fontWeight: 800, fontSize: '1.2rem', width: '100%', minWidth: 120,
                       borderBottom: '1px dashed rgba(255,255,255,0.45)', '&:hover, &.Mui-focused': { borderBottomColor: '#fff' },
                       '& input': { p: 0, pb: '2px' }, '& input::placeholder': { color: 'inherit', opacity: 0.7 } }}
                     endAdornment={modoInsumo ? (() => {
@@ -2371,6 +2520,17 @@ export default function RecetaModal({
                       const u = insData?.unidad_med || insData?.medida || articulo?.unidad_med;
                       return u ? <Box component="span" sx={{ fontWeight: 800, whiteSpace: 'nowrap', ml: 1 }}>× {canonicalUnit(u).toUpperCase()}</Box> : null;
                     })() : null} />
+                  </Box>
+                  {onNavigate && (
+                    <IconButton size="small" sx={{ p: 0.25, ml: 0.5, color: 'inherit', opacity: canNavigate.next ? 1 : 0.3, flexShrink: 0 }}
+                      disabled={!canNavigate.next}
+                      onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
+                      <KeyboardArrowRightIcon />
+                    </IconButton>
+                  )}
+                  </Stack>
+                  {/* Descripción del artículo (Diego 12/11) — DescripcionArticulo.jsx */}
+                  {!modoInsumo && <DescripcionArticulo articulo={articulo} businessId={businessId} editable={!isStaff} onArticulo={setFichaArt} />}
                 </Box>
               ) : (
               <Box sx={{ minWidth: 260 }}>
@@ -2389,10 +2549,10 @@ export default function RecetaModal({
               </Box>
               )}
               {/* Flecha siguiente — a la derecha del nombre */}
-              {onNavigate && (
+              {onNavigate && !fotoEnHeader && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
                   disabled={!canNavigate.next}
-                  onClick={async () => { await autoSave(); onNavigate('next'); }}>
+                  onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
                   <KeyboardArrowRightIcon />
                 </IconButton>
               )}
@@ -2414,8 +2574,8 @@ export default function RecetaModal({
                   { id: 'receta', label: 'RECETA' },
                   { id: 'compras', label: 'COMPRAS' },
                   { id: 'merma', label: 'MERMA' },   // después de Compras (Diego 11/11/2026)
-                  { id: 'equivalencias', label: 'EQUIVALENCIAS' },
-                  { id: 'uso', label: 'USO' },
+                  // Equivalencias y Uso van en una sola pestaña (Diego 11/11/2026). 'uso' sigue valiendo como id.
+                  { id: 'equivalencias', label: 'USO' },
                 ].map(t => (
                   <Box
                     key={t.id}
@@ -2423,8 +2583,8 @@ export default function RecetaModal({
                     sx={{
                       px: 1.75, py: 0.9,
                       borderRadius: '8px 8px 0 0',
-                      bgcolor: tab === t.id ? 'background.paper' : 'rgba(255,255,255,0.25)',
-                      color: tab === t.id ? PRIMARY : ON_PRIMARY,
+                      bgcolor: (tab === t.id || (t.id === 'equivalencias' && tab === 'uso')) ? 'background.paper' : 'rgba(255,255,255,0.25)',
+                      color: (tab === t.id || (t.id === 'equivalencias' && tab === 'uso')) ? PRIMARY : ON_PRIMARY,
                       fontWeight: 800, fontSize: '0.72rem', letterSpacing: 0.4,
                       cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
                     }}
@@ -2570,7 +2730,12 @@ export default function RecetaModal({
                 rango={comprasRango}
                 onCambiarRango={setComprasRangoOverride}
               />
-) : modoInsumo && tab === 'equivalencias' ? (
+) : modoInsumo && (tab === 'equivalencias' || tab === 'uso') ? (
+              // Dos columnas: medidas a la izquierda, dónde se usa a la derecha (Diego 11/11/2026: los
+              // campos a lo ancho de todo el modal quedaban demasiado anchos).
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 5fr) minmax(0, 6fr)' }, gap: 3, alignItems: 'start' }}>
+              <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Medidas</Typography>
               <TabEquivalenciasInsumo
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
@@ -2584,7 +2749,9 @@ export default function RecetaModal({
                   rendimientoUnidad,
                 }}
               />
-            ) : modoInsumo && tab === 'uso' ? (
+              </Box>
+              <Box sx={{ minWidth: 0, borderLeft: { md: '1px solid' }, borderColor: { md: 'divider' }, pl: { md: 3 } }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>Dónde se usa</Typography>
               <TabUsoInsumo
                 insumoId={articulo?.id}
                 businessId={insumoBizId}
@@ -2601,6 +2768,8 @@ export default function RecetaModal({
                   );
                 }}
               />
+              </Box>
+              </Box>
             ) : (() => {
               // Cartel de advertencia: insumo con compras que aún no tiene receta
               const insDat = insumos.find(i => String(i.id) === String(articulo?.id));
@@ -2747,368 +2916,46 @@ export default function RecetaModal({
                       </Stack>
                     );
                         })()}
-                        {/* ── Bloque rendimiento del lote — minimizado por default, se
-                            expande solo si hace falta (mismo patrón que el panel de
-                            gemelos, más abajo) ── */}
-                        <Box sx={{ flex: 1, minWidth: 260, display: isStaff || promoMode ? 'none' : undefined }}>
-                          <Box
-                            onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
-                            sx={{
-                              display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer',
-                              height: 40, boxSizing: 'border-box', px: 1, borderRadius: 1,
-                              bgcolor: rendimientoNoDefault ? 'rgba(3,105,161,0.05)' : 'transparent',
-                              border: '1px solid', borderColor: rendimientoNoDefault ? 'rgba(3,105,161,0.2)' : 'divider',
-                              '&:hover': { bgcolor: 'action.hover' }, transition: 'all .15s',
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', flex: 1 }}>
-                              {rendimientoNoDefault
-                                ? `Rendimiento del lote: ${fmt(rendimiento)} ${{
-                                    porcion: 'porciones', u: 'unidades', lt: 'litros', ml: 'ml', kg: 'kilos', gr: 'gr',
-                                  }[rendimientoUnidad] || 'porciones'}`
-                                : 'Rendimiento del lote (1 porción)'}
-                            </Typography>
-                            <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>{rendimientoOpen ? '▲' : '▼'}</Typography>
-                          </Box>
-                          {rendimientoOpen && (
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mt: 0.75 }}>
-                              <TextField
-                                label="Cantidad"
-                                type="text"
-                                inputMode="decimal"
-                                value={rendimiento === '' ? '' : String(rendimiento).replace('.', ',')}
-                                onChange={e => {
-                                  const raw = e.target.value;
-                                  setRendimiento(raw === '' ? '' : sanitizeDecimal(raw));
-                                }}
-                                size="small"
-                                inputProps={{ inputMode: 'decimal', style: { textAlign: 'right', padding: '0 8px' } }}
-                                sx={{ width: 72, flexShrink: 0, '& .MuiOutlinedInput-root': { height: 40 } }}
-                              />
-                              <FormControl size="small" sx={{ width: 110, flexShrink: 0 }}>
-                                <Select
-                                  value={rendimientoUnidad}
-                                  onChange={e => {
-                                    const nueva = e.target.value;
-                                    setRendimientoUnidad(nueva);
-                                    if (!['porcion', 'u'].includes(nueva)) {
-                                      setRendimientoPeso(null);
-                                      setUnidadPeso(null);
-                                    } else if (!unidadPeso) {
-                                      setUnidadPeso('gr');
-                                    }
-                                  }}
-                                  MenuProps={downwardMenuProps()}
-                                  sx={{ fontSize: '0.85rem', height: 40 }}
-                                >
-                                  <MenuItem value="porcion">Porción</MenuItem>
-                                  <MenuItem value="u">Unidad</MenuItem>
-                                  <MenuItem value="lt">Litro</MenuItem>
-                                  <MenuItem value="ml">ml</MenuItem>
-                                  <MenuItem value="kg">Kilo</MenuItem>
-                                  <MenuItem value="gr">gr</MenuItem>
-                                </Select>
-                              </FormControl>
-                              {['porcion', 'u'].includes(rendimientoUnidad) && (
-                                <Box sx={{ display: 'flex', gap: 0.5, flex: 1, minWidth: 130 }}>
-                                  <TextField
-                                    label="Equivalente"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={rendimientoPeso == null ? '' : String(rendimientoPeso).replace('.', ',')}
-                                    onChange={e => {
-                                      const raw = e.target.value;
-                                      setRendimientoPeso(raw === '' ? null : sanitizeDecimal(raw));
-                                      // Si hay peso y aún no se eligió unidad, fijar el default visual (gr) como valor real.
-                                      // El usuario puede cambiarlo a kg/ml/lt en el Select de al lado.
-                                      if (raw !== '' && !unidadPeso) setUnidadPeso('gr');
-                                    }}
-                                    placeholder="—"
-                                    size="small"
-                                    inputProps={{ min: 0, step: 0.1, style: { textAlign: 'right', padding: '0 8px' } }}
-                                    sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { height: 40 } }}
-                                  />
-                                  <FormControl size="small" sx={{ width: 64, flexShrink: 0 }}>
-                                    <Select
-                                      value={unidadPeso || ''}
-                                      onChange={e => setUnidadPeso(e.target.value)}
-                                      displayEmpty
-                                      renderValue={(v) => v || 'u.'}
-                                      MenuProps={downwardMenuProps()}
-                                      sx={{ fontSize: '0.8rem', height: 40, color: unidadPeso ? 'inherit' : 'text.disabled' }}
-                                    >
-                                      <MenuItem value="gr">gr</MenuItem>
-                                      <MenuItem value="kg">kg</MenuItem>
-                                      <MenuItem value="ml">ml</MenuItem>
-                                      <MenuItem value="lt">lt</MenuItem>
-                                    </Select>
-                                  </FormControl>
-                                </Box>
-                              )}
-                            </Box>
-                          )}
-                        </Box>
-                  {/* ── Panel de gemelos — entre datos generales e ingredientes ── */}
-                  {!esElaborado && !promoMode && (
-                    <Box ref={gemelosPanelRef} sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
-                      {/* Header colapsable */}
-                      <Box onClick={() => {
-                        setGemelosOpen(v => !v);
-                        if (!gemelosOpen) {
-                          setTimeout(() => gemelosSearchRef.current?.focus(), 50);
-                        }
-                      }}
-                        sx={{
-                          display: 'flex', alignItems: 'center', gap: 1,
-                          cursor: 'pointer', height: 40, boxSizing: 'border-box', px: 1, borderRadius: 1,
-                          bgcolor: gemelosGroup ? 'rgba(124,58,237,0.06)' : 'transparent',
-                          border: '1px solid', borderColor: gemelosGroup ? 'rgba(124,58,237,0.2)' : 'divider',
-                          '&:hover': { bgcolor: 'rgba(124,58,237,0.06)' }, transition: 'all .15s',
-                        }}>
-                        <Box sx={{ fontSize: 13, color: '#7c3aed' }}>🔗</Box>
-                        <Typography variant="caption" fontWeight={700} sx={{ color: '#7c3aed', fontSize: '0.75rem', flex: 1 }}>
-                          {gemelosGroup
-                            ? (() => {
-                              const otros = (gemelosGroup.members || []).filter(m => Number(m.article_id) !== Number(articulo?.id)).length;
-                              return `Gemelos (${otros} artículo${otros !== 1 ? 's' : ''} comparten esta receta)`;
-                            })()
-                            : 'Vincular receta con otro artículo'}
-                        </Typography>
-                        {gemelosLoading && <CircularProgress size={11} />}
-                        <Typography sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>{gemelosOpen ? '▲' : '▼'}</Typography>
-                      </Box>
-                      {gemelosOpen && (
-                        <Box sx={{ mt: 0.75, border: '1px solid', borderColor: 'rgba(124,58,237,0.15)', borderRadius: 1, bgcolor: 'rgba(124,58,237,0.02)', overflow: 'visible' }}>
-
-                          {/* Header columnas */}
-                          <Box sx={{
-                            display: 'grid', gridTemplateColumns: '1fr 90px 28px',
-                            gap: 1, px: 1.25, pt: 0.75, pb: 0.25,
-                            borderBottom: '1px solid rgba(124,58,237,0.08)',
-                          }}>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                              Artículo
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'center' }}>
-                              Objetivo %
-                            </Typography>
-                            <Box />
-                          </Box>
-
-                          {/* Buscador como primera línea */}
-                          <Box sx={{ px: 0.75, pt: 0.5 }}>
-                            <Box sx={{ position: 'relative' }}>
-                              <TextField
-                                inputRef={gemelosSearchRef}
-                                size="small"
-                                fullWidth
-                                placeholder="Buscar artículo para vincular…"
-                                value={gemelosSearch}
-                                onChange={e => {
-                                  setGemelosSearch(e.target.value);
-                                  if (e.target.value.length >= 1) buscarGemelos(e.target.value);
-                                  else setGemelosResults([]);
-                                }}
-                                InputProps={{
-                                  startAdornment: <InputAdornment position="start">
-                                    {gemelosSearching ? <CircularProgress size={12} /> : <SearchIcon sx={{ fontSize: 14, color: '#7c3aed' }} />}
-                                  </InputAdornment>,
-                                }}
-                                sx={{
-                                  '& .MuiOutlinedInput-root': {
-                                    borderRadius: 1,
-                                    fontSize: '0.78rem',
-                                    bgcolor: '#fff',
-                                    minHeight: 32,
-                                    '& fieldset': { borderColor: 'rgba(124,58,237,0.2)' },
-                                  },
-                                }}
-                              />
-                              {gemelosResults.length > 0 && (
-                                <Box sx={{
-                                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30,
-                                  bgcolor: 'background.paper', border: '1px solid', borderColor: 'rgba(124,58,237,0.2)',
-                                  borderRadius: 1.5, boxShadow: 6, mt: 0.5, maxHeight: 200, overflowY: 'auto',
-                                }}>
-                                  {gemelosResults.map(art => {
-                                    const yaGemelo = gemelosGroup?.members?.some(m => Number(m.article_id) === Number(art.id));
-                                    const tieneReceta = !!art.tiene_receta;
-                                    if (Number(art.id) === Number(articulo?.id)) return null;
-                                    return (
-                                      <Box key={art.id}
-                                        onClick={async () => {
-                                          if (yaGemelo || tieneReceta) return;
-                                          await agregarGemelo(art.id);
-                                          // Mantener el término escrito y refrescar resultados
-                                          // (el recién agregado pasa a verse como "✓" gracias a yaGemelo)
-                                          if (gemelosSearch.trim()) {
-                                            buscarGemelos(gemelosSearch);
-                                          }
-                                          gemelosSearchRef.current?.focus();
-                                        }}
-                                        sx={{
-                                          px: 1.5, py: 0.6, cursor: (yaGemelo || tieneReceta) ? 'default' : 'pointer',
-                                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                          borderBottom: '1px solid', borderColor: 'divider',
-                                          opacity: tieneReceta ? 0.5 : 1,
-                                          '&:hover': { bgcolor: (yaGemelo || tieneReceta) ? 'transparent' : 'rgba(124,58,237,0.06)' },
-                                        }}>
-                                        <Box sx={{ overflow: 'hidden' }}>
-                                          <Typography variant="body2" noWrap fontWeight={600} sx={{ fontSize: '0.78rem' }}>
-                                            {art.nombre || art.name}
-                                          </Typography>
-                                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                            #{art.id} {tieneReceta && '· Ya tiene receta propia'}
-                                          </Typography>
-                                        </Box>
-                                        <Chip
-                                          label={yaGemelo ? '✓' : tieneReceta ? 'Con receta' : '+ Vincular'}
-                                          size="small"
-                                          sx={{
-                                            height: 18, fontSize: '0.62rem', ml: 1, flexShrink: 0,
-                                            bgcolor: tieneReceta ? '#fee2e2' : yaGemelo ? 'rgba(124,58,237,0.05)' : 'rgba(124,58,237,0.1)',
-                                            color: tieneReceta ? '#ef4444' : '#7c3aed',
-                                            border: `1px solid ${tieneReceta ? '#fecaca' : 'rgba(124,58,237,0.2)'}`,
-                                          }}
-                                        />
-                                      </Box>
-                                    );
-                                  })}
-                                </Box>
-                              )}
-                            </Box>
-                          </Box>
-
-                          {/* Gemelos actuales — DEBAJO del buscador */}
-                          <Box sx={{ px: 0.75, pt: 0.5, pb: 0.75 }}>
-                            {gemelosGroup?.members
-                              ?.filter(m => Number(m.article_id) !== Number(articulo?.id))
-                              .map(m => {
-                                const objVal = m.pct_objetivo;
-                                return (
-                                  <Box
-                                    key={m.article_id}
-                                    onClick={async () => {
-                                      await autoSave(); // guardar la receta padre antes de bajar en cascada
-                                      pushElaborado({
-                                        id: m.article_id,
-                                        nombre: m.nombre || `#${m.article_id}`,
-                                        precio: 0,
-                                        esArticulo: true,
-                                        pctObjetivo: m.pct_objetivo,
-                                      });
-                                    }}
-                                    sx={{
-                                      display: 'grid', gridTemplateColumns: '1fr 90px 28px',
-                                      alignItems: 'center', gap: 1,
-                                      py: 0.5, px: 0.5, borderRadius: 1, mb: 0.35,
-                                      bgcolor: '#fff',
-                                      border: '1px solid #eaecf0',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.15s',
-                                      '&:hover': {
-                                        bgcolor: 'rgba(124,58,237,0.04)',
-                                        borderColor: 'rgba(124,58,237,0.3)',
-                                      },
-                                    }}
-                                  >
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, overflow: 'hidden' }}>
-                                      <Typography variant="caption" sx={{
-                                        fontSize: '0.63rem', color: 'text.disabled', flexShrink: 0,
-                                        bgcolor: '#f1f5f9', px: 0.5, py: '1px', borderRadius: 0.5,
-                                      }}>
-                                        #{m.article_id}
-                                      </Typography>
-                                      <Typography
-                                        variant="caption" noWrap
-                                        sx={{
-                                          fontSize: '0.78rem', fontWeight: 500,
-                                          color: 'text.primary', flex: 1, minWidth: 0,
-                                        }}
-                                      >
-                                        {m.nombre || `Artículo #${m.article_id}`}
-                                      </Typography>
-                                    </Box>
-
-                                    <Box
-                                      onClick={(e) => e.stopPropagation()}
-                                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}
-                                    >
-                                      <TextField
-                                        size="small"
-                                        type="text"
-                                        inputMode="decimal"
-                                        defaultValue={objVal != null ? String(objVal).replace('.', ',') : ''}
-                                        placeholder="—"
-                                        onClick={(e) => e.stopPropagation()}
-                                        onBlur={(e) => {
-                                          const raw = e.target.value;
-                                          const nuevo = raw === '' ? null : parseDecimal(raw);
-                                          const anterior = objVal;
-                                          // Solo persistir si cambió realmente
-                                          if (nuevo === anterior) return;
-                                          if (nuevo != null && (!Number.isFinite(nuevo) || nuevo < 0 || nuevo > 150)) return;
-                                          actualizarObjetivoGemelo(m.article_id, nuevo);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            e.target.blur();
-                                          }
-                                          if (e.key === 'Escape') {
-                                            e.target.value = objVal != null ? objVal : '';
-                                            e.target.blur();
-                                          }
-                                        }}
-                                        inputProps={{
-                                          min: 0,
-                                          max: 150,
-                                          style: {
-                                            textAlign: 'center',
-                                            fontSize: '0.78rem',
-                                            fontWeight: 600,
-                                            padding: '2px 4px',
-                                            width: 44,
-                                          },
-                                        }}
-                                        InputProps={{
-                                          endAdornment: (
-                                            <InputAdornment position="end" sx={{ ml: 0, '& .MuiTypography-root': { fontSize: '0.72rem' } }}>
-                                              %
-                                            </InputAdornment>
-                                          ),
-                                          sx: {
-                                            fontSize: '0.78rem',
-                                            bgcolor: '#fff',
-                                            '& fieldset': { borderColor: 'transparent' },
-                                            '&:hover fieldset': { borderColor: 'rgba(124,58,237,0.3) !important' },
-                                            '&.Mui-focused fieldset': { borderColor: 'rgba(124,58,237,0.5) !important' },
-                                          },
-                                        }}
-                                      />
-                                    </Box>
-
-                                    <Tooltip title="Desvincular">
-                                      <IconButton
-                                        size="small"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          quitarGemelo(m.article_id);
-                                        }}
-                                        sx={{ p: '2px', color: 'error.main', opacity: 0.5, '&:hover': { opacity: 1 } }}
-                                      >
-                                        <DeleteOutlineIcon sx={{ fontSize: 14 }} />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </Box>
-                                );
-                              })}
-                          </Box>
-
-                        </Box>
-                      )}
-                    </Box>
-                  )}
+                        {/* ── Rendimiento del lote (BloqueRendimiento.jsx) ── */}
+                        <BloqueRendimiento
+                          isStaff={isStaff}
+                          promoMode={promoMode}
+                          rendimiento={rendimiento}
+                          rendimientoNoDefault={rendimientoNoDefault}
+                          rendimientoOpen={rendimientoOpen}
+                          rendimientoPeso={rendimientoPeso}
+                          rendimientoUnidad={rendimientoUnidad}
+                          setRendimiento={setRendimiento}
+                          setRendimientoManualOpen={setRendimientoManualOpen}
+                          setRendimientoPeso={setRendimientoPeso}
+                          setRendimientoUnidad={setRendimientoUnidad}
+                          setUnidadPeso={setUnidadPeso}
+                          unidadPeso={unidadPeso}
+                        />
+                  {/* ── Panel de gemelos — entre datos generales e ingredientes (PanelGemelos.jsx) ── */}
+                  <PanelGemelos
+                    actualizarObjetivoGemelo={actualizarObjetivoGemelo}
+                    agregarGemelo={agregarGemelo}
+                    articulo={articulo}
+                    autoSave={autoSave}
+                    buscarGemelos={buscarGemelos}
+                    esElaborado={esElaborado}
+                    gemelosGroup={gemelosGroup}
+                    gemelosLoading={gemelosLoading}
+                    gemelosOpen={gemelosOpen}
+                    gemelosPanelRef={gemelosPanelRef}
+                    gemelosResults={gemelosResults}
+                    gemelosSearch={gemelosSearch}
+                    gemelosSearchRef={gemelosSearchRef}
+                    gemelosSearching={gemelosSearching}
+                    isStaff={isStaff}
+                    promoMode={promoMode}
+                    pushElaborado={pushElaborado}
+                    quitarGemelo={quitarGemelo}
+                    setGemelosOpen={setGemelosOpen}
+                    setGemelosResults={setGemelosResults}
+                    setGemelosSearch={setGemelosSearch}
+                  />
 
                         {!modoInsumo && (
                           <ToggleButtonGroup
@@ -3476,11 +3323,7 @@ export default function RecetaModal({
 
           {/* Pie de costos fijo (no scrollea con los ingredientes): solo donde antes se veía, la receta;
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
-          {!(modoInsumo && !entradaElegida)
-            && !(loading || (modoInsumo && saltarSelector && !tabResuelto))
-            && !(modoInsumo && ['ficha', 'merma', 'compras', 'equivalencias', 'uso'].includes(tab))
-            && !(modoInsumo && Number(insumos.find(i => String(i.id) === String(articulo?.id))?.cantidad_compras) > 0 && items.length === 0 && !recetaConfirmada)
-            && (
+          {pieVisible && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
             <PieCostos
               modoInsumo={modoInsumo}
@@ -3528,6 +3371,7 @@ export default function RecetaModal({
               precioActual={precioActual}
               estaPorDebajo={estaPorDebajo}
               pctCostoActual={pctCostoActual}
+              acciones={accionesEnPie ? botonesReceta(true) : null}
             />
             </Box>
           )}
@@ -3544,68 +3388,20 @@ export default function RecetaModal({
               </Button>
             </Box>
           )}
-          {/* ── FOOTER ── */}
-          <Box sx={{
+          {/* ── FOOTER ── (en artículos los botones van en el pie de costos) */}
+          {!accionesEnPie && <Box sx={{
             px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             flexShrink: 0, bgcolor: 'background.paper',
           }}>
             <Stack direction="row" spacing={1} alignItems="center">
             </Stack>
-            {!(modoInsumo && tab !== 'receta') && <Stack direction="row" spacing={1} alignItems="center">
-              {/* Borrar receta — solo si ya existe */}
-              {receta && (
-                <Button
-                  size="small"
-                  color="error"
-                  variant="outlined"
-                  disabled={saving || deleting}
-                  startIcon={deleting ? <CircularProgress size={13} color="inherit" /> : <DeleteForeverIcon />}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  {promoMode ? 'Borrar' : 'Borrar'}
-                </Button>
-              )}
-              <Button onClick={handleCancel} disabled={saving || deleting} color="inherit" size="small">
-                Cancelar
-              </Button>
-
-              <Button
-                ref={recGuardarRef}
-                onClick={() => handleSave()}
-                variant="contained"
-                size="small"
-                disabled={saving || deleting || loading || hasDuplicates}
-                startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
-                sx={{ bgcolor: PRIMARY, color: ON_PRIMARY, '&:hover': { filter: 'brightness(0.9)', bgcolor: PRIMARY } }}
-              >
-                {saving ? 'Guardando…' : (modoPromoNueva ? 'Guardar' : 'Guardar')}
-              </Button>
-            </Stack>}
-          </Box>
+            {!(modoInsumo && tab !== 'receta') && botonesReceta()}
+          </Box>}
         </Box >
       </Modal >
 
-      {rec.visible && rec.paso === 1 && (
-        <SpotlightTour targetRef={recResumenRef} pose="presenta" {...rec.props(1)}
-          text={<>Acá ves el <b>precio de venta</b>, cuánto te cuesta hacer el plato y qué porcentaje del precio se lleva el costo (<b>food cost</b>).</>} />
-      )}
-      {rec.visible && rec.paso === 2 && (
-        <SpotlightTour targetRef={recAgregarRef} pose="senala" {...rec.props(2)}
-          text={<>Tocá <b>Agregar ingrediente</b> y escribí el nombre del insumo. Si todavía no existe, lo creás desde acá mismo.</>} />
-      )}
-      {rec.visible && rec.paso === 3 && (
-        <SpotlightTour targetRef={recIngredientesRef} pose="investiga" {...rec.props(3)}
-          text={<>En cada ingrediente poné <b>cuánto lleva</b> por porción y en qué <b>unidad</b> (gr, ml, unidad). El costo se calcula solo.</>} />
-      )}
-      {rec.visible && rec.paso === 4 && (
-        <SpotlightTour targetRef={recFotoRef} pose="presenta" {...rec.props(4)}
-          text={<>Acá va la <b>foto</b> del plato terminado y el <b>paso a paso</b> de la preparación.</>} />
-      )}
-      {rec.visible && rec.paso === 5 && (
-        <SpotlightTour targetRef={recGuardarRef} pose="saluda" {...rec.props(5)}
-          text="Cuando termines, guardá. Si cambia el precio de un insumo, el costo de la receta se actualiza solo." />
-      )}
+      <RecorridoReceta rec={rec} recResumenRef={recResumenRef} recAgregarRef={recAgregarRef} recIngredientesRef={recIngredientesRef} recFotoRef={recFotoRef} recGuardarRef={recGuardarRef} />
 
       {/* ── Modal notas + foto ── */}
       {
@@ -3697,93 +3493,12 @@ export default function RecetaModal({
         />
       )}
 
-      {/* ── Aviso: cambiar el rendimiento/Equivalente de este elaborado deja sin unidad
-          válida a otras recetas que lo usan ── */}
-      <Dialog open={!!confirmRompeRotos} onClose={() => resolverConfirmRompe(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700, color: '#ea580c' }}>⚠ Esto va a romper otras recetas</DialogTitle>
-        <DialogContent>
-          <DialogContentText component="div">
-            Este cambio deja sin una unidad válida a {confirmRompeRotos?.length}{' '}
-            {confirmRompeRotos?.length === 1 ? 'receta' : 'recetas'} que usan este insumo:
-            <Box sx={{ my: 1.5, pl: 0.5 }}>
-              {(confirmRompeRotos || []).map((u, i) => (
-                <Typography key={i} variant="body2" sx={{ color: 'text.primary' }}>
-                  • {u.nombre} (usa "{u.unidad}")
-                </Typography>
-              ))}
-            </Box>
-            Van a quedar marcadas para revisar la próxima vez que se abran — no se arreglan solas.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => resolverConfirmRompe(false)} color="inherit" size="small">Cancelar</Button>
-          <Button onClick={() => resolverConfirmRompe(true)} variant="contained" size="small" sx={{ bgcolor: '#ea580c', '&:hover': { bgcolor: '#c2410c' } }}>
-            Guardar igual
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Confirmar borrar ── */}
-      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>¿Borrar receta?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Esta acción eliminará permanentemente la receta de <strong>{artNombre}</strong>.
-            Los costos calculados dejarán de mostrarse.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDelete(false)} color="inherit" size="small">Cancelar</Button>
-          <Button
-            onClick={handleDelete}
-            color="error" variant="contained" size="small"
-            startIcon={deleting ? <CircularProgress size={14} color="inherit" /> : <DeleteForeverIcon />}
-            disabled={deleting}
-          >
-            {deleting ? 'Borrando…' : 'Sí, borrar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* ── Confirmación al desactivar promo (switch Promoción → Producto) ── */}
-      <Dialog open={confirmarDesactivar} onClose={() => setConfirmarDesactivar(false)} maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>
-          ¿Deshacer la promoción?
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {Number(articulo?.id) < 0
-              ? <>Esto eliminará por completo la promoción <strong>{artNombre}</strong>: se borra la promo y sus componentes dejan de estar vinculados. Esta acción no se puede deshacer.</>
-              : <>Esto quitará todos los artículos agregados a <strong>{artNombre}</strong> y la devolverá a producto normal. Sus insumos propios se conservan. ¿Continuar?</>}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmarDesactivar(false)} color="inherit" size="small">
-            Cancelar
-          </Button>
-          <Button
-            onClick={async () => {
-              setConfirmarDesactivar(false);
-              await desactivarPromo();
-            }}
-            color="error"
-            variant="contained"
-            size="small"
-          >
-            Sí, deshacer
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={reemplazarAviso} onClose={() => setReemplazarAviso(false)} maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700 }}>Reemplazar insumo</DialogTitle>
-        <DialogContent>
-          <DialogContentText>Esta función está en construcción. Pronto vas a poder reemplazar el insumo en todas las recetas.</DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReemplazarAviso(false)}>Entendido</Button>
-        </DialogActions>
-      </Dialog>
+      <DialogosReceta
+        confirmRompeRotos={confirmRompeRotos} resolverConfirmRompe={resolverConfirmRompe}
+        confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete} handleDelete={handleDelete} deleting={deleting} artNombre={artNombre}
+        confirmarDesactivar={confirmarDesactivar} setConfirmarDesactivar={setConfirmarDesactivar} desactivarPromo={desactivarPromo} articulo={articulo}
+        reemplazarAviso={reemplazarAviso} setReemplazarAviso={setReemplazarAviso}
+      />
 
       {/* Popover de búsqueda de la lupa */}
       <Popover
@@ -3871,6 +3586,23 @@ export default function RecetaModal({
             // key de abajo incluye el id, así que cambiarlo remonta limpio el
             // modal ya en la pestaña Compras, igual que el salto de nivel
             // superior en InsumosMain.jsx (ver `saltarAInsumo`).
+            // ‹ › en el insumo abierto desde la receta: recorren los ingredientes-insumo de ESTA receta,
+            // manteniendo la pestaña en la que estás (Diego 12/11/2026).
+            onNavigate={elaborado.esArticulo ? undefined : (dir, tabActual) => {
+              const lista = insumosDeLaReceta;
+              const idx = lista.findIndex(x => Number(x.id) === Number(elaborado.id));
+              const sig = lista[dir === 'prev' ? idx - 1 : idx + 1];
+              if (idx === -1 || !sig) return;
+              setElaboradosStack((prev) => {
+                const next = prev.slice();
+                next[stackIdx] = { id: sig.id, nombre: sig.nombre, precio: 0, initialTab: tabActual || elaborado.initialTab || null };
+                return next;
+              });
+            }}
+            canNavigate={(() => {
+              const idx = insumosDeLaReceta.findIndex(x => Number(x.id) === Number(elaborado.id));
+              return { prev: idx > 0, next: idx >= 0 && idx < insumosDeLaReceta.length - 1 };
+            })()}
             onSaltarAInsumo={(item) => {
               if (!item?.id) return;
               setElaboradosStack((prev) => {

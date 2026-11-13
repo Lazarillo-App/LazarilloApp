@@ -572,7 +572,10 @@ export default function TablaArticulos({
     if (recetaArticulo === null);
   }, [recetaArticulo]);
   const listRef = useRef(null);
-  const lastJumpedIdRef = useRef(null);
+  // Artículo buscado que tiene que verse aunque el filtro «solo con ventas» (👁) lo esconda:
+  // un artículo nuevo o sin ventas en el período no estaba en la lista y el salto nunca lo
+  // encontraba (Diego 12/11/2026, «Brioche Ribswich»). Queda visible hasta el próximo salto.
+  const [visibleForzadoId, setVisibleForzadoId] = useState(null);
 
   // Alto real de la lista virtualizada: medido del contenedor (no un "100vh -
   // N px" fijo) para que siempre llegue hasta abajo sin importar el zoom, el
@@ -1127,11 +1130,11 @@ export default function TablaArticulos({
     if (soloConVentas) {
       base = base.filter((a) => {
         const qty = getVentasQty(a);
-        return Number(qty) > 0;
+        return Number(qty) > 0 || (visibleForzadoId != null && Number(getId(a)) === Number(visibleForzadoId));
       });
     }
     return base;
-  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds]);
+  }, [articulosAMostrar, filtroDefer, soloConVentas, getVentasQty, promoComponentIds, visibleForzadoId]);
 
   const isRubroView = tableHeaderMode === "cat-first";
 
@@ -1375,10 +1378,12 @@ export default function TablaArticulos({
         }
       }
       const grupos = [...porAgrup.entries()].map(([nombre, lista]) => {
-        lista.sort((x, y) => getVentasAmount(getId(y.a)) - getVentasAmount(getId(x.a)));
+        // Dentro de cada agrupación, el orden elegido en los títulos de la tabla
+        // (por defecto ventas de mayor a menor) — Diego 12/11.
+        lista.sort((x, y) => cmp(x.a, y.a));
         const monto = lista.reduce((acc, { a }) => acc + getVentasAmount(getId(a)), 0);
         return { nombre, lista, monto };
-      }).sort((x, y) => y.monto - x.monto);
+      }).sort((x, y) => (sortBy === 'ventas' && sortDir === 'asc') ? x.monto - y.monto : y.monto - x.monto);
       for (const { nombre, lista, monto } of grupos) {
         rows.push({
           kind: "header",
@@ -1426,7 +1431,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo]);
+  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo, sortBy, sortDir]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
   const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
@@ -1529,43 +1534,58 @@ export default function TablaArticulos({
   const idToIndexRef = useRef(idToIndex);
   useEffect(() => { idToIndexRef.current = idToIndex; }, [idToIndex]);
 
+  // Salto al artículo buscado (Diego 12/11/2026: «a veces anda y a veces no»). Dos causas:
+  //  1) ArticulosMain pone jumpToArticleId en null a los 800 ms; el cleanup de ese cambio
+  //     cancelaba los reintentos, así que si la agrupación nueva tardaba más en cargar
+  //     (viniendo de Insumos, o con ventas cargando) el salto se perdía sin aviso.
+  //  2) Si después del salto la lista se reordenaba (llegan las ventas y se ordena por
+  //     Ventas), el artículo cambiaba de índice y quedaba fuera de la vista.
+  // Ahora el pedido queda guardado en un ref (independiente de que la prop vuelva a null),
+  // se reintenta hasta 6 s y, durante 2 s después de llegar, si el artículo cambia de lugar
+  // se vuelve a centrar.
+  const saltoRef = useRef(null); // { id, hasta, idx, resaltado }
+  const saltoTimerRef = useRef(null);
+  const intentarSalto = useCallback(() => {
+    const p = saltoRef.current;
+    if (!p) return;
+    if (Date.now() > p.hasta) { saltoRef.current = null; return; }
+    const path = findPath(categoriasRef.current, p.id);
+    const idx = idToIndexRef.current.get(p.id);
+    if (!path || idx == null || !listRef.current) return; // todavía no está: reintenta
+    if (p.idx === idx) return; // ya está centrado en su lugar
+    const primera = p.idx == null;
+    p.idx = idx;
+    if (primera) p.hasta = Math.min(p.hasta, Date.now() + 2000);
+    setExpandedRubro(path.rubroName);
+    setExpandedCatByRubro((prev) => ({ ...prev, [path.rubroName]: path.catName }));
+    setTimeout(() => {
+      if (saltoRef.current !== p) return;
+      listRef.current?.scrollToIndex(idx);
+      if (p.resaltado) return;
+      setTimeout(() => {
+        const el = document.querySelector(`[data-article-id="${p.id}"]`);
+        if (el) { p.resaltado = true; el.classList.add("highlight-jump"); setTimeout(() => el.classList.remove("highlight-jump"), 1400); }
+      }, 350);
+    }, 50);
+  }, [findPath]);
+
   useEffect(() => {
     const id = Number(jumpToArticleId);
-    // Los artículos manuales usan id negativo a propósito (esManual = id < 0,
-    // ver ArticuloAccionesMenu.jsx) — antes este guard los descartaba acá mismo
-    // (id <= 0), por eso el buscador los encontraba y seleccionaba la agrupación
-    // bien, pero el scroll nunca se disparaba.
+    // Los artículos manuales usan id negativo a propósito (esManual = id < 0).
     if (!Number.isFinite(id) || id === 0) return;
-    if (lastJumpedIdRef.current === id) return;
-
-    let cancelled = false;
-    let tries = 0;
-    const tick = () => {
-      if (cancelled) return;
-      const path = findPath(categoriasRef.current, id);
-      const idx = idToIndexRef.current.get(id);
-      if (!path || idx == null) {
-        tries += 1;
-        if (tries > 25) return; // ~2s, damos por perdido
-        setTimeout(tick, 80);
-        return;
-      }
-      lastJumpedIdRef.current = id;
-      setExpandedRubro(path.rubroName);
-      setExpandedCatByRubro((prev) => ({ ...prev, [path.rubroName]: path.catName }));
-      setTimeout(() => {
-        listRef.current?.scrollToIndex(idx);
-        setTimeout(() => {
-          const el = document.querySelector(`[data-article-id="${id}"]`);
-          if (el) { el.classList.add("highlight-jump"); setTimeout(() => el.classList.remove("highlight-jump"), 1400); }
-        }, 40);
-      }, 50);
-    };
-    const t0 = setTimeout(tick, 40);
-    return () => { cancelled = true; clearTimeout(t0); };
-  }, [jumpToArticleId, findPath]);
-
-  useEffect(() => { if (!jumpToArticleId) lastJumpedIdRef.current = null; }, [jumpToArticleId]);
+    saltoRef.current = { id, hasta: Date.now() + 6000, idx: null, resaltado: false };
+    setVisibleForzadoId(id);
+    if (!saltoTimerRef.current) {
+      saltoTimerRef.current = setInterval(() => {
+        intentarSalto();
+        if (!saltoRef.current) { clearInterval(saltoTimerRef.current); saltoTimerRef.current = null; }
+      }, 100);
+    }
+    intentarSalto();
+  }, [jumpToArticleId, intentarSalto]);
+  // Reacomodo de la lista (carga de la agrupación, orden por ventas): reintentar en el acto.
+  useEffect(() => { intentarSalto(); }, [flatRows, intentarSalto]);
+  useEffect(() => () => { if (saltoTimerRef.current) clearInterval(saltoTimerRef.current); }, []);
 
   const [agrupSelView, setAgrupSelView] = useState(agrupacionSeleccionada);
   useEffect(() => { setAgrupSelView(agrupacionSeleccionada); }, [agrupacionSeleccionada]);
@@ -3043,6 +3063,7 @@ export default function TablaArticulos({
         <RecetaModal
           open={!!recetaArticulo} onClose={() => {setRecetaArticulo(null); }}
           articulo={recetaArticulo}
+          onVerFicha={(id) => setEditandoArticuloId(id)}
           modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}
           activeBizId={activeBizId}

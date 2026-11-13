@@ -57,7 +57,7 @@ const semanasDelMes = (mes) => {
 };
 const colorCat = (tipo) => { const t = tipoNorm(tipo); return t === 'cerrado' ? T.bad : t === 'evento' ? T.violet : T.warn; };
 // "Salón" (espacio) y "SALON" (MaxiRest) son el mismo sector
-const normSector = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+const normSector = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
 
 /* ───────── piezas chicas (estilo del mockup) ───────── */
 const Chip = ({ color, children, onClick, title, activoBg }) => (
@@ -83,7 +83,18 @@ const Boton = ({ children, onClick, activo, grande, peligro, deshabilitado, prox
 
 /* ───────── helpers de dominio ───────── */
 const nombreDe = (emp) => (emp ? `${emp.nombre || ''}${emp.apellido ? ` ${emp.apellido}` : ''}`.trim() : '—');
-const nombreCorto = (emp) => (emp ? `${emp.nombre || ''}${emp.apellido ? ` ${String(emp.apellido)[0]}.` : ''}`.trim() : '—');
+// En el cronograma alcanza con el primer nombre (Diego 12/11/2026: sin segundos nombres).
+const primerNombre = (emp) => String(emp?.nombre || '').trim().split(/\s+/)[0] || '';
+const nombreCorto = (emp) => (emp ? `${primerNombre(emp)}${emp.apellido ? ` ${String(emp.apellido).trim()[0]}.` : ''}`.trim() : '—');
+// fila: primer nombre + apellido completo
+const nombreFila = (emp) => (emp ? `${primerNombre(emp)}${emp.apellido ? ` ${String(emp.apellido).trim()}` : ''}`.trim() : '—');
+// dueño de la fila después de sacar una celda: si su dueño ya no tiene días, pasa a quien quede
+function duenoTras(celdas, owner) {
+  const cs = Object.values(celdas || {}).filter((c) => c?.empleadoId);
+  if (!cs.length) return null;
+  if (owner && cs.some((c) => c.empleadoId === owner)) return owner;
+  return duenoDe({ celdas, ownerEmpleadoId: null });
+}
 let keySeq = 1;
 const nuevaKey = () => `f${keySeq++}_${Date.now() % 100000}`;
 
@@ -103,6 +114,104 @@ function duenoDe(fila) {
   let mejor = null; let n = 0;
   cnt.forEach((v, k) => { if (v > n) { n = v; mejor = k; } });
   return mejor;
+}
+
+/* ── horario propio de una celda (entrada y salida opcional) ──
+   Cada horario distinto de la semana lleva su color de chip: si a alguien le
+   cambia la hora, se nota (pedido de Diego 12/11/2026). */
+const PALETA_HORAS = ['#8B5CF6', '#E07B39', '#0F9AA8', '#D6457A', '#4F5BD5', '#1FA866', '#C8912B', '#8A6A4F'];
+// texto del chip o null si la celda entra con el turno y no tiene salida
+function horarioDe(c, turno) {
+  if (!c) return null;
+  const ent = c.entrada || turno?.entrada || '';
+  if (c.salida) return `${ent || '?'}–${c.salida}`;
+  if (c.entrada && c.entrada !== turno?.entrada) return c.entrada;
+  return null;
+}
+// mapa horario → color, ordenado por hora, para todas las celdas de la semana
+function coloresHorarios(filas, turnos) {
+  const tPorId = new Map((turnos || []).map((t) => [t.id, t]));
+  const set = new Set();
+  (filas || []).forEach((f) => Object.values(f.celdas || {}).forEach((c) => {
+    const h = horarioDe(c, tPorId.get(f.turnoId));
+    if (h) set.add(h);
+  }));
+  const m = new Map();
+  [...set].sort().forEach((h, i) => m.set(h, PALETA_HORAS[i % PALETA_HORAS.length]));
+  return m;
+}
+// horas entre dos 'HH:MM' (cruza medianoche)
+function horasEntre(a, b) {
+  if (!/^\d\d:\d\d$/.test(a || '') || !/^\d\d:\d\d$/.test(b || '')) return null;
+  const mi = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
+  let d = mi(b) - mi(a);
+  if (d <= 0) d += 1440;
+  return Math.round((d / 60) * 2) / 2;
+}
+
+// ¿es habitual de este espacio? Se aprende de los cronogramas de las últimas
+// 8 semanas (back: empleado.espacios); el sector de la nómina queda de respaldo.
+// Los marcados "No aplica a cronogramas" nunca lo son.
+function esHabitual(emp, espacio) {
+  if (!emp || !espacio || emp.noAplica) return false;
+  if ((emp.espacios || []).some((x) => Number(x.id) === Number(espacio.id))) return true;
+  const sec = normSector(espacio.sectorNomina);
+  return !!(sec && emp.sector && normSector(emp.sector) === sec);
+}
+
+/* ───────── vista previa de EJEMPLO (estado sin datos) ─────────
+   Solo se dibuja: no se guarda nunca ni se puede tocar. Muestra cómo se va a
+   ver una semana armada mientras el negocio todavía no tiene cronogramas. */
+const EJ = {
+  turnos: [
+    { nombre: 'Día · entra 10:00', filas: [['Ana', 'K', [1, 1, 0, 1, 1, 1, 0]], ['Lucas', 'B', [0, 1, 1, 1, 0, 1, 1]]] },
+    { nombre: 'Noche · entra 19:00', filas: [['Sofía', '1', [1, 0, 1, 1, 1, 1, 1]], ['Juan', 'Ru', [1, 1, 1, 0, 0, 1, 1]], ['Mara', '2', [0, 0, 1, 1, 1, 1, 1]]] },
+  ],
+};
+function GrillaEjemplo({ children }) {
+  const celda = { height: 40, borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, textAlign: 'center', fontFamily: FB, fontSize: 12 };
+  return (
+    <div style={{ position: 'relative', background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
+      <div aria-hidden style={{ opacity: 0.38, pointerEvents: 'none', userSelect: 'none', filter: 'grayscale(0.2)' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ ...celda, width: 132, textAlign: 'left', padding: '0 10px', fontSize: 10.5, color: T.text3, background: T.head }}>FILA / EMPLEADO</th>
+              {DC.map((d, i) => <th key={d} style={{ ...celda, background: T.head, fontFamily: FT, color: T.text2 }}>{d} {i + 1}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {EJ.turnos.map((t) => (
+              <React.Fragment key={t.nombre}>
+                <tr><td colSpan={8} style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 11.5, color: T.accentTxt, background: T.head, letterSpacing: 1, textTransform: 'uppercase', borderBottom: `1px solid ${T.border}` }}>{t.nombre}</td></tr>
+                {t.filas.map(([nom, tag, dias]) => (
+                  <tr key={nom}>
+                    <td style={{ ...celda, textAlign: 'left', padding: '0 10px', fontWeight: 700, color: T.text }}>{nom}</td>
+                    {dias.map((on, i) => (
+                      <td key={i} style={celda}>
+                        {on ? (
+                          <div style={{ margin: 3, borderRadius: 8, background: T.card, lineHeight: '15px', padding: '2px 0' }}>
+                            <div style={{ fontWeight: 700, color: T.text }}>{nom}</div>
+                            <div style={{ fontSize: 10, color: T.accentTxt }}>{tag}</div>
+                          </div>
+                        ) : null}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div style={{ width: 460, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 24, textAlign: 'center', boxSizing: 'border-box' }}>
+          <span style={{ display: 'inline-block', fontFamily: FB, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 7, padding: '2px 8px', marginBottom: 10 }}>ATRÁS, UN EJEMPLO</span>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export {
@@ -135,7 +244,14 @@ export {
   Boton,
   nombreDe,
   nombreCorto,
+  nombreFila,
+  duenoTras,
   nuevaKey,
   duenoEnTurno,
   duenoDe,
+  esHabitual,
+  GrillaEjemplo,
+  horarioDe,
+  coloresHorarios,
+  horasEntre,
 };

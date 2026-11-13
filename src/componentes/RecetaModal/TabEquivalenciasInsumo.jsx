@@ -9,10 +9,11 @@ import {
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   insumoGet, insumoEquivalenciasList, insumoEquivalenciaCreate,
-  insumoEquivalenciaUpdate, insumoEquivalenciaDelete, insumoUpdate,
+  insumoEquivalenciaUpdate, insumoEquivalenciaDelete, insumoUpdate, insumoEquivalenciaAplicar,
 } from '@/servicios/apiInsumos';
+import { showConfirm } from '@/servicios/appConfirm';
 import { sanitizeDecimal } from '@/utils/decimales';
-import { PRIMARY, canonicalUnit, getConversionFactor, fmt } from './helpers';
+import { PRIMARY, canonicalUnit, getConversionFactor, fmt, ETIQUETA_REND_PLURAL } from './helpers';
 import ConfirmDialog from './ConfirmDialog';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { useAccess } from '@/context/AccessContext';
@@ -136,7 +137,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
   const cargar = useCallback(() => {
     if (!insumoId || !businessId) return;
     setLoading(true);
-    insumoEquivalenciasList(insumoId, businessId)
+    insumoEquivalenciasList(insumoId, businessId, { coincidencias: true })
       .then(r => setLista(Array.isArray(r?.data) ? r.data : []))
       // No hay aviso en pantalla: la mayoría de los insumos no tiene equivalencias
       // cargadas todavía, y eso no es un error — se ve como lista vacía. Una falla
@@ -164,15 +165,19 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
     setGuardando(true);
     setError('');
     try {
-      await insumoEquivalenciaCreate(insumoId, {
+      const creada = await insumoEquivalenciaCreate(insumoId, {
         nombre,
         contenido,
         unidad: nuevo.unidad,
       }, businessId);
       setNuevo({ nombre: '', contenido: '', unidad: '' });
-      cargar();
       try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
       try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId } })); } catch { }
+      // Recetas que usan EXACTAMENTE esa medida: pregunta si las pasa a «1 <equivalencia>» (Diego 12/11/2026).
+      if (creada?.data && Array.isArray(creada.coincidencias) && creada.coincidencias.length) {
+        await usarEnRecetas({ ...creada.data, coincidencias: creada.coincidencias });
+      }
+      cargar();
     } catch (e) {
       setError(e.message || 'No se pudo agregar');
     } finally {
@@ -180,6 +185,24 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       setGuardando(false);
     }
   }, [nuevo, guardando, insumoId, businessId, cargar, UNIDADES_EQ]);
+
+  // Pasa a «1 <equivalencia>» las recetas que usan exactamente esa medida (el costo no cambia).
+  const usarEnRecetas = async (eq) => {
+    const c = eq.coincidencias || [];
+    if (!c.length) return;
+    const medida = `${Number(eq.contenido).toLocaleString('es-AR', { maximumFractionDigits: 3 })} ${eq.unidad}`;
+    const nombres = c.map((x) => x.receta).slice(0, 6).join(', ') + (c.length > 6 ? ` y ${c.length - 6} más` : '');
+    const ok = await showConfirm(
+      `${c.length} receta${c.length !== 1 ? 's usan' : ' usa'} exactamente ${medida} de este insumo (${nombres}). ¿Reemplazar por «1 ${eq.nombre}»? El costo no cambia.`,
+      { confirmText: 'Reemplazar' });
+    if (!ok) return;
+    try {
+      await insumoEquivalenciaAplicar(insumoId, eq.id, c.map((x) => x.itemId), businessId);
+      try { window.dispatchEvent(new CustomEvent('insumo:equivalencias-changed', { detail: { insumoId } })); } catch { }
+      try { window.dispatchEvent(new CustomEvent('insumo:uso-changed', { detail: { insumoId } })); } catch { }
+      cargar();
+    } catch (e) { setError(e.message || 'No se pudo reemplazar'); }
+  };
 
   const editar = async (eq, campo, valor) => {
     // Optimistic: actualizar en local, persistir onBlur
@@ -223,7 +246,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
           return (
             <Box sx={{ mb: 1.5, bgcolor: '#eaf1fb', border: '1px solid #c3d7f0', borderRadius: 1, px: 2, py: 1 }}>
               <Typography variant="caption" sx={{ display: 'block', fontSize: '0.75rem', color: '#2d4a6b' }}>
-                Rinde {recetaInfo.cantidad} {recetaInfo.rendimientoUnidad || 'porción'}(es) de {recetaInfo.rendimientoPeso} {uPeso} c/u · Costo total ${fmtAR(recetaInfo.costoTotal)}
+                Rinde {recetaInfo.cantidad} {ETIQUETA_REND_PLURAL[recetaInfo.rendimientoUnidad || 'porcion'] || recetaInfo.rendimientoUnidad} de {recetaInfo.rendimientoPeso} {uPeso} c/u · Costo total ${fmtAR(recetaInfo.costoTotal)}
               </Typography>
               <Typography variant="caption" sx={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#2d4a6b' }}>
                 Costo por {uPeso} = ${fmtAR(costoPorPeso)}
@@ -255,7 +278,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1, fontSize: '0.72rem' }}>
             Cuánto trae 1 unidad de este insumo. Ej: 1 botella = 750 ml. Con esto podés usarlo por ml/gr en las recetas.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
             <Typography variant="body2" sx={{ color: 'text.secondary', flexShrink: 0 }}>1 unidad =</Typography>
             <TextField
               type="text"
@@ -297,7 +320,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
                 ? (precioRef / cont) / factorChicaAGrande
                 : 0;
               return (
-                <Box sx={{ ml: 'auto', textAlign: 'right' }}>
+                <Box sx={{ ml: 'auto', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {cont > 0 && (
                     <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
                       Costo por {String(envase.contenido)} {uCh} = ${fmtAR(precioRef)}
@@ -317,7 +340,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
 
       {/* Header */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, mb: 0.5 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 76px 96px 90px 30px', gap: 1, px: 1, mb: 0.5 }}>
         {['Nombre', 'Contenido', 'Unidad', sinPlata ? '' : 'Costo', ''].map((h, i) => (
           <Typography key={i} variant="caption" fontWeight={700} color="text.secondary" sx={{ fontSize: '0.68rem', textAlign: i === 0 ? 'left' : 'center' }}>{h}</Typography>
         ))}
@@ -328,7 +351,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
       ) : (
         <>
           {lista.map(eq => (
-            <Box key={eq.id} sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, py: 0.5, alignItems: 'center', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
+            <Box key={eq.id} sx={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 76px 96px 90px 30px', gap: 1, px: 1, py: 0.5, alignItems: 'center', borderRadius: 1, '&:hover': { bgcolor: 'action.hover' } }}>
               <TextField size="small" defaultValue={eq.nombre}
                 onBlur={e => { if (e.target.value.trim() && e.target.value !== eq.nombre) editar(eq, 'nombre', e.target.value.trim()); }}
                 inputProps={{ style: { fontSize: '0.8rem' } }} />
@@ -347,6 +370,12 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               <IconButton size="small" onClick={() => setABorrar({ id: eq.id, nombre: eq.nombre })} sx={{ color: 'error.main', opacity: 0.6, '&:hover': { opacity: 1 } }}>
                 <DeleteOutlineIcon sx={{ fontSize: 16 }} />
               </IconButton>
+              {eq.coincidencias?.length > 0 && (
+                <Typography onClick={() => usarEnRecetas(eq)}
+                  sx={{ gridColumn: '1 / -1', fontSize: '0.74rem', color: PRIMARY, cursor: 'pointer', mt: -0.25, '&:hover': { textDecoration: 'underline' } }}>
+                  {eq.coincidencias.length} receta{eq.coincidencias.length !== 1 ? 's usan' : ' usa'} exactamente {Number(eq.contenido).toLocaleString('es-AR', { maximumFractionDigits: 3 })} {eq.unidad} · Pasarlas a «1 {eq.nombre}»
+                </Typography>
+              )}
             </Box>
           ))}
 
@@ -356,7 +385,7 @@ export default function TabEquivalenciasInsumo({ insumoId, businessId, insumoDat
               // Guardar solo cuando el foco sale de TODA la fila (no al saltar entre sus campos)
               if (!e.currentTarget.contains(e.relatedTarget)) guardarNueva();
             }}
-            sx={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 130px 36px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
+            sx={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) 76px 96px 90px 30px', gap: 1, px: 1, py: 0.75, mt: 0.5, alignItems: 'center', borderTop: '1px dashed', borderColor: 'divider' }}>
             <TextField size="small" placeholder="Ej: Cucharada sopera" value={nuevo.nombre}
               onChange={e => setNuevo(n => ({ ...n, nombre: e.target.value }))}
               onKeyDown={e => { if (e.key === 'Enter') guardarNueva(); }}

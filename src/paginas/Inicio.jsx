@@ -19,8 +19,9 @@ const GROUPS = [
   {
     id: 'operacion', label: 'Operación', icon: '⚙️',
     modules: [
-      { id: 'tableros', label: 'Tableros', emoji: '📈', desc: 'Vista integral de tus negocios.', to: null },
-      { id: 'rrhh', label: 'RRHH', emoji: '👥', desc: 'Cronogramas del personal.', to: '/rrhh/cronogramas' },
+      // Tableros = las plazas de despacho de cocina y barra (Diego 12/11/2026).
+      { id: 'tableros', label: 'Tableros', emoji: '📋', desc: 'La lámina de armado de cada plaza.', to: '/tableros' },
+      { id: 'rrhh', label: 'RRHH', emoji: '👥', desc: 'Cronogramas, nómina y altas de tu equipo.', to: '/rrhh/cronogramas' },
     ],
   },
   {
@@ -36,7 +37,6 @@ const GROUPS = [
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: '/conciliacion' },
       { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
-      { id: 'balance', label: 'Balance', emoji: '💳', desc: 'Estado contable y patrimonial.', to: null },
     ],
   },
 ];
@@ -60,7 +60,7 @@ function getUserName() {
 }
 
 // Módulo → sección de los roles a medida.
-const SECCION_DE_MODULO = { resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh', recetas: 'recetas' };
+const SECCION_DE_MODULO = { resultados: 'resultados', 'carga-gastos': 'carga', rrhh: 'rrhh', recetas: 'recetas', tableros: 'recetas' };
 
 export default function Inicio() {
   const navigate = useNavigate();

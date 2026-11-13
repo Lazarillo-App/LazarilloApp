@@ -118,6 +118,49 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
   );
 }
 
+// Factura nueva con el proveedor ya puesto (Diego 12/11/2026: «+ Cargar factura» en la cuenta corriente,
+// al lado de «+ Cargar pago»). Misma carga que el botón del Panel; el proveedor se busca por código.
+export function NuevaFacturaProveedor({ codPro, nombre, onClose, onGuardada }) {
+  const { businessId, sucursalCaja } = usePanelGestion();
+  const queryClient = useQueryClient();
+  const [aviso, setAviso] = useState(null);
+  const [abierto, setAbierto] = useState(true);
+  const { data: maestros, isError } = useMaestrosFactura(true);
+  const lugar = lugarDe(maestros?.lugares, sucursalCaja, businessId);
+  const reglasCarga = useReglasCarga(lugar?.id ?? null, maestros?.lugares ?? []);
+  const delMaestro = (maestros?.proveedores ?? []).find((p) => String(p.codigo ?? '') === String(codPro ?? ''));
+  const prov = delMaestro ? (delMaestro.nombre || delMaestro.razon || delMaestro.codigo) : nombre;
+  const cerrar = () => { setAbierto(false); onClose?.(); };
+  return (
+    <>
+      {abierto && (
+      // En un Dialog propio (portal) para quedar arriba de la cuenta corriente, como «Ver factura».
+      <Dialog open onClose={cerrar} maxWidth={false} sx={{ zIndex: 1400 }} slotProps={{ paper: { sx: { width: 'min(1120px, 96vw)', maxHeight: '92vh', overflow: 'auto', borderRadius: 3 } } }}>
+        {maestros ? (
+        <ModalNuevaCarga
+          embebido vista="nueva" maestros={maestros} pdvsRef={maestros.lugares} pdvActual={lugar?.nombre}
+          reglaDe={reglasCarga.reglaDe} reglaEmpleadoDe={reglasCarga.reglaEmpleadoDe}
+          ctx={{ prov }}
+          onCerrar={cerrar}
+          onProveedorCreado={() => queryClient.invalidateQueries({ queryKey: ['gestionMaestrosFactura'] })}
+          onGuardado={(d) => {
+            refrescarCompras(queryClient);
+            onGuardada?.(d);
+            const conPago = d.pago ? ` · ${d.pago.numero ?? `Pago Nº ${d.pago.id}`}` : '';
+            setAviso(avisoConCostos(`${d.pago ? 'Factura cargada y pagada' : 'Factura cargada'}: ${d.comprobante} · ${pesos(d.total)}${conPago}`, d.costos));
+            setAbierto(false);
+          }}
+        />
+        ) : (
+          <Box onClick={isError ? cerrar : undefined} sx={{ py: 8, display: 'grid', placeItems: 'center', fontSize: 14, color: 'text.secondary' }}>{isError ? 'No se pudieron leer los maestros. Tocá para cerrar.' : <CircularProgress size={32} />}</Box>
+        )}
+      </Dialog>
+      )}
+      <Aviso aviso={aviso} onClose={() => { setAviso(null); onClose?.(); }} />
+    </>
+  );
+}
+
 const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '');
 
 // Ver una factura con el formato de la carga: si es de Lazarillo, Editar o Eliminar. Si la fila no

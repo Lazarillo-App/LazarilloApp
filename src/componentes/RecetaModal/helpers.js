@@ -77,11 +77,22 @@ export const UNIT_ALIASES = {
   // "p" es una abreviatura real de "porción" que aparece en recetas viejas (confirmado
   // en datos de producción) — misma unidad que "u"/"porción", sin puente de peso.
   porcion: 'u', porciones: 'u', 'porción': 'u', 'porciónes': 'u', p: 'u',
+  // «media porción» (Diego 12/11): jerga de cocina para la porción que va de a dos en el plato.
+  // Es solo un nombre: para el costo es la unidad del rendimiento, igual que porción.
+  media_porcion: 'u', 'media porcion': 'u', 'media porción': 'u', 'medias porciones': 'u',
   // volumen → oz (onza FLUIDA, no de peso — ver getConversionFactor/isCompatibleUnits)
   oz: 'oz', onza: 'oz', onzas: 'oz',
   // peso → lb
   lb: 'lb', libra: 'lb', libras: 'lb',
 };
+// Cómo se MUESTRA la unidad de rendimiento de un elaborado que rinde en porciones.
+// Por dentro es 'u' (mismo costo); en pantalla dice lo que eligió quien cargó la receta.
+export const ETIQUETA_REND = { porcion: 'porción', media_porcion: 'media porción' };
+export const ETIQUETA_REND_PLURAL = { porcion: 'porciones', media_porcion: 'medias porciones' };
+export function etiquetaUnidadRend(ru) {
+  return ETIQUETA_REND[ru] || canonicalUnit(ru);
+}
+
 export function canonicalUnit(u) {
   const n = normUnit(u);
   return UNIT_ALIASES[n] || n;
@@ -222,7 +233,7 @@ export function isCompatibleUnits(a, b) {
   // "oz" acá es SIEMPRE onza fluida (volumen) — nunca onza de peso. No va en PESO.
   const PESO = new Set(['gr', 'gramo', 'gramos', 'g', 'k', 'kg', 'kilo', 'kilos', 'kilogramo', 'lb']);
   const VOLUM = new Set(['ml', 'cc', 'lt', 'l', 'litro', 'litros', 'oz']);
-  const UNID = new Set(['u', 'un', 'unidad', 'unidades', 'und', 'doc', 'docena', 'porcion', 'porciones', 'porción', 'porciónes']);
+  const UNID = new Set(['u', 'un', 'unidad', 'unidades', 'und', 'doc', 'docena', 'porcion', 'porciones', 'porción', 'porciónes', 'media_porcion', 'media porcion', 'media porción', 'medias porciones']);
   const na = normUnit(a), nb = normUnit(b);
   if (na === nb) return true;
   if (PESO.has(na) && PESO.has(nb)) return true;

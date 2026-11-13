@@ -1,7 +1,7 @@
 // src/paginas/Login.jsx
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { AuthAPI } from '../servicios/apiAuth';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import { syncAllBusinesses } from '@/servicios/syncAllBusinesses';
@@ -207,6 +207,10 @@ function AccountStatusBanner({ status }) {
 export default function Login() {
   const nav = useNavigate();
   const loc = useLocation();
+  // Con sesión abierta, /login no se muestra: va adentro de la app (si el token ya no vale, el primer
+  // pedido da 401 y vuelve acá sin sesión).
+  // Se mira solo al entrar (al iniciar sesión acá mismo, la navegación la hace el submit).
+  const [yaLogueado] = useState(() => { try { return !!localStorage.getItem('token'); } catch { return false; } });
 
   const [email, setEmail] = useState('');
   const [password, setPass] = useState('');
@@ -282,6 +286,7 @@ export default function Login() {
     }
   };
 
+  if (yaLogueado) return <Navigate to="/inicio" replace />;
   return (
     <div className="auth-shell zoom-reset">
       {showModal && <ContactModal onClose={() => setShowModal(false)} />}

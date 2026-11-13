@@ -41,9 +41,15 @@ export function AuthProvider({ children }) {
           console.log('[AuthContext] ⚠️ Sin token, sesión vacía');
         }
       } catch (err) {
-        console.error('[AuthContext] ❌ Error validando sesión:', err);
-        apiLogout();
-        setUser(null);
+        // Solo se cierra la sesión si el servidor dice que el token no vale (401). Si el servidor
+        // está dormido o lento (testing en plan free: timeout, 502, sin red), antes se borraba la
+        // sesión en TODAS las pestañas y aparecía el login con el header de la app arriba.
+        const sesionInvalida = err?.status === 401 || err?.message === 'invalid_token';
+        console.error('[AuthContext] ❌ Error validando sesión:', err, sesionInvalida ? '→ cierro sesión' : '→ sigo con la sesión guardada');
+        if (sesionInvalida) {
+          apiLogout();
+          setUser(null);
+        }
       } finally {
         setBooting(false);
       }

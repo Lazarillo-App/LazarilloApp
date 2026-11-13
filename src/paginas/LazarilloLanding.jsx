@@ -6,8 +6,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
+import { BASE } from '@/servicios/apiBase';
 import DOG from '@/assets/brand/anthony.png';
-import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG } from '@/componentes/landing-logos';
+import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG, TABLERO_EJEMPLO } from '@/componentes/landing-logos';
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Archivo:wght@300;400;500;600;700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -22,7 +23,7 @@ h1,h2,h3,.kick,.btn{font-family:'Sora',system-ui,sans-serif;}
 .btn-sky:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(91,194,234,.5);}
 .btn-ghost{border:1.5px solid rgba(255,255,255,.4);color:#fff;background:transparent;}
 .btn-ghost:hover{background:rgba(255,255,255,.08);}
-nav{position:sticky;top:0;z-index:50;background:rgba(18,17,31,.92);backdrop-filter:blur(8px);}
+nav{position:sticky;top:0;z-index:50;background:var(--navy);border-bottom:1px solid rgba(255,255,255,.08);box-shadow:0 6px 20px rgba(0,0,0,.18);}
 nav .wrap{display:flex;align-items:center;justify-content:space-between;height:74px;}
 nav img{height:40px;}
 nav .btn-sky{padding:11px 22px;font-size:15px;}
@@ -56,10 +57,6 @@ nav .btn-sky{padding:11px 22px;font-size:15px;}
 .vision p{font-size:18px;max-width:620px;margin:0 auto;}
 .chips{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .chip{font-size:15px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:50px;padding:10px 22px;background:#fff;}
-.founder{background:var(--navy2);color:#fff;padding:64px 0;}
-.founder .wrap{max-width:820px;text-align:center;}
-.founder p{font-family:'Sora',system-ui,sans-serif;font-weight:500;font-size:28px;line-height:1.35;}
-.founder p b{color:var(--sky);}
 .cta{background:var(--navy);color:#fff;padding:80px 0;text-align:center;border-top:1px solid rgba(255,255,255,.08);}
 .cta h2{font-size:42px;font-weight:700;letter-spacing:-.5px;margin-bottom:10px;}
 .cta .tag{font-family:'Sora',system-ui,sans-serif;letter-spacing:3px;text-transform:uppercase;font-size:14px;color:var(--sky);font-weight:600;margin-top:18px;}
@@ -92,6 +89,12 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .modal-ok{background:var(--sky);color:var(--ink);border:none;border-radius:50px;padding:14px 32px;font-size:16px;font-weight:700;font-family:'Sora',system-ui,sans-serif;cursor:pointer;width:100%;margin-top:4px;transition:box-shadow .15s,transform .15s;}
 .modal-ok:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(91,194,234,.5);}
 .modal-ok:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+.prio{display:flex;flex-wrap:wrap;gap:8px;}
+.prio button{font-family:'Archivo',system-ui,sans-serif;font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:50px;padding:8px 14px;cursor:pointer;transition:border-color .15s,background .15s;}
+.prio button:hover{border-color:var(--sky);}
+.prio button.on{background:var(--sky);border-color:var(--sky);}
+.modal-err{background:#fdecec;color:#b42318;border-radius:10px;padding:10px 14px;font-size:14px;margin-bottom:12px;}
+.modal-box{max-height:92vh;overflow-y:auto;}
 .modal-success{text-align:center;padding:20px 0;}
 .modal-success .modal-check{font-size:48px;margin-bottom:12px;}
 .modal-success h4{font-family:'Sora',system-ui,sans-serif;font-size:20px;font-weight:700;color:var(--ink);margin-bottom:8px;}
@@ -118,7 +121,11 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .cgrid .big.txt{font-size:24px;line-height:1.15;}
 .cgrid .lbl{font-size:15px;}
 .integra{padding:80px 0;background:var(--paper);}
-.igrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.igrid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;}
+.iotro{border-style:dashed;cursor:pointer;text-align:left;font:inherit;}
+.iotro:hover{border-color:var(--sky);}
+.iotro .mk{color:var(--skydeep);}
+@media(max-width:1100px){.igrid{grid-template-columns:repeat(2,1fr);}}
 .icard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:16px;}
 .icard .mk{width:52px;height:52px;border-radius:14px;background:var(--paper);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;color:var(--ink);font-size:16px;flex:none;}
 .icard .t{font-family:'Sora',system-ui,sans-serif;font-weight:700;color:var(--ink);font-size:17px;line-height:1.2;}
@@ -141,6 +148,29 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .rtxt{padding:20px 22px 24px;}
 .rtxt .k{font-family:'Sora',system-ui,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;color:var(--skydeep);text-transform:uppercase;}
 .rtxt h3{font-family:'Sora',system-ui,sans-serif;font-size:19px;line-height:1.3;color:var(--ink);font-weight:700;margin-top:8px;}
+.rtab{width:100%;height:100%;object-fit:cover;object-position:top center;border-radius:10px;background:#fff;display:block;}
+.cal{display:flex;flex-direction:column;gap:4px;font-size:12px;}
+.cal-h,.cal-r{display:grid;grid-template-columns:64px repeat(7,1fr);gap:4px;align-items:center;}
+.cal-h span{text-align:center;color:rgba(255,255,255,.55);font-size:11px;}
+.cal-t{color:rgba(255,255,255,.75);}
+.cal-c{height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;}
+.asesores{background:var(--navy);color:#fff;padding:90px 0;}
+.asesores h2{font-size:38px;font-weight:800;letter-spacing:-.8px;line-height:1.15;margin:10px 0 14px;max-width:1000px;}
+.asesores h2 span{color:var(--sky);}
+.asesores .sub{font-size:18px;color:rgba(255,255,255,.72);max-width:760px;}
+.pasos{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:40px 0 44px;}
+.paso{display:flex;gap:14px;align-items:flex-start;border-top:2px solid rgba(91,194,234,.35);padding-top:16px;}
+.paso-n{font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:28px;color:var(--sky);line-height:1;}
+.paso b{font-family:'Sora',system-ui,sans-serif;font-size:17px;}
+.paso p{font-size:15px;color:rgba(255,255,255,.65);margin-top:4px;}
+.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.acard{background:var(--navy2);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:28px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;transition:border-color .2s,transform .2s;}
+.acard:hover{border-color:rgba(91,194,234,.6);transform:translateY(-4px);}
+.aini{width:64px;height:64px;border-radius:50%;background:var(--sky);color:var(--navy);display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:22px;margin-bottom:12px;}
+.anm{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:20px;}
+.arol{font-size:15px;color:rgba(255,255,255,.8);}
+.aexp{font-size:14px;color:rgba(255,255,255,.55);margin-bottom:16px;}
+.aesp{margin-top:auto;font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:700;color:var(--sky);border:1px solid rgba(91,194,234,.45);border-radius:50px;padding:6px 14px;}
 .vlbl{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:600;}
 .vchip{display:inline-flex;align-items:center;gap:6px;border-radius:50px;padding:7px 13px;font-size:13.5px;font-weight:700;}
 .vrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:13.5px;}
@@ -154,7 +184,7 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm img{height:56px;width:auto;display:block;opacity:.7;transition:opacity .2s;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
-@media(max-width:820px){.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:820px){.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
   .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
@@ -192,34 +222,57 @@ const logosClientes = [
 // Integraciones: con qué se conecta. Estados a confirmar.
 const integraciones = [
   { mk: 'MX', t: 'MaxiRest', d: 'POS · ventas, compras y stock', st: 'on' },
+  { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'on' },
+  { mk: 'ML', t: 'Mercado Libre', d: 'Compras de insumos', st: 'on' },
   { mk: 'WT', t: 'Waitry', d: 'POS y pedidos', st: 'soon' },
   { mk: 'FU', t: 'Fudo', d: 'POS', st: 'soon' },
   { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
-  { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
+]
+
+// Asesores (Florencia se suma cuando confirme).
+const asesores = [
+  { ini: 'DA', nm: 'Diego Sebastián Albo', rol: 'Emprendedor desde la cuna', exp: 'Gastronómico hace una década', esp: 'Rentabilidad y manejo de equipos' },
+  { ini: 'MG', nm: 'Martín Gil Herrera', rol: 'Empresario y chef ejecutivo', exp: 'Gastronómico hace más de tres décadas', esp: 'Finanzas y costos' },
+  { ini: 'MV', nm: 'Mairene Villasmil', rol: 'Gastronómica operativa', exp: 'Programadora', esp: 'Implementaciones' },
 ];
 
 const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
 const WA = "https://wa.me/5491163989934";
 
-// Modal de contacto
+// Prioridades para el pedido de demo (las mismas áreas del relato).
+const PRIORIDADES = ['Costos y precios', 'Rentabilidad', 'Operación y equipo', 'Proveedores', 'Menú', 'Personal y turnos'];
+
+// Modal de contacto: el pedido se guarda en el servidor y le llega por mail a los asesores.
 function ContactModal({ onClose }) {
-  const [form, setForm] = useState({ nombre: '', restaurante: '', mensaje: '' });
+  const [form, setForm] = useState({ nombre: '', restaurante: '', contacto: '', prioridad: '', mensaje: '', web: '' });
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSending(true);
-    // Simula envío — reemplazar con lógica real (email, API, etc.)
-    await new Promise(r => setTimeout(r, 1200));
-    setSending(false);
-    setSent(true);
+    setError('');
+    try {
+      const r = await fetch(`${BASE}/public/demo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'No pudimos enviar el pedido.');
+      setSent(true);
+    } catch (err) {
+      setError(err.message || 'No pudimos enviar el pedido. Escribinos por WhatsApp.');
+    } finally {
+      setSending(false);
+    }
   };
 
-  const valid = form.nombre.trim().length >= 2 && form.restaurante.trim().length >= 2;
+  const valid = form.nombre.trim().length >= 2 && form.restaurante.trim().length >= 2 && form.contacto.trim().length >= 6;
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -245,9 +298,25 @@ function ContactModal({ onClose }) {
                 <input id="restaurante" name="restaurante" value={form.restaurante} onChange={handleChange} placeholder="Ej: La Parrilla del Centro" required />
               </div>
               <div className="modal-field">
-                <label htmlFor="mensaje">¿Qué querés mejorar? (opcional)</label>
+                <label htmlFor="contacto">WhatsApp o mail</label>
+                <input id="contacto" name="contacto" value={form.contacto} onChange={handleChange} placeholder="Ej: 11 5555-1234 o ana@laparrilla.com" required />
+              </div>
+              <div className="modal-field">
+                <label>¿Cuál es tu prioridad a resolver?</label>
+                <div className="prio">
+                  {PRIORIDADES.map((p) => (
+                    <button type="button" key={p} className={form.prioridad === p ? 'on' : ''}
+                      onClick={() => setForm(f => ({ ...f, prioridad: f.prioridad === p ? '' : p }))}>{p}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-field">
+                <label htmlFor="mensaje">Contanos más (opcional)</label>
                 <textarea id="mensaje" name="mensaje" value={form.mensaje} onChange={handleChange} placeholder="Ej: quiero controlar mejor mis costos y precios." />
               </div>
+              {/* Trampa para robots: una persona no ve este campo. */}
+              <input name="web" value={form.web} onChange={handleChange} tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }} />
+              {error && <div className="modal-err">{error}</div>}
               <button className="modal-ok" type="submit" disabled={!valid || sending}>
                 {sending ? 'Enviando…' : 'Quiero mi demo gratuita'}
               </button>
@@ -311,7 +380,7 @@ export default function LazarilloLanding() {
       <section className="insight">
         <div className="wrap">
           <span className="q">"</span>
-          <p>Lo primero que falla en un equipo es la <b>comunicación</b>. Lazarillo viene a resolver eso:
+          <p>Lo primero que falla en un equipo es la <b>comunicación</b>. Lazarillo
             convierte el corazón de tu restaurante —su menú y su ingeniería— en información clara para toda tu operación.</p>
         </div>
       </section>
@@ -321,36 +390,26 @@ export default function LazarilloLanding() {
         <div className="wrap">
           <div className="kick">Qué cambia</div>
           <h2>Un negocio con Lazarillo <span>sabe dónde está parado.</span></h2>
-          <p className="sub">No es más información: son seis cosas que pasa a saber —y a hacer— todos los días.</p>
+          <p className="sub">No es más información: son procesos y áreas vinculadas que se ejecutan todos los días.</p>
           <div className="rgrid">
-            {/* 1 canasta */}
+            {/* 1+2 canasta y precios: van de la mano */}
             <div className="rcard">
-              <div className="rvis">
+              <div className="rvis" style={{ padding: '14px 18px' }}>
                 <svg viewBox="0 0 260 110" width="100%" height="100%">
-                  <polyline points="0,90 50,82 100,70 150,62 200,48 260,40" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="3" strokeDasharray="6 6" />
-                  <polyline points="0,92 50,78 100,72 150,50 200,40 260,18" fill="none" stroke="#5BC2EA" strokeWidth="4" strokeLinecap="round" />
-                  <circle cx="260" cy="18" r="6" fill="#5BC2EA" />
+                  <polyline points="0,100 50,94 100,86 150,80 200,72 260,66" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="3" strokeDasharray="6 6" />
+                  <polyline points="0,102 50,92 100,86 150,70 200,60 260,46" fill="none" stroke="#5BC2EA" strokeWidth="4" strokeLinecap="round" />
+                  <circle cx="254" cy="47" r="6" fill="#5BC2EA" />
                   <text x="0" y="12" fill="#5BC2EA" fontSize="13" fontWeight="700">Tu canasta</text>
-                  <text x="190" y="66" fill="rgba(255,255,255,.55)" fontSize="12">IPC</text>
+                  <text x="214" y="88" fill="rgba(255,255,255,.55)" fontSize="12">IPC</text>
                 </svg>
+                <span className="vchip" style={{ position: 'absolute', top: 12, right: 14, background: '#5BC2EA', color: '#12111F', fontSize: 12.5 }}>Aumento sugerido +6,5% ✓</span>
               </div>
-              <div className="rtxt"><div className="k">Costos</div><h3>Conoce su propia canasta de costos y no depende del IPC.</h3></div>
+              <div className="rtxt"><div className="k">Costos y precios</div><h3>Conoce su propia canasta de costos y sus precios de venta la siguen —no el IPC.</h3></div>
             </div>
-            {/* 2 precios */}
+            {/* 3 operación: el tablero de ejemplo de la app (Tableros) */}
             <div className="rcard">
-              <div className="rvis" style={{ flexDirection: 'column', gap: 12 }}>
-                <div className="vrow"><span className="vlbl">Tu canasta subió</span><span className="vchip" style={{ background: 'rgba(91,194,234,.18)', color: '#5BC2EA' }}>+6,1%</span></div>
-                <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,.12)' }} />
-                <div className="vrow"><span className="vlbl">Aumento sugerido</span><span className="vchip" style={{ background: '#5BC2EA', color: '#12111F' }}>+6,5% ✓</span></div>
-              </div>
-              <div className="rtxt"><div className="k">Precios</div><h3>Sus precios de venta siguen a su canasta de costos, no solo a la receta.</h3></div>
-            </div>
-            {/* 3 operación */}
-            <div className="rcard">
-              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-                {[['Cocina', 'Elaboración paso a paso'], ['Barra', 'Armado y emplatado'], ['Salón', 'Despacho y descripción']].map(([a, b]) => (
-                  <div className="vrow" key={a}><span><b style={{ color: '#5BC2EA' }}>{a}</b> <span style={{ color: 'rgba(255,255,255,.7)', fontWeight: 400 }}>· {b}</span></span><span style={{ color: '#34d399' }}>✓</span></div>
-                ))}
+              <div className="rvis" style={{ padding: '12px 14px' }}>
+                <img className="rtab" src={TABLERO_EJEMPLO} alt="Tablero de cocina: cada plato con sus ingredientes por color" />
               </div>
               <div className="rtxt"><div className="k">Operación</div><h3>Todo el equipo sabe elaborar y despachar cada producto —y colabora en eso.</h3></div>
             </div>
@@ -387,6 +446,19 @@ export default function LazarilloLanding() {
               </div>
               <div className="rtxt"><div className="k">Menú</div><h3>Sabe en qué productos del menú tiene que enfocarse.</h3></div>
             </div>
+            {/* 7 personal: turnos a demanda y costo de abrir la jornada */}
+            <div className="rcard">
+              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6, padding: '14px 18px' }}>
+                <div className="cal">
+                  <div className="cal-h"><span /> {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <span key={i}>{d}</span>)}</div>
+                  {[['Mediodía', [2, 2, 2, 3, 3, 4, 4]], ['Noche', [2, 2, 3, 3, 5, 6, 4]]].map(([t, v]) => (
+                    <div className="cal-r" key={t}><span className="cal-t">{t}</span>{v.map((n, i) => <span key={i} className="cal-c" style={{ background: `rgba(91,194,234,${0.12 + n * 0.12})` }}>{n}</span>)}</div>
+                  ))}
+                </div>
+                <div className="vrow" style={{ borderTop: '1px solid rgba(255,255,255,.12)', paddingTop: 8 }}><span className="vlbl">Abrir el sábado te cuesta</span><b style={{ color: '#5BC2EA', fontSize: 18, whiteSpace: 'nowrap' }}>$ 1,2 M</b></div>
+              </div>
+              <div className="rtxt"><div className="k">Personal</div><h3>Arma sus turnos según la demanda y sabe cuánto le cuesta abrir cada jornada.</h3></div>
+            </div>
           </div>
         </div>
       </section>
@@ -422,6 +494,31 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+      {/* ASESORES: el valor humano */}
+      <section className="asesores" id="asesores">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Asesores gastronómicos · de gastronómicos para gastronómicos</div>
+          <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br />quién te acompaña.</span></h2>
+          <p className="sub">Somos gastronómicos asesorando gastronómicos. Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
+          <div className="pasos">
+            {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
+              <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
+            ))}
+          </div>
+          <div className="agrid">
+            {asesores.map((a) => (
+              <div className="acard" key={a.nm}>
+                <div className="aini">{a.ini}</div>
+                <div className="anm">{a.nm}</div>
+                <div className="arol">{a.rol}</div>
+                <div className="aexp">{a.exp}</div>
+                <div className="aesp">{a.esp}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* INTEGRACIONES */}
       <section className="integra" id="integraciones">
         <div className="wrap">
@@ -435,8 +532,11 @@ export default function LazarilloLanding() {
                 <div><div className="t">{i.t}</div><div className="d">{i.d}</div><span className={`st ${i.st}`}>{i.st === 'on' ? 'Conectado' : 'Próximamente'}</span></div>
               </div>
             ))}
+            <button type="button" className="icard iotro" onClick={openModal}>
+              <div className="mk">+</div>
+              <div><div className="t">¿Usás otro sistema?</div><div className="d">Contanos cuál y lo sumamos.</div></div>
+            </button>
           </div>
-          <p className="note">¿Usás otro sistema? <a onClick={openModal}>Contanos cuál</a> y lo sumamos.</p>
         </div>
       </section>
 
@@ -457,13 +557,6 @@ export default function LazarilloLanding() {
           <div className="chips">
             {visionChips.map((c) => <span className="chip" key={c}>{c}</span>)}
           </div>
-        </div>
-      </section>
-
-      {/* FOUNDER */}
-      <section className="founder">
-        <div className="wrap">
-          <p>Lazarillo nace de <b>más de una década</b> gestionando un restaurante propio. No es teoría: es el sistema que me hubiera gustado tener.</p>
         </div>
       </section>
 

@@ -240,7 +240,12 @@ export async function http(
           ? `not_found: ${path}`
           : (text || res.statusText || `HTTP ${res.status}`));
 
-      throw new Error(msg);
+      // El status viaja en el error: así quien llama distingue «sesión vencida» (401) de una caída
+      // o lentitud del servidor (AuthContext no cierra la sesión por un 502 o un timeout).
+      const err = new Error(msg);
+      err.status = res.status;
+      err.data = data;
+      throw err;
     }
 
     return data;
@@ -654,7 +659,7 @@ export const RecetasAPI = {
   // Devuelve { [articleId]: { costoTotal, porciones, tieneAlerta, insumosAlerta } }
   // opts.insumoId: solo los artículos cuyas recetas usan ese insumo (directo o vía elaborados)
   getCostos: (businessId, opts = {}) =>
-    http(`/businesses/${businessId}/recetas-costos${opts.insumoId ? `?insumoId=${encodeURIComponent(opts.insumoId)}` : ''}`, { withBusinessId: false }),
+    http(`/businesses/${businessId}/recetas-costos${opts.insumoId ? `?insumoId=${encodeURIComponent(opts.insumoId)}` : opts.articleId ? `?articleId=${encodeURIComponent(opts.articleId)}` : ''}`, { withBusinessId: false }),
 
   // GET /businesses/:id/recetas-alertas
   // Devuelve lista de insumos con compras vencidas usados en recetas

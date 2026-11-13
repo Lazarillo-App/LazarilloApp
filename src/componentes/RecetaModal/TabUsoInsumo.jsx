@@ -302,7 +302,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
         <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
           {/* Header — clickeable para ordenar de mayor a menor y viceversa */}
           <Box sx={{
-            display: 'grid', gridTemplateColumns: '28px 90px 1fr 130px 170px 32px', gap: 1,
+            display: 'grid', gridTemplateColumns: '28px 64px minmax(110px, 1fr) 76px 140px 28px', gap: 1,
             px: 1.5, py: 1, bgcolor: `${PRIMARY}0d`, borderBottom: '1px solid', borderColor: 'divider',
             fontWeight: 700, fontSize: '0.75rem', color: PRIMARY, alignItems: 'center',
           }}>
@@ -316,7 +316,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
               sx={{ p: 0.25 }}
             />
             {[
-              ['codigo', 'Código art.', 'center'],
+              ['codigo', 'Código', 'center'],
               ['nombre', 'Nombre', 'left'],
               ['cantidad', 'Cantidad', 'center'],
               ['merma', 'Merma', 'center'],
@@ -340,7 +340,7 @@ export default function TabUsoInsumo({ insumoId, businessId, insumoData, desperd
           {/* Filas */}
           {usoOrdenado.map((u, i) => (
             <Box key={u.item_id ?? i} sx={{
-              display: 'grid', gridTemplateColumns: '28px 90px 1fr 130px 170px 32px', gap: 1,
+              display: 'grid', gridTemplateColumns: '28px 64px minmax(110px, 1fr) 76px 140px 28px', gap: 1,
               px: 1.5, py: 1, alignItems: 'center',
               borderBottom: i < usoOrdenado.length - 1 ? '1px solid' : 'none', borderColor: 'divider',
               fontSize: '0.82rem',

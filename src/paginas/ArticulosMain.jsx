@@ -656,17 +656,33 @@ export default function ArticulosMain(props) {
       },
     }));
 
-    // Refetch completo de costos para capturar los artículos vinculados
-    // que el backend acaba de actualizar via propagateRecipe
+    // Solo lo afectado (Diego 12/11): el artículo, sus gemelos (que el backend acaba de
+    // actualizar via propagateRecipe) y las promos que lo usan. Se mezcla con lo que ya
+    // está en pantalla: antes se pedían los costos de TODO el negocio en cada guardado.
     try {
       const bizId = Number(activeBizId);
-      const res = await RecetasAPI.getCostos(bizId);
-      if (res?.costos) setRecetasCostos(res.costos);
+      // + la config de precios (liviana): el modal puede haber guardado el objetivo.
+      const [res, cfg] = await Promise.all([
+        RecetasAPI.getCostos(bizId, { articleId: savedReceta.article_id }),
+        PriceConfigAPI.getAll(bizId).catch(() => null),
+      ]);
+      if (res?.costos) {
+        setRecetasCostos(prev => ({ ...prev, ...res.costos }));
+        // Se mezcla en la caché en vez de invalidarla: invalidar volvía a pedir los costos de
+        // TODO el negocio + elaborados + config + alertas justo después de guardar.
+        queryClient.setQueryData(qk.articleCostsConfig(bizId), (old) => (old ? {
+          ...old,
+          costosRes: { ...(old.costosRes || {}), costos: { ...(old.costosRes?.costos || {}), ...res.costos } },
+          ...(cfg ? { configRes: cfg } : {}),
+        } : old));
+        if (!cfg) queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(bizId) });
+        return;
+      }
     } catch (e) {
       console.warn('[handleRecetaSaved] refetch costos falló:', e.message);
     }
-    // El estado local ya quedó actualizado arriba; invalidar la cache para que una
-    // futura navegación de vuelta a /menu no la pise con el snapshot viejo.
+    // Si no se pudo pedir lo afectado: invalidar la cache para que una futura
+    // navegación de vuelta a /menu no la pise con el snapshot viejo.
     queryClient.invalidateQueries({ queryKey: qk.articleCostsConfig(Number(activeBizId)) });
   }, [activeBizId, queryClient]);
 
@@ -1902,7 +1918,6 @@ export default function ArticulosMain(props) {
     setVentasOverrides(prev => {
       const next = new Map(prev);
       const prevVal = next.get(key) || {};
-
       if ((prevVal.qty ?? 0) === qtyOk && (prevVal.amount ?? 0) === amountOk) return prev;
 
       next.set(key, { ...prevVal, qty: qtyOk, amount: amountOk });
@@ -2140,6 +2155,14 @@ export default function ArticulosMain(props) {
         setFiltroBusqueda('');
       }
 
+      // Si hay un rubro elegido en la barra lateral y el artículo no está en él, se suelta el
+      // rubro: si no, la tabla filtrada nunca muestra el artículo y el salto no llega
+      // (Diego 12/11/2026). Si el artículo cambia de agrupación, el rubro ya se suelta abajo.
+      if (categoriaSeleccionada && !(categoriaSeleccionada.categorias || [])
+        .some((c) => (c.articulos || []).some((a) => Number(a?.article_id ?? a?.articulo_id ?? a?.articuloId ?? a?.id) === id))) {
+        setCategoriaSeleccionada(null);
+      }
+
       setSelectedArticleId(id);
       // Pasar siempre por null antes de volver a poner el mismo id: si ya
       // estábamos en ese artículo (buscarlo de nuevo, típico con un
@@ -2160,6 +2183,7 @@ export default function ArticulosMain(props) {
       agIndex,
       todoInfo?.todoGroupId,
       agrupacionSeleccionada,
+      categoriaSeleccionada,
       agrupacionesRich,
       markManualPick,
       setAgrupacionSeleccionada,

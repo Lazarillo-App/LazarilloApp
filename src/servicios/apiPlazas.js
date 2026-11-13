@@ -4,8 +4,15 @@ import { httpBiz } from './apiBusinesses';
 const ok = (r, msg) => { if (!r?.ok) throw new Error(r?.error || msg); return r; };
 
 export const PlazasAPI = {
+  // Plazas + si la persona puede crear (dueño/admin, o jefe en sus sectores) y en qué sectores.
+  async tablero() { const r = ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas'); return { plazas: r.plazas || [], puedeCrear: !!r.puedeCrear, sectores: r.sectores || [] }; },
   async listar() { return ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas').plazas || []; },
-  async articulos(q = '') { return ok(await httpBiz(`/plazas/articulos?q=${encodeURIComponent(q)}`, { method: 'GET', cache: false }), 'No se pudieron cargar los artículos').articulos || []; },
+  // Artículos con receta, por ventas (90 días) de mayor a menor, con rubro/subrubro y agrupaciones; y las
+  // agrupaciones para filtrar.
+  async articulos(q = '') {
+    const r = ok(await httpBiz(`/plazas/articulos?q=${encodeURIComponent(q)}`, { method: 'GET', cache: false }), 'No se pudieron cargar los artículos');
+    return { articulos: r.articulos || [], agrupaciones: r.agrupaciones || [] };
+  },
   async crear(sectorId, nombre, articleIds) { return ok(await httpBiz('/plazas', { method: 'POST', body: { sectorId, nombre, articleIds } }), 'No se pudo crear la plaza'); },
   async editar(id, nombre, articleIds) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds } }), 'No se pudo guardar la plaza'); },
   async borrar(id) { return ok(await httpBiz(`/plazas/${id}`, { method: 'DELETE' }), 'No se pudo borrar la plaza'); },
@@ -18,6 +25,8 @@ export const PlazasAPI = {
     if (!r?.ok) throw new Error(r?.message || r?.error || 'No se pudo guardar en la receta');
     return r;
   },
+  // Ojito: oculta / muestra el ingrediente en TODAS las recetas (queda como «Oculto» en cada receta).
+  async ocultar(id, ref, oculto) { return ok(await httpBiz(`/plazas/${id}/ocultar`, { method: 'PUT', body: { ref, oculto } }), 'No se pudo ocultar'); },
   // color, mostrar ('peso' | 'obs') y/o alias ('' lo borra): lo que no se manda queda como estaba.
   async guardarColor(ref, color, mostrar, alias) { return ok(await httpBiz('/plazas/colores', { method: 'PUT', body: { ref, color, mostrar, alias } }), 'No se pudo guardar el ingrediente'); },
 };

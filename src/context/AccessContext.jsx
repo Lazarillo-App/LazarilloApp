@@ -18,6 +18,7 @@ import { useAuth } from './AuthContext';
 import { useBusiness } from './BusinessContext';
 import { MeAPI } from '../servicios/apiMe';
 import { setVistaPrevia } from '../servicios/vistaPrevia';
+import { esOculto } from '@/gestion/ocultosRol';
 
 const AccessCtx = createContext(null);
 const SIN_PERMISOS = Object.freeze({});
@@ -147,7 +148,7 @@ export function AccessProvider({ children }) {
     if (!m) return false;
     return modo === 'ver' || m === 'editar';
   }, [permisos]);
-  const oculto = useCallback((clave) => !!permisos && (permisos.ocultos || []).includes(clave), [permisos]);
+  const oculto = useCallback((clave) => !!permisos && esOculto(permisos.ocultos, clave), [permisos]);
 
   const isOwner = currentRole === 'owner';
   const isAdmin = currentRole === 'admin';

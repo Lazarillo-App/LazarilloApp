@@ -8,7 +8,7 @@ import AnthonyChat from './componentes/asistente/AnthonyChat';
 //import Agrupaciones from './componentes/Agrupaciones';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
-import PlazaPage from './paginas/PlazaPage';
+import PlazaPage, { TablerosInicio, PlazaViejaRedirect } from './paginas/PlazaPage';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
@@ -178,13 +178,16 @@ export default function App() {
       }
     };
 
-    window.addEventListener('storage', syncBiz);
+    // Otra pestaña cerró o abrió sesión: esta se entera (antes seguía mostrando el header de la app
+    // y, al navegar, caía en el login con el header arriba).
+    const syncStorage = (e) => { if (!e || e.key === 'token' || e.key === null) syncAuth(); else syncBiz(); };
+    window.addEventListener('storage', syncStorage);
     window.addEventListener('business:switched', syncBiz);
     window.addEventListener('auth:login', syncAuth);
     window.addEventListener('auth:logout', syncAuth);
 
     return () => {
-      window.removeEventListener('storage', syncBiz);
+      window.removeEventListener('storage', syncStorage);
       window.removeEventListener('business:switched', syncBiz);
       window.removeEventListener('auth:login', syncAuth);
       window.removeEventListener('auth:logout', syncAuth);
@@ -310,8 +313,11 @@ export default function App() {
                   }
                 />
                 </Route>
-                {/* Plaza de despacho (Diego 11/11/2026): la lámina de armado de sus productos. */}
-                <Route path="/plaza/:id" element={<RequireSeccion seccion="recetas"><PlazaPage /></RequireSeccion>} />
+                {/* Operación › Tableros (Diego 12/11/2026): una pestaña por plaza de despacho, con su lámina
+                    de armado. /plaza/:id queda como atajo viejo. */}
+                <Route path="/tableros" element={<RequireSeccion seccion="recetas"><TablerosInicio /></RequireSeccion>} />
+                <Route path="/tableros/:id" element={<RequireSeccion seccion="recetas"><PlazaPage /></RequireSeccion>} />
+                <Route path="/plaza/:id" element={<PlazaViejaRedirect />} />
                 <Route
                   path="/agrupacioneslist"
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}

@@ -23,24 +23,61 @@ import {
   enMes,
   semanasDelMes,
   colorCat,
+  horarioDe,
+  coloresHorarios,
+  horasEntre,
   normSector,
+  esHabitual,
   Chip,
   Boton,
   nombreDe,
-  nombreCorto,
+  nombreFila,
 } from './RrhhCronogramasComun';
+import logoLazarillo from '@/assets/brand/logo-dark.png';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 
 /* ───────── imagen para WhatsApp (Canvas, siempre en modo día) ─────────
  * Dos PNG por espacio y semana: 1) cronograma de los turnos tildados,
  * 2) francos de la semana (sin eventuales, cuyo chip ya está en la grilla).
  */
-const IMG = { W: 540, S: 2, P: 16, bg: '#FFFFFF', celda: '#EAF1F8', ink: '#15213E', acc: '#1E87B5', gris: '#5a6a82', pie: '#8aa0b5', esp: '#B97700', logo: '#5BC2EA' };
+// Tabla clásica: una fila por empleado, una columna por día. Cada uno encuentra su renglón
+// sin nombres cortados; el día vacío es franco. Logo real (wordmark) en el pie.
+const IMG = { W: 760, S: 2, P: 20, bg: '#FFFFFF', celda: '#E4F4FB', libre: '#F4F6F9', ink: '#15213E', acc: '#1E87B5', gris: '#5a6a82', pie: '#8aa0b5', esp: '#B97700', linea: '#E3E8EF' };
 const rrect = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
 const recortar = (ctx, txt, ancho) => {
   if (ctx.measureText(txt).width <= ancho) return txt;
   let t = txt;
   while (t.length > 1 && ctx.measureText(t + '…').width > ancho) t = t.slice(0, -1);
   return t + '…';
+};
+// «milagros» → «Milagros» (en la imagen todos los nombres igual)
+const titular = (t) => String(t || '').toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, (m, a, b) => a + b.toUpperCase());
+let logoProm = null;
+const cargarLogo = () => {
+  if (!logoProm) {
+    logoProm = new Promise((ok) => {
+      const im = new Image();
+      im.onload = () => ok(im); im.onerror = () => ok(null);
+      im.src = logoLazarillo;
+    });
+  }
+  return logoProm;
+};
+// Logo del negocio (Cloudinary). Con crossOrigin la imagen no «ensucia» el canvas; si no carga,
+// la imagen sale igual sin logo.
+const logosNeg = new Map();
+const cargarLogoNegocio = (url) => {
+  if (!url) return Promise.resolve(null);
+  if (!logosNeg.has(url)) {
+    logosNeg.set(url, new Promise((ok) => {
+      const im = new Image();
+      im.crossOrigin = 'anonymous';
+      const t = setTimeout(() => ok(null), 4000);
+      im.onload = () => { clearTimeout(t); ok(im); }; im.onerror = () => { clearTimeout(t); ok(null); };
+      im.src = url;
+    }));
+  }
+  return logosNeg.get(url);
 };
 function lienzo(H) {
   const cv = document.createElement('canvas');
@@ -49,129 +86,167 @@ function lienzo(H) {
   ctx.fillStyle = IMG.bg; ctx.fillRect(0, 0, IMG.W, H);
   return { cv, ctx };
 }
-function cabeceraImg(ctx, titulo, rango) {
-  const { P } = IMG;
-  ctx.fillStyle = IMG.logo; rrect(ctx, P, P, 24, 24, 7); ctx.fill();
-  ctx.fillStyle = IMG.ink; ctx.font = "800 15px Sora, sans-serif"; ctx.textAlign = 'center'; ctx.fillText('L', P + 12, P + 17);
-  ctx.textAlign = 'left'; ctx.font = "700 13px Sora, sans-serif"; ctx.fillText(titulo, P + 32, P + 10);
-  ctx.fillStyle = IMG.gris; ctx.font = "400 10px Archivo, sans-serif"; ctx.fillText(rango, P + 32, P + 22);
+const CAB_H = 46;
+// Encabezado: logo del negocio (si tiene) + título + negocio · sucursal · semana
+function cabeceraImg(ctx, titulo, sub, logoNeg) {
+  const { P } = IMG; let x = P;
+  if (logoNeg) {
+    const L = 38; const y0 = P - 2;
+    ctx.save(); rrect(ctx, x, y0, L, L, 9); ctx.clip();
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x, y0, L, L);
+    const k = Math.min(L / logoNeg.width, L / logoNeg.height); const w = logoNeg.width * k; const h = logoNeg.height * k;
+    ctx.drawImage(logoNeg, x + (L - w) / 2, y0 + (L - h) / 2, w, h);
+    ctx.restore();
+    ctx.strokeStyle = IMG.linea; ctx.lineWidth = 1; rrect(ctx, x + 0.5, y0 + 0.5, L - 1, L - 1, 9); ctx.stroke();
+    x += L + 11;
+  }
+  ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = "700 18px Sora, sans-serif"; ctx.fillText(titulo, x, P + 15);
+  ctx.fillStyle = IMG.gris; ctx.font = "500 11.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, sub, IMG.W - P - x), x, P + 32);
 }
-function pieImg(ctx, H) {
-  ctx.fillStyle = IMG.pie; ctx.font = "400 8.5px Archivo, sans-serif"; ctx.textAlign = 'right';
-  ctx.fillText('Lazarillo Gestión · lazarillo.com.ar', IMG.W - IMG.P, H - IMG.P + 4);
+const PIE_H = 26;
+function pieImg(ctx, H, logo) {
+  const { W, P } = IMG; const y = H - P - 4;
+  ctx.strokeStyle = IMG.linea; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(P, y - 14); ctx.lineTo(W - P, y - 14); ctx.stroke();
+  ctx.fillStyle = IMG.pie; ctx.font = "400 9px Archivo, sans-serif"; ctx.textAlign = 'left';
+  ctx.fillText('Hecho con Lazarillo Gestión · lazarillo.com.ar', P, y);
+  if (logo) {
+    const h = 10; const w = h * (logo.width / logo.height);
+    ctx.globalAlpha = 0.55; ctx.drawImage(logo, W - P - w, y - h + 1, w, h); ctx.globalAlpha = 1;
+  }
 }
-// grupos: [{ turno:{nombre,entrada}, filas:[{celdas:{dia:{nombre,puesto}}}] }] · dias: [{nro, dc, ev}]
-function dibujarCronograma({ titulo, rango, dias, grupos }) {
-  if (!grupos.length) return null;
-  const { W, P } = IMG; const GAP = 2;
-  const colW = (W - P * 2 - GAP * 6) / 7;
-  const extraEv = dias.some((d) => d.ev) ? 11 : 0; // línea pareja para el nombre del feriado/evento
-  const altos = grupos.map((g) => {
-    let maxN = 0;
-    for (let j = 0; j < 7; j++) maxN = Math.max(maxN, g.filas.filter((f) => f.celdas[j]).length);
-    const celH = Math.max(40, 17 + extraEv + maxN * 12 + 5);
-    return { celH, total: 20 + celH + 8 };
-  });
-  const H = P + 34 + altos.reduce((a, x) => a + x.total, 0) + 18 + P;
+// grupos: [{ turno:{nombre,entrada}, filas:[{ nombre, celdas:{dia:{puesto,hora,colorHora}} }] }] · dias: [{nro, dc, ev}]
+function dibujarCronograma({ titulo, sub, dias, grupos, logo, logoNeg }) {
+  const gs = grupos.filter((g) => g.filas.length);
+  if (!gs.length) return null;
+  const { W, P } = IMG;
+  const NOM = 178; const GAP = 3; const FILA = 30;
+  const colW = (W - P * 2 - NOM - GAP * 7) / 7;
+  const hayEv = dias.some((d) => d.ev);
+  const DIAS_H = hayEv ? 32 : 22;
+  const H = P + CAB_H + gs.reduce((a, g) => a + 22 + DIAS_H + g.filas.length * (FILA + GAP) + 12, 0) + PIE_H + P;
   const { cv, ctx } = lienzo(H);
-  cabeceraImg(ctx, titulo, rango);
-  let y = P + 34;
-  grupos.forEach((g, gi) => {
-    ctx.fillStyle = IMG.acc; ctx.font = "700 10px Sora, sans-serif"; ctx.textAlign = 'left';
-    ctx.fillText((g.turno.nombre + (g.turno.entrada ? ' · ' + g.turno.entrada : '')).toUpperCase(), P, y + 12);
-    y += 20;
-    const { celH } = altos[gi];
-    for (let j = 0; j < 7; j++) {
-      const x = P + j * (colW + GAP);
-      const d = dias[j];
-      ctx.fillStyle = IMG.celda; rrect(ctx, x, y, colW, celH, 6); ctx.fill();
-      ctx.fillStyle = d.ev ? IMG.esp : IMG.gris; ctx.font = "700 9px Sora, sans-serif"; ctx.textAlign = 'center';
-      ctx.fillText(d.dc + ' ' + d.nro + (d.ev ? ' ★' : ''), x + colW / 2, y + 12);
-      if (d.ev) { ctx.font = "600 7px Archivo, sans-serif"; ctx.fillText(recortar(ctx, d.ev, colW - 8), x + colW / 2, y + 21); }
-      let yy = y + 23 + extraEv;
-      g.filas.forEach((f) => {
-        const c = f.celdas[j];
-        if (!c) return;
-        const tag = c.puesto ? ' ·' + c.puesto : '';
-        ctx.font = "600 8.5px Archivo, sans-serif";
-        const nom = recortar(ctx, c.nombre, colW - 6 - (tag ? ctx.measureText(tag).width : 0));
-        const wN = ctx.measureText(nom).width; const wT = tag ? ctx.measureText(tag).width : 0;
-        const x0 = x + colW / 2 - (wN + wT) / 2;
-        ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.fillText(nom, x0, yy);
-        if (tag) { ctx.fillStyle = IMG.acc; ctx.fillText(tag, x0 + wN, yy); }
-        yy += 12;
-      });
+  cabeceraImg(ctx, titulo, sub, logoNeg);
+  let y = P + CAB_H;
+  gs.forEach((g) => {
+    ctx.textAlign = 'left'; ctx.fillStyle = IMG.acc; ctx.font = "700 12px Sora, sans-serif";
+    const tt = g.turno.nombre.toUpperCase(); ctx.fillText(tt, P, y + 13);
+    if (g.turno.entrada) {
+      const w = ctx.measureText(tt).width;
+      ctx.fillStyle = IMG.gris; ctx.font = "500 11px Archivo, sans-serif"; ctx.fillText(`  entra ${g.turno.entrada}`, P + w, y + 13);
     }
-    y += celH + 8;
+    y += 22;
+    // encabezado de días
+    for (let j = 0; j < 7; j++) {
+      const x = P + NOM + GAP + j * (colW + GAP); const d = dias[j];
+      ctx.textAlign = 'center'; ctx.fillStyle = d.ev ? IMG.esp : IMG.gris; ctx.font = "700 11px Sora, sans-serif";
+      ctx.fillText(`${d.dc} ${d.nro}${d.ev ? ' ★' : ''}`, x + colW / 2, y + 13);
+      if (d.ev) { ctx.font = "600 8.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, d.ev, colW - 4), x + colW / 2, y + 25); }
+    }
+    y += DIAS_H;
+    g.filas.forEach((f, fi) => {
+      if (fi % 2 === 1) { ctx.fillStyle = '#FAFBFD'; ctx.fillRect(P, y - 1, W - P * 2, FILA + 2); }
+      ctx.textAlign = 'left'; ctx.fillStyle = IMG.ink; ctx.font = "600 12.5px Archivo, sans-serif";
+      ctx.fillText(recortar(ctx, titular(f.nombre), NOM - 8), P + 2, y + FILA / 2 + 4.5);
+      for (let j = 0; j < 7; j++) {
+        const x = P + NOM + GAP + j * (colW + GAP); const c = f.celdas[j];
+        ctx.fillStyle = c ? IMG.celda : IMG.libre; rrect(ctx, x, y, colW, FILA, 6); ctx.fill();
+        ctx.textAlign = 'center';
+        if (!c) { ctx.fillStyle = '#A9B6C6'; ctx.font = "500 10px Archivo, sans-serif"; ctx.fillText('franco', x + colW / 2, y + FILA / 2 + 3.5); continue; }
+        // Lo que siempre está es la hora (Diego 12/11/2026): arriba la hora a la que entra
+        // —la propia en su color, si no la del turno— y abajo, chico, el puesto si lo tiene.
+        const h = c.hora || g.turno.entrada || 'Trabaja';
+        const colH = c.hora ? (c.colorHora || IMG.acc) : IMG.ink;
+        if (c.puesto) {
+          ctx.fillStyle = colH; ctx.font = "700 11.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, h, colW - 6), x + colW / 2, y + 13);
+          ctx.fillStyle = IMG.acc; ctx.font = "600 9.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, c.puesto, colW - 8), x + colW / 2, y + 25);
+        } else {
+          ctx.fillStyle = colH; ctx.font = "700 11.5px Archivo, sans-serif"; ctx.fillText(recortar(ctx, h, colW - 6), x + colW / 2, y + FILA / 2 + 4);
+        }
+      }
+      y += FILA + GAP;
+    });
+    y += 12;
   });
-  pieImg(ctx, H);
+  pieImg(ctx, H, logo);
   return cv;
 }
 // items: [{ n, txt }]
-function dibujarFrancos({ titulo, rango, items }) {
+function dibujarFrancos({ titulo, sub, items, logo, logoNeg }) {
   if (!items.length) return null;
   const { W, P } = IMG;
-  const filas = Math.ceil(items.length / 2);
-  const H = P + 34 + 24 + filas * 17 + 8 + 16 + P;
+  const filas = Math.ceil(items.length / 2); const RF = 22;
+  const H = P + CAB_H + 22 + filas * RF + 10 + PIE_H + P;
   const { cv, ctx } = lienzo(H);
-  cabeceraImg(ctx, titulo, rango);
-  let y = P + 34;
-  ctx.fillStyle = IMG.acc; ctx.font = "700 11px Sora, sans-serif"; ctx.textAlign = 'left';
-  ctx.fillText('🌴 FRANCOS DE LA SEMANA', P, y + 13);
-  y += 24;
+  cabeceraImg(ctx, titulo, sub, logoNeg);
+  let y = P + CAB_H;
+  ctx.fillStyle = IMG.acc; ctx.font = "700 12px Sora, sans-serif"; ctx.textAlign = 'left';
+  ctx.fillText('FRANCOS DE LA SEMANA', P, y + 13);
+  y += 22;
   const colF = (W - P * 2) / 2;
   items.forEach((f, i) => {
-    const cx = P + (i % 2) * colF; const cy = y + Math.floor(i / 2) * 17 + 11;
-    ctx.textAlign = 'left'; ctx.font = "600 10.5px Archivo, sans-serif";
-    const nom = recortar(ctx, f.n, colF * 0.55); const wN = ctx.measureText(nom).width;
+    const cx = P + (i % 2) * colF; const cy = y + Math.floor(i / 2) * RF + 14;
+    ctx.textAlign = 'left'; ctx.font = "600 12.5px Archivo, sans-serif";
+    const nom = recortar(ctx, titular(f.n), colF * 0.55); const wN = ctx.measureText(nom).width;
     ctx.fillStyle = IMG.ink; ctx.fillText(nom, cx, cy);
-    ctx.font = "400 10.5px Archivo, sans-serif"; ctx.fillStyle = IMG.gris;
+    ctx.font = "400 12.5px Archivo, sans-serif"; ctx.fillStyle = IMG.gris;
     ctx.fillText(recortar(ctx, '  ' + f.txt, colF - wN - 14), cx + wN, cy);
   });
-  pieImg(ctx, H);
+  pieImg(ctx, H, logo);
   return cv;
 }
-const slug = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 
 /* ───────── modal: exportar imagen ───────── */
-function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
+function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal = '', logoNegocio = null, semanaId, rango, diasISO, fechasMap, filas, empleadosMap, totales, onCerrar, avisar }) {
   const [tildados, setTildados] = useState(() => Object.fromEntries((espacio.turnos || []).map((t) => [t.id, true])));
   const [urlCrono, setUrlCrono] = useState(null);
   const [urlFrancos, setUrlFrancos] = useState(null);
-  const sufijo = negocio ? ' · ' + negocio : '';
-  const incluidos = (espacio.turnos || []).filter((t) => tildados[t.id]);
+    const incluidos = (espacio.turnos || []).filter((t) => tildados[t.id]);
 
   useEffect(() => {
+    let vivo = true;
     const dias = diasISO.map((iso, j) => {
       const f = fechasMap.get(iso);
       return { nro: new Date(iso + 'T12:00:00').getDate(), dc: DC[j], ev: f ? (f.nombre || etiquetaTipo(f.tipo)) : '' };
     });
+    // mismos colores que la grilla: se calculan sobre toda la semana, no solo los turnos tildados
+    const colHoras = coloresHorarios(filas, espacio.turnos);
+    // en la imagen va el nombre del puesto entero (Encargado, no E); si no está en la lista, el código
+    const nomPuesto = new Map((puestos || []).map((p) => [p.codigo, p.nombre || p.codigo]));
     const grupos = incluidos.map((t) => ({
       turno: t,
+      // una fila por empleado (regla: una fila = un empleado); las filas vacías no salen
       filas: filas.filter((f) => f.turnoId === t.id).map((f) => {
-        const celdas = {};
+        const celdas = {}; let emp = null;
         Object.entries(f.celdas).forEach(([dia, c]) => {
-          if (c?.empleadoId) celdas[dia] = { nombre: nombreCorto(empleadosMap.get(c.empleadoId)), puesto: c.puesto };
+          if (c?.empleadoId) { emp = emp || c.empleadoId; const h = horarioDe(c, t); celdas[dia] = { puesto: c.puesto ? (nomPuesto.get(c.puesto) || c.puesto) : null, hora: h, colorHora: h ? colHoras.get(h) : null }; }
         });
-        return { celdas };
-      }),
+        const dueno = f.ownerEmpleadoId || emp;
+        return dueno ? { nombre: nombreFila(empleadosMap.get(dueno)), celdas } : null;
+      }).filter(Boolean),
     }));
     const items = [...totales.entries()]
       .filter(([, t]) => t.semCnt > 0 && t.francos.length <= 3)
-      .map(([id, t]) => ({ n: nombreDe(empleadosMap.get(id)), txt: t.francos.length ? t.francos.join(', ') : '—' }))
+      .map(([id, t]) => ({ n: nombreFila(empleadosMap.get(id)), txt: t.francos.length ? t.francos.join(', ') : '—' }))
       .sort((a, b) => a.n.localeCompare(b.n));
-    try {
-      const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre + sufijo, rango, dias, grupos });
-      setUrlCrono(cv ? cv.toDataURL('image/png') : null);
-    } catch (e) { setUrlCrono(null); avisar('No se pudo generar la imagen.', 'error'); }
-    try {
-      const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre + sufijo, rango, items });
-      setUrlFrancos(cf ? cf.toDataURL('image/png') : null);
-    } catch (e) { setUrlFrancos(null); }
+    // negocio · sucursal (si hay más de una) · semana
+    const sub = [negocio, sucursal, rango].filter(Boolean).join(' · ');
+    Promise.all([cargarLogo(), cargarLogoNegocio(logoNegocio)]).then(([logo, logoNeg]) => {
+      if (!vivo) return;
+      try {
+        const cv = dibujarCronograma({ titulo: 'Cronograma ' + espacio.nombre, sub, dias, grupos, logo, logoNeg });
+        setUrlCrono(cv ? cv.toDataURL('image/png') : null);
+      } catch (e) { setUrlCrono(null); avisar('No se pudo generar la imagen.', 'error'); }
+      try {
+        const cf = dibujarFrancos({ titulo: 'Francos ' + espacio.nombre, sub, items, logo, logoNeg });
+        setUrlFrancos(cf ? cf.toDataURL('image/png') : null);
+      } catch (e) { setUrlFrancos(null); }
+    });
+    return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tildados]);
 
-  const base = slug(espacio.nombre) + (negocio ? '_' + slug(negocio) : '') + '_sem' + String(semanaId).slice(-2);
+  const base = slug(espacio.nombre) + (negocio ? '_' + slug(negocio) : '') + (sucursal ? '_' + slug(sucursal) : '') + '_sem' + String(semanaId).slice(-2);
   const nombreCrono = 'cronograma_' + base +
     (incluidos.length === (espacio.turnos || []).length ? '' : '_' + incluidos.map((t) => slug(t.nombre)).join('_')) + '.png';
   // Un botón por imagen: cada click es un gesto del usuario (los navegadores bloquean descargas encadenadas).
@@ -182,15 +257,69 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
     document.body.appendChild(a); a.click(); a.remove();
     avisar(`${label} descargado ✓ · si no bajó: click derecho sobre la imagen → Guardar imagen como…`);
   };
+  // Compartir la IMAGEN (no un link) por WhatsApp (Diego 13/11/2026). Celu y navegadores que lo
+  // permiten: menú de compartir del sistema con los archivos → se elige WhatsApp. Compu sin eso:
+  // se copia la imagen y se abre WhatsApp Web para pegarla (Ctrl+V).
+  // Los archivos se arman antes del clic: el navegador exige que share() salga directo del toque.
+  const archivos = useMemo(() => {
+    const aFile = (url, nombre) => {
+      if (!url) return null;
+      try {
+        const bin = atob(url.split(',')[1]); const u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return new File([u8], nombre, { type: 'image/png' });
+      } catch (e) { return null; }
+    };
+    return [aFile(urlCrono, nombreCrono), aFile(urlFrancos, 'francos_' + base + '.png')].filter(Boolean);
+  }, [urlCrono, urlFrancos]); // eslint-disable-line react-hooks/exhaustive-deps
+  // En la compu va directo a WhatsApp Web (Diego 13/11/2026: el menú de compartir de la compu fallaba);
+  // el menú del sistema se usa solo en el celu.
+  const puedeCompartir = cel && typeof navigator !== 'undefined' && !!navigator.canShare && archivos.length > 0
+    && (() => { try { return navigator.canShare({ files: archivos }); } catch (e) { return false; } })();
+  const copiarImagen = async (archivo) => {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': archivo })]);
+  };
+  const compartir = async () => {
+    if (!archivos.length) { avisar('La imagen todavía no se generó.', 'error'); return; }
+    if (puedeCompartir) {
+      try { await navigator.share({ files: archivos, title: `Cronograma ${espacio.nombre}` }); } catch (e) {
+        if (e?.name !== 'AbortError') avisar('No se pudo compartir: bajá la imagen y adjuntala.', 'error');
+      }
+      return;
+    }
+    const pegar = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '') ? 'Cmd+V' : 'Ctrl+V';
+    try {
+      await copiarImagen(archivos[0]);
+      // misma pestaña de WhatsApp Web si ya está abierta (si no está vinculado, pide el QR)
+      window.open('https://web.whatsapp.com/', 'whatsapp_web');
+      avisar(`Imagen del cronograma copiada: en WhatsApp Web abrí el chat y pegala con ${pegar}.`, 'ok',
+        archivos[1] ? { label: 'Copiar francos', fn: () => copiarImagen(archivos[1]).then(() => avisar(`Francos copiados: pegalos con ${pegar}.`)).catch(() => avisar('No se pudo copiar.', 'error')) } : null);
+    } catch (e) {
+      avisar('Este navegador no deja compartir ni copiar la imagen: bajala y adjuntala en WhatsApp.', 'error');
+    }
+  };
+  const botones = (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <button onClick={compartir} disabled={!archivos.length} title="Compartir por WhatsApp (manda la imagen, no un link)" aria-label="Compartir por WhatsApp"
+        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 10px', borderRadius: 10, border: '1px solid #1FAF55', background: '#25D366', color: '#fff', cursor: archivos.length ? 'pointer' : 'default', opacity: archivos.length ? 1 : 0.5 }}>
+        <WhatsAppIcon style={{ fontSize: 19 }} />
+      </button>
+      <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
+      {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
+    </div>
+  );
   const rotulo = { fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 };
   const imgSt = { width: '100%', display: 'block', borderRadius: 12, border: `1px solid ${T.border2}`, background: '#FFFFFF' };
 
   return (
-    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+    <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: cel ? 560 : 520, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>Así sale la imagen</div>
-          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+          {/* acciones arriba, a mano sin scrollear (Diego 13/11/2026: celu y compu) */}
+          <div style={{ flex: 1 }} />
+          {botones}
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18, marginLeft: 12 }}>✕</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
           <span style={{ ...rotulo, marginBottom: 0 }}>Turnos</span>
@@ -217,12 +346,7 @@ function ModalExportar({ espacio, negocio, semanaId, rango, diasISO, fechasMap, 
             <img src={urlFrancos} alt="Imagen de los francos de la semana" style={imgSt} />
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 12 }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Boton activo deshabilitado={!urlCrono} onClick={() => bajar(urlCrono, nombreCrono, 'Cronograma')}>⬇ Cronograma</Boton>
-            {urlFrancos && <Boton activo onClick={() => bajar(urlFrancos, 'francos_' + base + '.png', 'Francos')}>⬇ Francos</Boton>}
-          </div>
-        </div>
+
       </div>
     </div>
   );
@@ -240,7 +364,7 @@ function ModalFecha({ iso, actual, sucursalNombre, onGuardar, onQuitar, onCerrar
   const chk = { display: 'flex', alignItems: 'center', gap: 8, fontFamily: FB, fontSize: 13, color: T.text, cursor: 'pointer', marginTop: 8 };
   const correr = async (fn) => { setGuardando(true); try { await fn(); } finally { setGuardando(false); } };
   return (
-    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>{DIAS[d.getDay()]} {dd2(d.getDate())}/{dd2(d.getMonth() + 1)}</div>
@@ -277,7 +401,7 @@ function ModalFecha({ iso, actual, sucursalNombre, onGuardar, onQuitar, onCerrar
 /* ───────── marco común de los modales chicos ───────── */
 function Marco({ ancho = 400, onCerrar, children }) {
   return (
-    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: ancho, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
         {children}
       </div>
@@ -390,6 +514,43 @@ function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onCerrar }) {
 }
 
 /* ───────── modal: editar turno (clic en el nombre del turno) ───────── */
+/* Campo de hora 24 h que se escribe de corrido (Diego 12/11/2026: el input nativo dejaba
+   los minutos en "--" y había que completarlos). "11" → 11:00 · "930" → 09:30 · "1130" → 11:30
+   · "11:3" → 11:30. Mientras se escribe ya informa la hora válida; al salir queda prolija. */
+function normHora(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2})(?::?(\d{0,2}))?$/);
+  if (!m) return null;
+  let h; let mi;
+  if (!t.includes(':') && t.length >= 3) { h = Number(t.slice(0, t.length - 2)); mi = t.slice(-2); }
+  else { h = Number(m[1]); mi = m[2] || ''; }
+  mi = mi.length === 0 ? '00' : mi.length === 1 ? mi + '0' : mi;
+  if (h > 23 || Number(mi) > 59) return null;
+  return String(h).padStart(2, '0') + ':' + mi;
+}
+function CampoHora({ value, onChange, style, title, placeholder = '--:--' }) {
+  const [raw, setRaw] = useState(value || '');
+  const [foco, setFoco] = useState(false);
+  useEffect(() => { if (!foco) setRaw(value || ''); }, [value, foco]);
+  const invalida = raw && normHora(raw) === null;
+  return (
+    <input
+      type="text" inputMode="numeric" maxLength={5} value={raw} placeholder={placeholder} title={title}
+      onFocus={(e) => { setFoco(true); e.target.select(); }}
+      onChange={(e) => {
+        const v = e.target.value.replace(/[^\d:]/g, '');
+        setRaw(v);
+        const n = normHora(v);
+        if (n !== null) onChange(n);
+      }}
+      onBlur={() => { setFoco(false); const n = normHora(raw); setRaw(n === null ? (value || '') : n); }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      style={{ ...style, ...(invalida ? { borderColor: T.bad } : {}) }}
+    />
+  );
+}
+
 function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
   const [nombre, setNombre] = useState(turno.nombre || '');
   const [entrada, setEntrada] = useState(turno.entrada || '');
@@ -411,7 +572,7 @@ function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
         </div>
         <div style={{ width: 120 }}>
           <div style={{ ...rotulo, marginTop: 0 }}>Entra</div>
-          <input type="time" value={entrada} onChange={(e) => setEntrada(e.target.value)} style={input} />
+          <CampoHora value={entrada} onChange={setEntrada} style={{ ...input, textAlign: 'center' }} />
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
@@ -423,80 +584,196 @@ function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
 }
 
 /* ───────── modal: asignar empleado a una celda ───────── */
-function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar }) {
+function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onBaja, onPuestos, onGuardar, onCerrar }) {
+  // Una fila = un empleado: si la fila ya tiene días de alguien, la celda es suya (no se elige otro).
+  const bloqueado = !ctx.modoFila && !!ctx.duenoConDias;
+  const empBloqueado = bloqueado ? empleados.find((e) => e.id === ctx.duenoConDias) : null;
+  // Puestos gestionables desde acá (alta y baja)
+  const [editPuestos, setEditPuestos] = useState(false);
+  const [bajaDe, setBajaDe] = useState(null);     // empleado al que se le da de baja desde la lista
+  const [fechaBaja, setFechaBaja] = useState('');
   const [q, setQ] = useState('');
+  const [hoverId, setHoverId] = useState(null);
+  const [creando, setCreando] = useState(false);
+  const buscadorRef = React.useRef(null);
+  const crear = async () => {
+    if (!q.trim()) { buscadorRef.current?.focus(); return; }
+    if (creando || !onCrear) return;
+    setCreando(true);
+    const emp = await onCrear(q.trim());
+    setCreando(false);
+    // queda elegido y filtrado por su nombre, así se ve seleccionado
+    if (emp) { setEmpId(emp.id); setQ(nombreDe(emp)); }
+  };
+  // si ya hay alguien con ese nombre exacto no se ofrece crear (evita duplicados)
+  const yaExiste = !!q.trim() && empleados.some((e) => nombreDe(e).toLowerCase() === q.trim().toLowerCase());
   const [empId, setEmpId] = useState(ctx.celda?.empleadoId || ctx.ownerEmpleadoId || null);
   // modo fila: si los días tienen puestos/horas distintos arranca en "como están" (no se pisan)
   const [tag, setTag] = useState(ctx.puestoMixto ? '__mixto' : (ctx.celda?.puesto || ctx.puestoFila || ''));
   const [horas, setHoras] = useState(ctx.horasMixtas ? '' : (ctx.celda?.horas != null ? ctx.celda.horas : JORNADA_HS));
+  // hora de entrada propia: vacía = la del turno. En modo fila con horas distintas,
+  // si no se toca cada día conserva la suya.
+  const [entrada, setEntrada] = useState(ctx.entradaMixta ? '' : (ctx.celda ? (ctx.celda.entrada || '') : (ctx.entradaFila || '')));
+  const [entradaTocada, setEntradaTocada] = useState(false);
+  // salida opcional: si se carga, las horas se calculan solas (se pueden corregir)
+  const [salida, setSalida] = useState(ctx.salidaMixta ? '' : (ctx.celda ? (ctx.celda.salida || '') : (ctx.salidaFila || '')));
+  const [salidaTocada, setSalidaTocada] = useState(false);
+  const recalcularHoras = (ent, sal) => {
+    const h = horasEntre(ent || ctx.turnoEntrada, sal);
+    if (h) setHoras(h);
+  };
 
   const lista = useMemo(() => {
     const txt = q.trim().toLowerCase();
-    const activos = empleados.filter((e) => e.activo !== false);
+    // "No aplica a cronogramas" no se ofrece (salvo que ya esté en esta celda/fila)
+    const actual = ctx.celda?.empleadoId || ctx.ownerEmpleadoId || null;
+    const activos = empleados.filter((e) => e.activo !== false && (!e.noAplica || e.id === actual));
     const filtra = (e) => !txt || nombreDe(e).toLowerCase().includes(txt) || String(e.codigoMaxi || '').includes(txt);
-    const sectorEsp = normSector(espacio?.sectorNomina);
-    const esDelSector = (e) => sectorEsp && e.sector && normSector(e.sector) === sectorEsp;
-    const propios = activos.filter((e) => esDelSector(e) && filtra(e));
-    const resto = activos.filter((e) => !esDelSector(e) && filtra(e));
+    // primero los habituales del espacio (aprendidos de los cronogramas)
+    const propios = activos.filter((e) => esHabitual(e, espacio) && filtra(e));
+    const resto = activos.filter((e) => !esHabitual(e, espacio) && filtra(e));
     return { propios, resto };
   }, [q, empleados, espacio]);
 
   const Fila = ({ e }) => (
-    <div key={e.id} onClick={() => setEmpId(e.id)} style={{
+    <div key={e.id} onClick={() => setEmpId(e.id)}
+      onMouseEnter={() => setHoverId(e.id)} onMouseLeave={() => setHoverId((h) => (h === e.id ? null : h))} style={{
       padding: '7px 10px', cursor: 'pointer', fontFamily: FB, fontSize: 13, display: 'flex',
       justifyContent: 'space-between', alignItems: 'center',
       background: empId === e.id ? T.accent : 'transparent',
       color: empId === e.id ? T.ink : T.text, borderBottom: `1px solid ${T.border}`,
     }}>
       <span><span style={{ display: 'inline-block', minWidth: 34, fontSize: 11.5, color: empId === e.id ? T.ink : T.text3, fontVariantNumeric: 'tabular-nums' }}>{e.codigoMaxi || '—'}</span>{nombreDe(e)}</span>
-      <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{e.sector || ''}</span>
+      {hoverId === e.id && empId !== e.id && onNoAplica ? (
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          <span onClick={(ev) => { ev.stopPropagation(); onNoAplica(e); }} title="No aparece más para asignar (se deshace desde Nómina o en el aviso)"
+            style={{ fontSize: 11, fontWeight: 700, color: T.text3, border: `1px dashed ${T.text3}88`, borderRadius: 6, padding: '0 6px', lineHeight: '16px', whiteSpace: 'nowrap' }}>⊘ No aplica</span>
+          {onBaja && (
+            <span onClick={(ev) => { ev.stopPropagation(); setBajaDe(e); setFechaBaja(''); }} title="Dar de baja (fecha opcional)"
+              style={{ fontSize: 11, fontWeight: 700, color: T.bad, border: `1px solid ${T.bad}55`, borderRadius: 6, padding: '0 6px', lineHeight: '16px', whiteSpace: 'nowrap' }}>Baja</span>
+          )}
+        </span>
+      ) : (
+        <span style={{ fontSize: 11, color: empId === e.id ? T.ink : T.text3 }}>{(e.espacios || []).map((x) => x.nombre).join(' · ') || e.sector || ''}</span>
+      )}
     </div>
   );
 
   return (
-    <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 400, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}` }}>
+    <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 520, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}` }}>
         <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>
           {ctx.modoFila ? `Toda la fila · ${ctx.turnoNombre}` : `${DIAS[ctx.dia]} ${ctx.nroDia} · ${ctx.turnoNombre}`}
         </div>
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '2px 0 12px' }}>
           {ctx.modoFila
             ? (ctx.diasCargados
-              ? `Lo que elijas se aplica a los ${ctx.diasCargados} ${ctx.diasCargados === 1 ? 'día cargado' : 'días cargados'} de la fila: empleado, puesto u horas.`
+              ? `Lo que elijas se aplica a los ${ctx.diasCargados} ${ctx.diasCargados === 1 ? 'día cargado' : 'días cargados'} de la fila: empleado, puesto, hora de entrada u horas.`
               : 'La fila no tiene días cargados: queda reservada para el empleado que elijas.')
             : 'Una fila por empleado por turno — el mismo empleado puede estar en otro turno.'}
         </div>
 
+        {bloqueado ? (
+          <div style={{ border: `1px solid ${T.border}`, background: T.head, borderRadius: 10, padding: '8px 12px' }}>
+            <div style={{ fontFamily: FB, fontSize: 13.5, fontWeight: 700, color: T.text }}>{nombreDe(empBloqueado)}</div>
+            <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 1 }}>La fila es suya: para cambiar de empleado, tocá el nombre de la fila.</div>
+          </div>
+        ) : (<>
         <input
-          autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la nómina…"
+          ref={buscadorRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la nómina…"
           style={{ width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }}
         />
-        <div style={{ maxHeight: 190, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 8 }}>
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 8, overflow: 'hidden' }}>
+        {/* acción primero, fija entre el buscador y la lista (patrón de SelectorBuscable) */}
+        {onCrear && !yaExiste && (
+          <div onClick={crear} title={q.trim() ? 'Alta en la nómina con este nombre' : 'Escribí el nombre en el buscador'}
+            style={{ padding: '7px 10px', fontFamily: FB, fontSize: 13, fontWeight: 700, color: T.accentTxt, background: 'rgba(0,0,0,0.04)', borderBottom: `1px solid ${T.border2}`, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {creando ? 'Creando…' : q.trim() ? `+ Crear "${q.trim()}" en la nómina` : '+ Crear empleado'}
+          </div>
+        )}
+        <div style={{ maxHeight: 190, overflowY: 'auto' }}>
+          {lista.propios.length > 0 && lista.resto.length > 0 && (
+            <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Habituales de {espacio?.nombre}</div>
+          )}
           {lista.propios.map((e) => <Fila key={e.id} e={e} />)}
           {lista.propios.length > 0 && lista.resto.length > 0 && (
-            <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Otros sectores</div>
+            <div style={{ padding: '4px 10px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: T.text3, background: T.head }}>Otros</div>
           )}
           {lista.resto.map((e) => <Fila key={e.id} e={e} />)}
           {lista.propios.length === 0 && lista.resto.length === 0 && (
             <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: T.text3 }}>Sin resultados en la nómina.</div>
           )}
         </div>
+        </div>
+        {lista.propios.length === 0 && lista.resto.length > 0 && !q.trim() && (
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 6 }}>
+            Cuando armes cronogramas, los habituales de {espacio?.nombre} van a aparecer primero.
+          </div>
+        )}
+        {bajaDe && (
+          <div style={{ marginTop: 8, border: `1px solid ${T.bad}55`, background: T.bad + '0D', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text, fontWeight: 700, marginBottom: 6 }}>Dar de baja a {nombreDe(bajaDe)}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="date" value={fechaBaja} onChange={(e) => setFechaBaja(e.target.value)} autoFocus
+                style={{ height: 40, boxSizing: 'border-box', flex: 1, fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band }} />
+              <Boton onClick={() => setBajaDe(null)}>Cancelar</Boton>
+              <Boton peligro onClick={async () => { const ok = await onBaja(bajaDe, fechaBaja); if (ok) { if (empId === bajaDe.id) setEmpId(null); setBajaDe(null); } }}>Dar de baja</Boton>
+            </div>
+            <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5 }}>Si dejás la fecha vacía, queda hoy.</div>
+          </div>
+        )}
 
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</div>
+        </>)}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '12px 0 6px' }}>
+          <span style={{ fontFamily: FB, fontSize: 12, color: T.text2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</span>
+          {onPuestos && (
+            <span onClick={() => setEditPuestos((v) => !v)} style={{ fontFamily: FB, fontSize: 11.5, fontWeight: 700, color: T.accentTxt, cursor: 'pointer' }}>
+              {editPuestos ? 'Listo' : '✎ Puestos'}
+            </span>
+          )}
+        </div>
+        {editPuestos ? <EditorPuestos puestos={puestos} onGuardar={onPuestos} sinRotulo /> : (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {ctx.puestoMixto && <Chip color={T.text3} activoBg={tag === '__mixto'} onClick={() => setTag('__mixto')} title="Cada día conserva su puesto">Como están</Chip>}
-          <Chip color={!tag ? T.accentTxt : T.text3} activoBg={!tag} onClick={() => setTag('')}>Sin puesto</Chip>
+          {ctx.puestoMixto && !editPuestos && <Chip color={T.text3} activoBg={tag === '__mixto'} onClick={() => setTag('__mixto')} title="Cada día conserva su puesto">Como están</Chip>}
+          {!editPuestos && <Chip color={!tag ? T.accentTxt : T.text3} activoBg={!tag} onClick={() => setTag('')}>Sin puesto</Chip>}
           {puestos.map((p) => (
-            <Chip key={p.codigo} color={T.text3} activoBg={tag === p.codigo} onClick={() => setTag(p.codigo)} title={p.nombre}>{p.codigo} · {p.nombre}</Chip>
+            <Chip key={p.codigo} color={T.text3} activoBg={tag === p.codigo} onClick={() => setTag(p.codigo)}>{p.nombre}</Chip>
           ))}
         </div>
+        )}
 
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Horas de la jornada</div>
-        <input
-          type="number" min="1" max="16" step="0.5" value={horas} placeholder={ctx.horasMixtas ? 'como están' : ''}
-          onChange={(e) => setHoras(e.target.value === '' ? '' : Number(e.target.value))}
-          style={{ width: 90, fontFamily: FB, fontSize: 13, padding: '7px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }}
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', columnGap: 10, margin: '12px 0 0' }}>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Entra</div>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Sale <span style={{ textTransform: 'none', color: T.text3 }}>(opc.)</span></div>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>Horas</div>
+          <CampoHora
+            value={entrada} placeholder={ctx.turnoEntrada || '--:--'} title={ctx.turnoEntrada ? `Vacía = la del turno (${ctx.turnoEntrada})` : 'Vacía = la del turno'}
+            onChange={(v) => { setEntrada(v); setEntradaTocada(true); if (salida && v) recalcularHoras(v, salida); }}
+            style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${entrada ? T.violet + '88' : T.border2}`, outline: 'none', color: entrada ? T.text : T.text3, background: T.head, textAlign: 'center' }}
+          />
+          <CampoHora
+            value={salida} title="Opcional: si la cargás, la celda muestra entrada–salida"
+            onChange={(v) => { setSalida(v); setSalidaTocada(true); if (v) recalcularHoras(entrada, v); }}
+            style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 8px', borderRadius: 10, border: `1px solid ${salida ? T.violet + '88' : T.border2}`, outline: 'none', color: salida ? T.text : T.text3, background: T.head, textAlign: 'center' }}
+          />
+          <input
+            type="number" min="1" max="16" step="0.5" value={horas} placeholder={ctx.horasMixtas ? 'como están' : ''}
+            onChange={(e) => setHoras(e.target.value === '' ? '' : Number(e.target.value))}
+            style={{ height: 40, boxSizing: 'border-box', width: '100%', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head, textAlign: 'center' }}
+          />
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5, textAlign: 'center' }}>
+            {entrada
+              ? <span onClick={() => { setEntrada(''); setEntradaTocada(true); }} style={{ color: T.accentTxt, fontWeight: 700, cursor: 'pointer' }}>{ctx.turnoEntrada ? `Volver a ${ctx.turnoEntrada}` : 'Usar la del turno'}</span>
+              : ctx.entradaMixta && !entradaTocada ? 'Como están' : `Con el turno${ctx.turnoEntrada ? ` · ${ctx.turnoEntrada}` : ''}`}
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5, textAlign: 'center' }}>
+            {salida
+              ? <span onClick={() => { setSalida(''); setSalidaTocada(true); }} style={{ color: T.accentTxt, fontWeight: 700, cursor: 'pointer' }}>Quitar salida</span>
+              : ctx.salidaMixta && !salidaTocada ? 'Como están' : 'Sin informar'}
+          </div>
+          <div />
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
           {ctx.modoFila ? (
@@ -506,11 +783,33 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
             <Boton onClick={onCerrar}>Cancelar</Boton>
-            <Boton activo deshabilitado={!empId} onClick={() => empId && onGuardar({
-              empleadoId: empId,
-              puesto: tag === '__mixto' ? undefined : (tag || null),          // undefined = cada día conserva el suyo
-              horas: horas === '' ? undefined : (horas > 0 ? horas : JORNADA_HS),
-            })}>{ctx.modoFila ? 'Aplicar a la fila' : 'Guardar'}</Boton>
+            {(() => {
+              const id = bloqueado ? ctx.duenoConDias : empId;
+              const valor = (alcance) => ({
+                empleadoId: id, alcance,
+                puesto: tag === '__mixto' ? undefined : (tag || null),          // undefined = cada día conserva el suyo
+                horas: horas === '' ? undefined : (horas > 0 ? horas : JORNADA_HS),
+                // undefined = cada día conserva la suya (fila con horas distintas, sin tocar)
+                entrada: ctx.entradaMixta && !entradaTocada ? undefined : (entrada && entrada !== ctx.turnoEntrada ? entrada : null),
+                salida: ctx.salidaMixta && !salidaTocada ? undefined : (salida || null),
+              });
+              if (ctx.modoFila) return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Aplicar a la fila</Boton>;
+              // fila vacía: ¿solo este día o toda la semana? (después se sacan los francos)
+              if (!ctx.celda && !ctx.duenoConDias) {
+                return (<>
+                  <Boton deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Solo este día</Boton>
+                  <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('semana'))} title="Carga los 7 días: después sacá los francos con click derecho">Toda la semana</Boton>
+                </>);
+              }
+              // editando un día de una fila con más días: ¿solo este o todos?
+              if (ctx.otrosDias > 0) {
+                return (<>
+                  <Boton deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Solo este día</Boton>
+                  <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('fila'))}>Aplicar a los {ctx.otrosDias + 1} días</Boton>
+                </>);
+              }
+              return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Guardar</Boton>;
+            })()}
           </div>
         </div>
       </div>
@@ -518,7 +817,61 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onGuardar, onCerrar })
   );
 }
 
+/* ───────── puestos: agregar, editar y borrar desde el calendario (Diego 13/11/2026) ─────────
+ * Un toque en el chip lo edita (código y nombre) o lo borra; «+ Puesto» agrega. Si cambia el
+ * código, los turnos ya cargados con el código viejo pasan al nuevo (lo hace el servidor). */
+function EditorPuestos({ puestos = [], onGuardar, sinRotulo = false }) {
+  const [ed, setEd] = useState(null); // { orig: codigo|null, codigo, nombre }
+  const [err, setErr] = useState('');
+  const limpio = (lista) => lista.map(({ codigo, nombre }) => ({ codigo, nombre }));
+  const guardar = async () => {
+    // sin abreviaturas: un puesto nuevo usa el nombre como código; al editar, el código no cambia
+    const nombre = ed.nombre.trim(); const codigo = ed.orig || nombre;
+    if (!nombre) { setErr('Poné el nombre del puesto'); return; }
+    if (puestos.some((p) => p.codigo !== ed.orig && (p.nombre.toLowerCase() === nombre.toLowerCase() || p.codigo.toLowerCase() === nombre.toLowerCase()))) { setErr(`Ya existe ${nombre}`); return; }
+    const lista = ed.orig
+      ? puestos.map((p) => (p.codigo === ed.orig ? { codigo, nombre } : p))
+      : [...puestos, { codigo, nombre }];
+    const renombres = ed.orig && ed.orig !== codigo ? [{ de: ed.orig, a: codigo }] : [];
+    if (await onGuardar(limpio(lista), renombres)) { setEd(null); setErr(''); }
+  };
+  const borrar = async () => {
+    if (await onGuardar(limpio(puestos.filter((p) => p.codigo !== ed.orig)), [])) { setEd(null); setErr(''); }
+  };
+  const campo = { height: 31, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band };
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {!sinRotulo && <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>}
+        {puestos.map((p) => (
+          <Chip key={p.codigo} color={T.accentTxt} activoBg={ed?.orig === p.codigo} title="Tocá para editar o borrar"
+            onClick={() => { setEd({ orig: p.codigo, codigo: p.codigo, nombre: p.nombre }); setErr(''); }}>
+            {p.nombre}
+          </Chip>
+        ))}
+        <Chip color={T.text3} activoBg={ed && !ed.orig} onClick={() => { setEd({ orig: null, codigo: '', nombre: '' }); setErr(''); }}>+ Puesto</Chip>
+      </div>
+      {ed && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input autoFocus value={ed.nombre} placeholder="Nombre del puesto (ej. Vereda)" onChange={(e) => setEd({ ...ed, nombre: e.target.value })}
+              onKeyDown={(e) => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setEd(null); }}
+              style={{ ...campo, width: 220, padding: '0 10px' }} />
+            <Boton activo onClick={guardar}>{ed.orig ? 'Guardar' : '+ Agregar'}</Boton>
+            {ed.orig && <Boton peligro onClick={borrar} title="Si está en uso en algún cronograma no se borra">Borrar</Boton>}
+            <Boton onClick={() => { setEd(null); setErr(''); }}>Cancelar</Boton>
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 11.5, color: err ? T.bad : T.text3, marginTop: 5 }}>
+            {err || (ed.orig ? 'El cambio de nombre se ve en todas las semanas. Los que están en uso no se pueden borrar.' : 'Queda disponible para todos los cronogramas.')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export {
+  EditorPuestos,
   ModalExportar,
   ModalFecha,
   ModalNuevaSemana,

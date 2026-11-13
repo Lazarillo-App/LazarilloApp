@@ -10,7 +10,7 @@ import { cn } from "@/gestion/compat";
 import { fmtComprobante, fmtPesos } from "@/gestion/impagasClasificar";
 import { ETIQUETA_ESTADO, totalesCtaCte } from "@/gestion/estadoPago";
 import { OpMaxirestModal } from "./op-maxirest-modal";
-import { VerFactura } from "@/componentes/gestion/CargarFactura";
+import { NuevaFacturaProveedor, VerFactura } from "@/componentes/gestion/CargarFactura";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { numeroPago } from "@/gestion/pagosImputar";
@@ -89,6 +89,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const { data, isLoading, isError } = useFetchQuery(["cta-cte", origen.codPro, origen.pdvId ?? null, origen.nombre ?? null], urlDe(origen), { enabled: !sinProveedor });
     const [sel, setSel] = useState(resaltado ? claveF(resaltado) : null);
     const [verFact, setVerFact] = useState(null);
+    const [nuevaFact, setNuevaFact] = useState(false); // «+ Cargar factura» con el proveedor puesto (Diego 12/11/2026)
     const [per, setPer] = useState("hist");
     const hoy = new Date();
     const [mes, setMes] = useState(hoy.getMonth());
@@ -423,6 +424,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                       Pagar seleccionada{elegidas.length === 1 ? "" : "s"} ({elegidas.length} · {fmtPesos(saldoElegidas)})
                     </button>
                 : <button type="button" onClick={() => setForm({ tipo: "cuenta" })} title="Sin facturas tildadas: queda a cuenta del proveedor" className="rounded-lg bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white dark:bg-white dark:text-zinc-900">+ Cargar pago</button>}
+                <button type="button" onClick={() => setNuevaFact(true)} title={`Cargar una factura de ${data.proveedor ?? "este proveedor"}`} className="rounded-lg bg-zinc-900 px-4 py-1.5 text-[13px] font-semibold text-white dark:bg-white dark:text-zinc-900">+ Cargar factura</button>
               </span>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto">
@@ -533,6 +535,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
             </>)}
         </div>)}
 
+      {nuevaFact && <NuevaFacturaProveedor codPro={origen.codPro} nombre={data?.proveedor ?? origen.nombre} onClose={() => setNuevaFact(false)} onGuardada={() => queryClient.invalidateQueries({ queryKey: ["cta-cte"] })}/>}
       {verFact && <VerFactura rowId={verFact.rowId} detalle={verFact.detalle} vistaInicial={verFact.repetir ? "repetir" : "ver"} onClose={() => setVerFact(null)}/>}
       {opMx && (<OpMaxirestModal pdvId={opMx.pdvId} orden={opMx.orden} fecha={opMx.fecha} onCambiar={(fecha) => setOpMx({ ...opMx, fecha })} onCerrar={() => setOpMx(null)}/>)}
     </div>);

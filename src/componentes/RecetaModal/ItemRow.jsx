@@ -19,7 +19,7 @@ import { insumoEquivalenciasList, insumoMermasList, insumoUpdate } from '@/servi
 import { sanitizeDecimal } from '@/utils/decimales';
 import {
   PRIMARY, UNIDADES, TIPO_COSTO_OPTS, fmt, fmtDate, stepCantidad,
-  canonicalUnit, unidadesParaInsumo, getAlertaColor, opcionesUnidadItem,
+  canonicalUnit, unidadesParaInsumo, getAlertaColor, opcionesUnidadItem, etiquetaUnidadRend, ETIQUETA_REND,
 } from './helpers';
 import { calcFactorMerma, calcCostoUnitarioItem } from './calcCosto';
 import NotasItemModal from './NotasItemModal';
@@ -152,9 +152,8 @@ export default function ItemRow({
     }
   }, [focusedIndex]);
 
-  const isDuplicate = item.supplyId &&
-    usedSupplyIds.has(String(item.supplyId)) &&
-    usedSupplyIds.get(String(item.supplyId)) !== index;
+  // Repetir un insumo está permitido (otro renglón, otra cantidad u observación): ya no se marca en rojo.
+  const isDuplicate = false;
 
   const filtrados = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -582,7 +581,7 @@ export default function ItemRow({
                     : 0;
                   // Etiqueta: 'porcion' se muestra como 'porción'
                   const unidadBaseStr = esElab
-                    ? (rendUnid === 'porcion' ? 'porción' : canonicalUnit(rendUnid))
+                    ? etiquetaUnidadRend(rendUnid)
                     : canonicalUnit(item.supplyMedida || 'u');
 
                   // Mismo precio que usa el costo de la fila (calcCostoUnitarioItem) y el servidor:
@@ -808,13 +807,13 @@ export default function ItemRow({
                         outlineColor: focusedIndex === idx ? 'primary.main' : 'transparent',
                         outlineOffset: -2,
                         '&:hover': { bgcolor: focusedIndex === idx ? 'action.selected' : 'action.hover' },
-                        ...(yaUsado && { opacity: 0.6 }),
+
                       }}>
                       <Box>
                         <Typography component="span" variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem', display: 'block' }}>
                           {ins.nombre}
                           {!esElab && <Chip label="Insumo" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: `${PRIMARY}15`, color: PRIMARY }} />}
-                          {yaUsado && <Chip label="Ya usado" size="small" color="warning" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
+                          {yaUsado && <Chip label="Ya está en la receta" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9 }} />}
                           {esElab && <Chip label="Elaborado" size="small" sx={{ ml: 0.5, height: 16, fontSize: 9, bgcolor: '#f0fdf4', color: '#16a34a' }} />}
                           {/* Editar insumo: solo en el que ya está en uso en esta fila (va
                               primero en la lista) — para corregirlo sin salir del buscador. */}
@@ -856,7 +855,7 @@ export default function ItemRow({
                             const conRendimiento = porc > 1;
                             const valor = conRendimiento ? costoUnit : costoTot;
                             const etiqueta = conRendimiento
-                              ? (rendU === 'porcion' ? '/porción' : `/${canonicalUnit(rendU)}`)
+                              ? `/${etiquetaUnidadRend(rendU)}`
                               : '';   // sin rendimiento: costo total, sin sufijo de unidad
                             return (
                               <Typography variant="body2" fontWeight={700} sx={{ color: '#16a34a', fontSize: '0.8rem' }}>
@@ -999,6 +998,10 @@ export default function ItemRow({
             // (deshabilitada, marcada ⚠) — así el combo NUNCA queda en blanco: siempre
             // se ve algo, aunque sea "esto está roto, elegí otra unidad".
             const opciones = unidadEsValida ? unidadOpciones : [unidadActual, ...unidadOpciones];
+            // Elaborado que rinde en porción / media porción: la opción 'u' se muestra con ese
+            // nombre (Diego 12/11). Por dentro sigue siendo 'u', el costo no cambia.
+            const ruElab = insumoData?.receta_rend_unidad || elaborado?.rendimientoUnidad || '';
+            const etiquetaU = elaborado || insumoData?.receta_rend_unidad ? ETIQUETA_REND[ruElab] : null;
             // Acción primero, después la lista — mismo patrón que «+ Crear merma» / SelectorBuscable.
             // Lleva al insumo, pestaña Equivalencias; al volver la fila recarga sus equivalencias
             // (listener insumo:equivalencias-changed del modal).
@@ -1023,7 +1026,7 @@ export default function ItemRow({
                   bgcolor: seleccionada ? (esRota ? '#ffedd5' : `${PRIMARY}25`) : 'transparent',
                   '&:hover': { bgcolor: seleccionada ? (esRota ? '#ffedd5' : `${PRIMARY}35`) : 'action.hover' },
                 }}>
-                  {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : u)}
+                  {esRota ? `⚠ ${u} (unidad rota, elegí otra)` : (eqData ? `${u} (${fmt(Number(eqData.contenido), 0)}${eqData.unidad})` : (u === 'u' && etiquetaU ? etiquetaU : u))}
                 </MenuItem>
               );
             })];
@@ -1281,7 +1284,8 @@ export default function ItemRow({
             </Typography>
           </Box>
 
-          {/* Secreto — no se muestra en la vista de cocina (solo control de costos del dueño/admin) */}
+          {/* Oculto (antes «Secreto», Diego 12/11/2026) — no se muestra en la vista de cocina ni en los Tableros.
+              El ojito del tablero lo cambia en todas las recetas que usan el ingrediente. */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Checkbox
               size="small"
@@ -1289,10 +1293,10 @@ export default function ItemRow({
               onChange={e => onChange(index, { secreto: e.target.checked })}
               sx={{ p: 0.25, color: PRIMARY, '&.Mui-checked': { color: PRIMARY } }}
             />
-            <Tooltip title="Secreto: no se mostrará en la vista de cocina (solo para control de costos)">
+            <Tooltip title="Oculto: no se muestra en la vista de cocina ni en los Tableros (sigue sumando al costo)">
               <Typography variant="caption" sx={{ fontSize: '0.75rem', color: 'text.secondary', userSelect: 'none', cursor: 'pointer' }}
                 onClick={() => onChange(index, { secreto: item.secreto !== true })}>
-                Secreto
+                Oculto
               </Typography>
             </Tooltip>
           </Box>

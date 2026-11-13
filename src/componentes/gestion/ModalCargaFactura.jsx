@@ -3,7 +3,7 @@
 // Modal de carga de factura y gastos varios, igual a lazarillo_gestion/components/facturas/
 // modal-carga-factura.jsx (estilos propios del modal incluidos). Cambios: datos de Lazarillo (un
 // "PDV" es la principal o una sucursal del negocio) y "Crear y usar" guarda el proveedor de verdad.
-import React, { useState, useRef, useEffect } from "react";
+import React, { Fragment, useState, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksPanel";
@@ -20,6 +20,18 @@ import { useRecorrido } from "@/hooks/useRecorrido";
 
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const TIPOS_CPB = ["FcA", "FcB", "FcC", "Ticket", "NC-A"];
+// Tipos viejos o abreviados (FCA, A, Tic, Z…) al valor del desplegable: si no, el select queda
+// en un valor que no existe y el botón Generar no aparece (Diego 12/11/2026).
+const normTipo = (t) => {
+  const c = String(t || "").trim(); if (!c || TIPOS_CPB.includes(c)) return c;
+  const u = c.toUpperCase().replace(/[^A-Z]/g, "");
+  if (u.startsWith("NC")) return "NC-A";
+  if (u === "A" || u === "FCA" || u === "FA") return "FcA";
+  if (u === "B" || u === "FCB" || u === "FB") return "FcB";
+  if (u === "C" || u === "FCC" || u === "FC") return "FcC";
+  if (u === "Z" || u.startsWith("TIC") || u === "T") return "Ticket";
+  return c;
+};
 const TIPOS_PERCEPCION = ["Perc. IIBB PBA", "Perc. IIBB CABA", "Perc. IVA RG 3337", "Perc. Ganancias"];
 const ALICUOTAS = [21, 10.5, 27, 0];
 // reparto efectivo de una linea: [{pdv, frac}] (sin reparto = 100% a su PDV)
@@ -296,8 +308,11 @@ function Chev({ abierto }) {
 }
 
 // extra(o): texto adicional por el que también se busca y que se muestra debajo (razón social · CUIT).
-function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra }) {
+// fuera: opciones de otro grupo (p. ej. conceptos de otro rubro) que aparecen al buscar, debajo de un
+// separador «Fuera de este rubro» (Diego 12/11/2026: si quedó un rubro elegido, igual tiene que encontrarlos).
+function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear, crearPrimero, ancho, autoFocus, estilo, extra, fuera, tituloFuera = "Fuera de este rubro" }) {
   const opciones = [...new Set(opcionesCrudas)];
+  const otras = fuera ? [...new Set(fuera)].filter((o) => !opciones.includes(o)) : [];
   const [texto, setTexto] = useState(valor || "");
   const [abierto, setAbierto] = useState(false);
   // Opción marcada con las flechas (Diego 27/10: tipear "carn" + ↓ tiene que navegar la lista).
@@ -328,10 +343,12 @@ function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear
     return x.toLowerCase().includes(q) || (qDig.length >= 3 && qDig.length === q.replace(/[\s.\-\/]/g, "").length && x.replace(/\D/g, "").includes(qDig));
   };
   const filtradas = (buscando ? opciones.filter(coincide) : opciones).slice(0, 12);
-  const hayExacta = opciones.some((o) => o.toLowerCase() === texto.toLowerCase());
+  const fueraF = buscando ? otras.filter(coincide).slice(0, 8) : [];
+  const hayExacta = [...opciones, ...otras].some((o) => o.toLowerCase() === texto.toLowerCase());
   // "Crear …" primero y siempre visible en los maestros (Diego 05/11/2026); si no, al final y solo tipeando.
   const conCrear = !!(onCrear && (crearPrimero || texto.trim()) && !hayExacta);
-  const items = [...(conCrear && crearPrimero ? [null] : []), ...filtradas, ...(conCrear && !crearPrimero ? [null] : [])];
+  const items = [...(conCrear && crearPrimero ? [null] : []), ...filtradas, ...fueraF, ...(conCrear && !crearPrimero ? [null] : [])];
+  const inicioFuera = fueraF.length ? (conCrear && crearPrimero ? 1 : 0) + filtradas.length : -1;
   const total = items.length;
   const porDefecto = conCrear && crearPrimero && filtradas.length > 0 && buscando ? 1 : 0;
   const marcado = Math.min(activo == null ? porDefecto : activo, Math.max(0, total - 1));
@@ -341,7 +358,7 @@ function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear
     else if (conCrear) { setAbierto(false); onCrear(buscando ? texto.trim() : ""); }
   };
   useEffect(() => {
-    const el = listaRef.current && listaRef.current.children[marcado];
+    const el = listaRef.current && listaRef.current.querySelector(`[data-ix="${marcado}"]`);
     if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
   }, [marcado, abierto]);
   return (
@@ -365,18 +382,23 @@ function Combo({ opciones: opcionesCrudas, valor, onElegir, placeholder, onCrear
           setAbierto(false);
           const actual = valorRef.current;
           if (actual !== valor) return; // cambió el valor mientras tanto: manda el nuevo
-          const exacta = opciones.find((o) => o.toLowerCase() === texto.trim().toLowerCase());
+          const exacta = [...opciones, ...otras].find((o) => o.toLowerCase() === texto.trim().toLowerCase());
           if (exacta && exacta !== actual) { setTexto(exacta); onElegir(exacta); }
           else if (!exacta) setTexto(actual || ""); // solo se aceptan ítems de la lista
         }, 180)} />
       {abierto && total > 0 && (
         <div ref={listaRef} style={{ position: "absolute", top: "105%", left: 0, right: 0, background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.10)", zIndex: 80, maxHeight: 230, overflow: "auto" }}>
           {items.map((o, ix) => o != null ? (
-            <div key={o} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
+            <Fragment key={o}>
+            {ix === inicioFuera && (
+              <div style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, letterSpacing: .3, textTransform: "uppercase", color: C.gris, background: "#f6f6f4", borderBottom: "1px solid #ececea", borderTop: ix > 0 ? "1px solid #ececea" : "none" }}>{tituloFuera}</div>
+            )}
+            <div data-ix={ix} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
               style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>{o}
               {extra && extra(o) ? <span style={{ display: "block", fontSize: 11.5, color: C.gris }}>{extra(o)}</span> : null}</div>
+            </Fragment>
           ) : (
-            <div key="__crear" onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
+            <div key="__crear" data-ix={ix} onMouseDown={(e) => { e.preventDefault(); elegir(ix); }} onMouseEnter={() => setActivo(ix)}
               style={{ padding: "8px 12px", fontSize: 13.5, cursor: "pointer", color: C.cel, fontWeight: 600, borderBottom: "1px solid #f4f4f2", background: ix === marcado ? "#eef7fc" : "#fff" }}>
               + {crearPrimero ? `Crear ${crearPrimero}` : "Crear"}{buscando ? ` «${texto.trim()}»` : ""}</div>
           ))}
@@ -444,8 +466,33 @@ function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo
 
 // Gastos varios: historial del concepto elegido a la derecha (Diego 05/11/2026), como la cuenta del
 // empleado: por período, con lo habitual (mediana de las últimas 6) y un atajo para usar el último.
+// Editar una carga desde «Últimas cargas» abre el mismo Ver / editar que Actividad y Detalle de compras
+// (Diego 12/11/2026). Import diferido: CargarFactura importa este archivo.
+const VerFacturaDiferida = React.lazy(() => import("./CargarFactura").then((m) => ({ default: m.VerFactura })));
+
 function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar, onPeriodo }) {
   const [filas, setFilas] = useState(null);
+  const [editar, setEditar] = useState(null); // rowId de la carga que se está editando
+  const [recarga, setRecarga] = useState(0);
+  // Eliminar desde acá cualquier carga de Lazarillo (Diego 12/11/2026). Las de MaxiRest se borran en
+  // MaxiRest: si se borraran acá volverían con la próxima importación.
+  const qc = useQueryClient();
+  const [borrar, setBorrar] = useState(null); // { rowId, pagos?: total pagado, enCurso? }
+  const eliminarFila = async (f, conPagos) => {
+    setBorrar({ rowId: f.rowId, enCurso: true });
+    const emp = /^emp-(\d+)-/.exec(f.rowId || "");
+    const url = emp ? `/api/empleados/${emp[1]}` : `/api/facturas/${encodeURIComponent(f.rowId)}${conPagos ? "?conPagos=1" : ""}`;
+    try {
+      const r = await gestionFetch(url, { method: "DELETE" });
+      const d = await r.json().catch(() => null);
+      if (!r.ok && d && d.tienePagos) { setBorrar({ rowId: f.rowId, pagos: d.tienePagos.total || true }); return; }
+      if (!r.ok) { setBorrar(null); toast.error((d && d.error) || "No se pudo eliminar"); return; }
+      setBorrar(null);
+      setFilas((xs) => (xs || []).filter((x) => x.rowId !== f.rowId));
+      toast.success("Carga eliminada", { description: `${f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} · ` : ""}${$fmt(f.importe)}` });
+      refrescarCompras(qc);
+    } catch { setBorrar(null); toast.error("Error de red: no se eliminó."); }
+  };
   useEffect(() => {
     setFilas(null);
     if (!codigo || pdvId == null) return undefined;
@@ -453,15 +500,16 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
     gestionFetch(`/api/gastos-varios/historial?conceptoCodigo=${encodeURIComponent(codigo)}&pdvId=${pdvId}`)
       .then((r) => r.json()).then((d) => { if (vivo) setFilas((d && d.filas) || []); }).catch(() => vivo && setFilas([]));
     return () => { vivo = false; };
-  }, [codigo, pdvId]);
+  }, [codigo, pdvId, recarga]);
   // Al cambiar el período se lleva a la vista; y al revés, tocar un período lo elige arriba (Diego 06/11/2026).
   const lista = useRef(null);
   useEffect(() => {
     const el = lista.current && lista.current.querySelector(`[data-periodo="${periodo}"]`);
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [periodo, filas]);
-  const caja = { background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 12, padding: "12px 14px", fontSize: 12.5 };
-  if (!codigo) return <div style={{ ...caja, color: C.gris }}><div style={{ fontWeight: 700, fontSize: 13.5, color: C.neg, marginBottom: 4 }}>Últimas cargas</div>Elegí un concepto para ver lo último que se cargó.</div>;
+  // Fuente 2 puntos más grande que el resto del modal (Diego 12/11/2026: se lee mejor).
+  const caja = { background: "#fff", border: `1px solid ${C.borde}`, borderRadius: 12, padding: "12px 14px", fontSize: 14.5 };
+  if (!codigo) return <div style={{ ...caja, color: C.gris }}><div style={{ fontWeight: 700, fontSize: 15.5, color: C.neg, marginBottom: 4 }}>Últimas cargas</div>Elegí un concepto para ver lo último que se cargó.</div>;
   const ult6 = (filas || []).slice(0, 6).map((f) => f.importe).sort((a, b) => a - b);
   const mediana = ult6.length ? (ult6.length % 2 ? ult6[(ult6.length - 1) / 2] : (ult6[ult6.length / 2 - 1] + ult6[ult6.length / 2]) / 2) : null;
   const porPeriodo = [];
@@ -469,7 +517,7 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
   const tieneActual = porPeriodo.some((g) => g.p === periodo);
   return (
     <div style={caja}>
-      <div style={{ fontWeight: 700, fontSize: 13.5 }}>Últimas cargas · {concepto}</div>
+      <div style={{ fontWeight: 700, fontSize: 15.5 }}>Últimas cargas · {concepto}</div>
       <div style={{ display: "flex", justifyContent: "space-between", color: C.gris, margin: "2px 0 6px" }}><span>{pdvNombre} · últimos 12 meses</span>{filas && <span>{filas.length} carga{filas.length === 1 ? "" : "s"}</span>}</div>
       {!filas ? <div style={{ color: C.gris }}>Cargando…</div> : (<>
         {!tieneActual && <div style={{ background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 8, padding: "4px 8px", fontWeight: 700 }}>{nombrePeriodo(periodo)} <span style={{ fontWeight: 400, color: "#2a88ad" }}>· este período, sin cargar</span></div>}
@@ -481,11 +529,31 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
               <b style={{ display: "block" }}>{nombrePeriodo(g.p)}{g.p === periodo ? <span style={{ fontWeight: 400, color: "#8a5a00" }}> · ya tiene carga</span> : null}</b>
               {g.filas.map((f, k) => (
                 // Columnas fijas: texto | origen (L = Lazarillo, MX = MaxiRest) | importe — siempre alineados.
-                <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 24px 104px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "2px 0" }}>
-                  <span title={[f.detalle, f.proveedor, f.medio].filter(Boolean).join(" · ")} style={{ color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : ""}{f.detalle ? ` · ${f.detalle}` : ""}{f.medio ? ` · ${f.medio}` : ""}</span>
-                  <span title={f.lazarillo ? "Cargado en Lazarillo" : "Viene de MaxiRest"} style={{ textAlign: "center", fontSize: 9.5, fontWeight: 700, borderRadius: 4, lineHeight: "15px", background: f.lazarillo ? "#e7f3fa" : "#f1f1ef", color: f.lazarillo ? "#2a88ad" : "#888" }}>{f.lazarillo ? "L" : "MX"}</span>
+                <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 26px 120px 22px 22px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "3px 0" }}>
+                  {borrar && borrar.rowId === f.rowId && f.rowId ? (
+                    <span onClick={(e) => e.stopPropagation()} style={{ gridColumn: "1 / -1", fontSize: 13.5, lineHeight: "20px", textAlign: "right" }}>
+                      <span style={{ color: "#555", float: "left" }}>{f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} · ` : ""}{$fmt(f.importe)}</span>
+                      {borrar.enCurso ? <span style={{ color: C.gris }}>Eliminando…</span> : (<>
+                        <span style={{ color: C.rojo, fontWeight: 700 }}>{borrar.pagos ? `Tiene ${typeof borrar.pagos === "number" ? `${$fmt(borrar.pagos)} pagados` : "pagos"} · ¿eliminar con el pago?` : "¿Eliminar?"}</span>{" "}
+                        <span role="button" onClick={() => eliminarFila(f, !!borrar.pagos)} style={{ color: C.rojo, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Sí</span>
+                        {" · "}<span role="button" onClick={() => setBorrar(null)} style={{ color: C.gris, cursor: "pointer" }}>No</span></>)}
+                    </span>
+                  ) : <span title={[f.detalle, f.proveedor, f.medio].filter(Boolean).join(" · ")} style={{ color: "#555", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : ""}{f.detalle ? ` · ${f.detalle}` : ""}{f.medio ? ` · ${f.medio}` : ""}</span>}
+                  {!(borrar && borrar.rowId === f.rowId && f.rowId) && (<>
+                  <span title={f.lazarillo ? "Cargado en Lazarillo" : "Viene de MaxiRest"} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, borderRadius: 4, lineHeight: "17px", background: f.lazarillo ? "#e7f3fa" : "#f1f1ef", color: f.lazarillo ? "#2a88ad" : "#888" }}>{f.lazarillo ? "L" : "MX"}</span>
                   <b style={{ whiteSpace: "nowrap", textAlign: "right" }}>{$fmt(f.importe)}</b>
+                  {f.lazarillo && f.rowId ? (
+                    <span role="button" title="Editar esta carga" onClick={(e) => { e.stopPropagation(); setEditar(f.rowId); }}
+                      style={{ textAlign: "center", color: "#b5b5b5", cursor: "pointer", fontSize: 14, lineHeight: "20px", borderRadius: 4 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = C.cel; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#b5b5b5"; }}>✎</span>
+                  ) : <span title="Viene de MaxiRest: se edita en MaxiRest" style={{ textAlign: "center", color: "#e2e2e2", fontSize: 14, lineHeight: "20px", cursor: "default" }}>✎</span>}
+                  {f.lazarillo && f.rowId ? (
+                    <span role="button" title="Eliminar esta carga" onClick={(e) => { e.stopPropagation(); setBorrar({ rowId: f.rowId }); }}
+                      style={{ textAlign: "center", color: "#b5b5b5", cursor: "pointer", fontSize: 17, lineHeight: "20px", borderRadius: 4 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = C.rojo; }} onMouseLeave={(e) => { e.currentTarget.style.color = "#b5b5b5"; }}>×</span>
+                  ) : <span title="Viene de MaxiRest: se borra en MaxiRest (si se borra acá, vuelve con la próxima importación)" style={{ textAlign: "center", color: "#e2e2e2", fontSize: 17, lineHeight: "20px", cursor: "default" }}>×</span>}
+                  </>)}
                 </div>
               ))}
             </div>
@@ -493,9 +561,15 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
         </div>
         {mediana != null && (<>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee" }}><span>Habitual (mediana últimas {ult6.length})</span><b>{$fmt(mediana)}</b></div>
-          <div style={{ textAlign: "right", marginTop: 3 }}><span role="button" onClick={() => onUsar(filas[0])} title="Trae importe, detalle y medio de pago de la última carga" style={{ color: C.cel, fontWeight: 600, fontSize: 11.5, cursor: "pointer" }}>usar el último ({$fmt(filas[0].importe)}{filas[0].detalle ? ` · ${filas[0].detalle}` : ""}) ›</span></div>
+          <div style={{ textAlign: "right", marginTop: 3 }}><span role="button" onClick={() => onUsar(filas[0])} title="Trae importe, detalle y medio de pago de la última carga" style={{ color: C.cel, fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>usar el último ({$fmt(filas[0].importe)}{filas[0].detalle ? ` · ${filas[0].detalle}` : ""}) ›</span></div>
         </>)}
       </>)}
+      {editar && (
+        <React.Suspense fallback={null}>
+          <VerFacturaDiferida rowId={editar} vistaInicial="editar"
+            onClose={() => { setEditar(null); setRecarga((n) => n + 1); refrescarCompras(qc); }} />
+        </React.Suspense>
+      )}
     </div>
   );
 }
@@ -652,7 +726,7 @@ function ModalNuevaCarga(props) {
   const [prov, setProv] = useState(ctx.prov || (ctx.proveedorId && (proveedores.find((p) => p.id === ctx.proveedorId) || {}).nombre) || (rde && rde.prov) || (ede && ede.prov) || "");
   const [altaProv, setAltaProv] = useState(null); // {nombre, razon, cuit, tel, dir}
   // ctx.tipoCpb / prefijo / numero / fecha: precarga desde "Sin carga ARCA" (Diego 28/10/2026).
-  const [tipoCpb, setTipoCpb] = useState((rde && (rde.tipoCpb || (rde.comp || "").split(" ")[0])) || (ede && (ede.tipoCpb || partesComp(ede.comp)[0])) || ctx.tipoCpb || "");
+  const [tipoCpb, setTipoCpb] = useState(normTipo((rde && (rde.tipoCpb || (rde.comp || "").split(" ")[0])) || (ede && (ede.tipoCpb || partesComp(ede.comp)[0])) || ctx.tipoCpb || ""));
   const [compPref, setCompPref] = useState(ede ? partesComp(ede.comp)[1] : ctx.prefijo || "");
   const [compNum, setCompNum] = useState(ede ? partesComp(ede.comp)[2] : ctx.numero || "");
   const pad = (v, n) => (v.trim() === "" ? "" : v.replace(/\D/g, "").slice(-n).padStart(n, "0"));
@@ -674,8 +748,15 @@ function ModalNuevaCarga(props) {
   const [iiPieTxt, setIiPieTxt] = useState(null); // edición del II de la factura en la fila de totales
   // Precarga (Repetir / última factura): el primer registro queda abierto para corregir el
   // neto; al confirmarlo se abre el siguiente (Diego 27/10). Los demás quedan con ⚠.
-  const abrirPrecarga = (ls) => ls.map((l, ix) => ({ ...l, editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
-  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
+  // Ticket de MaxiRest: ahí no se discrimina IVA y viene con 0%. Al precargar/repetir no se arrastra
+  // ese 0: va el IVA recordado del ítem o 21% (Diego 12/11/2026). Se puede cambiar igual.
+  const ivaPrecarga = (l, comp) => {
+    if (!(Number(l.alic) === 0 && normTipo(String(comp || "").split(" ")[0]) === "Ticket")) return l.alic;
+    const r = l.tipo === "insumo" ? (MAESTRO_INSUMOS.find((x) => x.nombre === l.item) || {}) : (recDe("concepto", codConcepto(l.item)) || {});
+    return r.alic != null ? r.alic : 21;
+  };
+  const abrirPrecarga = (ls, comp) => ls.map((l, ix) => ({ ...l, alic: ivaPrecarga(l, comp), editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
+  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas, rde.comp) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
   // Aviso de "un 0 de más" (Diego 05/11/2026). Se calla si la línea se aceptó con ese mismo
   // valor ("Está bien así").
   //  - Insumo: el unitario contra el último precio del maestro (por unidad base).
@@ -837,6 +918,17 @@ function ModalNuevaCarga(props) {
   useEffect(() => { if (ede && !totalCtrl && totalFactura > 0) setTotalCtrl(fmtNum(Math.round(totalFactura * 100) / 100)); }, []);
   const descGImporte = netoSinG - netoTotal;
   const totCtrl = parseImp(totalCtrl);
+  // Primer registro con el total de la factura (opción B de Diego, 12/11/2026): total − percepciones
+  // − imp. internos, sin IVA. Sigue al total y al IVA hasta que se toca el importe o se agrega otro registro.
+  useEffect(() => {
+    if (lineas.length !== 1 || !lineas[0].autoNeto) return;
+    const l = lineas[0];
+    const objetivo = totCtrl - percTotal - impIntTotal;
+    if (!(objetivo > 0)) return;
+    const v = (Math.round(objetivo / (1 + (Number(l.alic) || 0) / 100) * 100) / 100).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (l.tipo === "insumo") { if (!parseImp(l.unit) && l.ntot !== v) setLineas((ls) => ls.map((x, ix) => ix === 0 ? { ...x, ntot: v } : x)); }
+    else if (l.neto !== v) setLineas((ls) => ls.map((x, ix) => ix === 0 ? { ...x, neto: v } : x));
+  }, [totCtrl, percTotal, impIntTotal, lineas]); // eslint-disable-line react-hooks/exhaustive-deps
   const difCtrl = totCtrl > 0 ? Math.round((totalFactura - totCtrl) * 100) / 100 : 0;
   // II de toda la factura (proveedores que lo pasan solo por factura): se reparte entre los registros con II
   // (o entre todos si ninguno lo lleva) en proporción a su neto; el último absorbe el redondeo.
@@ -860,7 +952,7 @@ function ModalNuevaCarga(props) {
       return { ...x, impint: nuevos[ix] > 0 ? fmtNum(nuevos[ix]) : "", iiu: x.tipo === "insumo" ? (c > 0 && nuevos[ix] > 0 ? fmtNum(Math.round(nuevos[ix] / c * 100) / 100) : "") : undefined };
     }));
   };
-  const cuerpoVacio = lineas.every((l) => !l.item && !(netoBase(l) > 0)) && percepciones.length === 0 && !impIntG && !descG;
+  const cuerpoVacio = lineas.every((l) => !l.item && (l.autoNeto || !(netoBase(l) > 0))) && percepciones.length === 0 && !impIntG && !descG;
   // Vaciar en dos pasos (Diego 05/11/2026): primero el cuerpo; con el cuerpo vacío, todo (como recién abierto).
   // Borrador (Diego 05/11/2026): una factura a medio cargar queda guardada en este navegador para
   // seguirla después (interrupciones, facturas con muchos ítems). Se borra al guardar o al vaciar todo.
@@ -883,7 +975,7 @@ function ModalNuevaCarga(props) {
   const retomarBorrador = () => {
     const b = borrPend; if (!b) return;
     provAnterior.current = b.prov || "";
-    setProv(b.prov || ""); setTipoCpb(b.tipoCpb || ""); setCompPref(b.compPref || ""); setCompNum(b.compNum || ""); setFecha(b.fecha || fechaDefault);
+    setProv(b.prov || ""); setTipoCpb(normTipo(b.tipoCpb || "")); setCompPref(b.compPref || ""); setCompNum(b.compNum || ""); setFecha(b.fecha || fechaDefault);
     setObs(b.obs || ""); setPeriodoF(b.periodoF || null); setTotalCtrl(b.totalCtrl || ""); setDescG(b.descG || ""); setDescGTipo(b.descGTipo || "%"); setImpIntG(b.impIntG || "");
     setPercepciones(b.percepciones || []); setOrigenPre(b.origenPre || null);
     setLineas((b.lineas || []).map((l) => ({ ...l, foco: false })));
@@ -893,7 +985,7 @@ function ModalNuevaCarga(props) {
     setConfVaciar(false); setErrores([]); setAvisosAlGuardar(null);
     setLineas([]); setPercepciones([]); setImpIntG(""); setDescG(""); setOrigenPre(null);
     if (!cuerpoVacio) {
-      setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
+      setLineas([{ tipo: tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }]);
       return;
     }
     provAnterior.current = "";
@@ -954,12 +1046,12 @@ function ModalNuevaCarga(props) {
     // foco:false — la línea aparece apenas hay proveedor, tipo, Nº y fecha: si se llevaba el foco,
     // cortaba el Nº de comprobante al primer dígito (FALLA de Diego 05/11/2026).
     if (modo === "factura" && cuerpoVisible && lineas.length === 0 && !existente)
-      setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }]);
+      setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }]);
   }, [cuerpoVisible]);
   const precargarDe = (f) => {
     // La cabecera ya está completa (tipo, Nº, fecha y total): no se pisa; el foco va al primer registro.
     setOrigenPre(f.comp);
-    setLineas(abrirPrecarga(f.lineas));
+    setLineas(abrirPrecarga(f.lineas, f.comp));
     setPercepciones((f.percepciones || []).map((p) => ({ ...p })));
     const tieneImpLinea = f.lineas.some((l) => parseImp(l.impint) > 0);
     setImpIntG(!tieneImpLinea && f.impInt > 0 ? fmtNum(f.impInt) : "");
@@ -1242,7 +1334,7 @@ function ModalNuevaCarga(props) {
                   {TIPOS_CPB.map((t) => <option key={t}>{t}</option>)}
                 </select></div>
               <div><span style={lab}>Nº comprobante</span>
-                {tipoCpb === "" ? (
+                {tipoCpb === "" || (tipoCpb === "Ticket" && !compNum && !compPref) ? (
                   <button type="button" title="Genera un comprobante interno tipo Ticket: hora y minutos + fecha de hoy"
                     onClick={() => { const ahora = new Date();
                       setTipoCpb("Ticket");
@@ -1299,7 +1391,7 @@ function ModalNuevaCarga(props) {
         </div>
 
         {/* ── Cuerpo: lo único que scrollea ── */}
-        <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? {} : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
+        <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? { marginBottom: 16 } : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
             reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} />
@@ -1315,7 +1407,7 @@ function ModalNuevaCarga(props) {
             )}
             {cuerpoVisible && (<>
             {(() => {
-              const uf = !existente && !origenPre && prov && !lineas.some((l) => netoDe(l) > 0) ? ultConLineas(prov) : null;
+              const uf = !existente && !origenPre && prov && !lineas.some((l) => !l.autoNeto && netoDe(l) > 0) ? ultConLineas(prov) : null;
               if (!uf) return null;
               return (
                 <div style={{ margin: "12px 14px 0", border: "1.5px solid #bfe0f0", background: "#f3fafd", borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1532,9 +1624,9 @@ function ModalNuevaCarga(props) {
                             title="Total neto de la línea: con la cantidad puesta, el unitario se calcula solo"
                             onChange={(e) => {
                               const ntot = fmtImp(e.target.value, e.nativeEvent); const t = parseImp(ntot); const c = parseFloat(l.cant) || 0;
-                              setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
+                              setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, ntot, autoNeto: false, unit: c > 0 && t > 0 ? fmtNum(t / c) : x.unit } : x));
                             }} />
-                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => setLinea(i, "neto", fmtImp(e.target.value, e.nativeEvent))}
+                        : <input style={{ ...campo, ...marcoAviso }} placeholder="Neto $" value={l.neto} autoFocus={l.foco === "neto"} title={l.neto ? "$ " + l.neto : undefined} onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, neto: v, autoNeto: false } : x)); }}
                             onBlur={() => { if (!l.tocado) setLinea(i, "tocado", true); }} />}
                       {/* Impuestos internos: por unidad ⇄ total del registro (los proveedores lo pasan de las dos formas). */}
                       {esIns
@@ -1731,10 +1823,11 @@ function ModalNuevaCarga(props) {
                     // el registro nuevo nace con el mismo tipo que el ultimo cargado (venis cargando insumos -> insumo).
                     // Va PRIMERO, pegado a los títulos de las columnas (Diego 05/11/2026).
                     const ult = ls[0];
-                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false }))];
+                    return [{ tipo: ult ? ult.tipo : tipoDefault(prov), item: "", neto: "", cant: "", unit: "", alic: ult ? ult.alic : 21, conc: "", pdvDest: (ult && ult.pdvDest) || pdvActual || PDVS[0], editando: true }, ...ls.map((x) => ({ ...x, editando: false, autoNeto: false }))];
                   }); }}
                   style={{ width: 30, height: 30, borderRadius: 15, border: `1.5px solid ${C.borde}`, background: "#fff", fontSize: 18, fontWeight: 700, color: "#444", cursor: !confirmable ? "not-allowed" : "pointer", opacity: !confirmable ? 0.35 : 1, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
                 {!confirmable && <span style={{ fontSize: 11.5, color: "#999" }}>{falta} para agregar otro registro</span>}
+                {confirmable && lineas.length === 1 && lineas[0].autoNeto && <span style={{ fontSize: 11.5, color: "#999" }}>El importe sale del total de la factura (sin IVA ni percepciones). Si no va, cambialo.</span>}
               </div>
                 );
               })()}
@@ -1779,7 +1872,7 @@ function ModalNuevaCarga(props) {
 
           </>
         ) : (
-          <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 14, alignItems: "start" }}>
+          <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 40%)", gap: 14, alignItems: "start" }}>
           <div style={{ minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {/* El período está arriba, en la barra del título (mismo lugar en las 3 pestañas, Diego 06/11/2026). */}
@@ -1792,7 +1885,7 @@ function ModalNuevaCarga(props) {
             </div>
             {/* Primero el concepto (el rubro se completa solo), después el rubro (Diego, 28/10/2026). */}
             <div><span style={lab}>Concepto</span>
-              <Combo opciones={conceptosDe(rubroV)} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
+              <Combo opciones={conceptosDe(rubroV)} fuera={rubroV ? conceptosDe(null) : undefined} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
             <div><span style={lab}>Rubro</span>
               <Combo opciones={rubros} valor={rubroV} placeholder="Buscar rubro..." onElegir={(r) => { setRubroV(r); if (rubroDe(conceptoV) !== r) setConceptoV(""); }} /></div>
             <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Detalle</span>
@@ -2042,6 +2135,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   useEffect(() => { if (perAnt.current !== periodo) { perAnt.current = periodo; setLineas(null); } }, [periodo]);
   const [importeA, setImporteA] = useState("");
   const [medioA, setMedioA] = useState("");
+  const [obsA, setObsA] = useState(""); // observación del adelanto (Diego 12/11/2026)
   const [reparto, setReparto] = useState(null); // null = la regla del empleado
   const [editRep, setEditRep] = useState(false);
   const [errores, setErrores] = useState([]);
@@ -2088,7 +2182,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     return sub === "sueldo"
       ? { tipo: "sueldo", pdvId, codigo, periodo, fechaPago, total: totalN, reparto: rep, forzar: !!forzar,
           conceptos: ls.map((l) => ({ conceptoCodigo: codDe(l.concepto), importe: parseImp(l.importe), pagos: l.pagos.filter((p) => parseImp(p.importe) > 0).map((p) => ({ medio: p.medio, importe: parseImp(p.importe) })) })) }
-      : { tipo: "adelanto", pdvId, codigo, periodo, fechaPago, importe: parseImp(importeA), medio: medioA || medioDef, reparto: rep, forzar: !!forzar };
+      : { tipo: "adelanto", pdvId, codigo, periodo, fechaPago, importe: parseImp(importeA), medio: medioA || medioDef, observacion: obsA.trim() || null, reparto: rep, forzar: !!forzar };
   };
   const faltan = () => {
     const out = [];
@@ -2101,7 +2195,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     if (!out.length) out.push(...validarSueldo(p, adelantos));
     return out;
   };
-  const limpiar = () => { setCodigo(""); setTotal(null); setLineas(null); setImporteA(""); setReparto(null); setEditRep(false); setParecido(null); setErrores([]); };
+  const limpiar = () => { setCodigo(""); setTotal(null); setLineas(null); setImporteA(""); setObsA(""); setReparto(null); setEditRep(false); setParecido(null); setErrores([]); };
   const guardar = async (otro, forzar) => {
     const f = faltan();
     if (f.length) { setErrores(f); return; }
@@ -2135,6 +2229,18 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
         <button key={k} type="button" tabIndex={-1} onClick={() => { setSub(k); setErrores([]); setParecido(null); setPeriodo(periodoHoy(k === "sueldo" ? -1 : 0)); }}
           style={{ border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: sub === k ? "#fff" : "transparent", color: sub === k ? C.neg : C.gris, boxShadow: sub === k ? "0 1px 3px rgba(0,0,0,.12)" : "none" }}>{t}</button>
       ))}
+    </div>
+  );
+  // Pie igual al de Factura y Gastos Varios (Diego 12/11/2026): barra gris a todo el ancho, total a la
+  // izquierda y acciones a la derecha, fija abajo y separada del borde del modal.
+  const totalPie = sub === "sueldo" ? totalN : parseImp(importeA);
+  const pie = (
+    <div style={{ gridColumn: "1 / -1", position: "sticky", bottom: 0, zIndex: 3, marginTop: 4, background: C.fondo, border: `1px solid ${C.borde}`, borderRadius: 12, padding: "10px 14px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 13.5 }}>TOTAL <b style={{ fontSize: 16 }}>{$fmt(totalPie || 0)}</b> <span style={{ color: "#999", fontSize: 12 }}>· {sub === "sueldo" ? "Sueldo" : "Adelanto"}{emp ? ` de ${[emp.nombre, emp.apellido].filter(Boolean).join(" ")}` : ""}</span></span>
+      <span style={{ flex: 1 }} />
+      <button type="button" style={btn(false)} onClick={onCerrar}>Cancelar</button>
+      <button type="button" style={btn(false)} disabled={guardando} onClick={() => guardar(true)}>Guardar y cargar otro empleado</button>
+      <button type="button" style={{ ...btn(true), opacity: guardando ? 0.5 : 1 }} disabled={guardando} onClick={() => guardar(false)}>{guardando ? "Guardando…" : "Guardar"}</button>
     </div>
   );
   return (
@@ -2177,6 +2283,8 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             <div><span style={lab}>Importe</span><input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={importeA} placeholder="0,00" onChange={(e) => setImporteA(fmtImp(e.target.value, e.nativeEvent))} /></div>
             <div><span style={lab}>Forma de pago</span>
               <select style={sel} value={medioA || medioDef} onChange={abmMedios.alElegir(setMedioA)}>{abmMedios.opcion}{medios.map((m) => <option key={m}>{m}</option>)}</select>{abmMedios.dialogo}</div>
+            <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Observación</span>
+              <input style={inp} value={obsA} maxLength={200} placeholder="Opcional · ej. pedido por viaje, a descontar en 2 cuotas" onChange={(e) => setObsA(e.target.value)} /></div>
             <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#888" }}>Concepto fijo: <b>{nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.nombre : "Adelanto Sueldo"}</b> · va a la cuenta del empleado en {nombrePeriodo(periodo)} y se descuenta del sueldo.</div>
           </div>
         ) : (
@@ -2242,11 +2350,6 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             {errores.map((e, i) => <div key={i} style={{ fontSize: 12.5, color: C.rojo }}>• {e}</div>)}
           </div>
         )}
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-          <button style={{ ...btn(true), opacity: guardando ? 0.5 : 1 }} disabled={guardando} onClick={() => guardar(false)}>{guardando ? "Guardando…" : "Guardar"}</button>
-          <button style={btn(false)} disabled={guardando} onClick={() => guardar(true)}>Guardar y cargar otro empleado</button>
-          <button style={btn(false)} onClick={onCerrar}>Cancelar</button>
-        </div>
       </div>
 
       {/* Cuenta del empleado por período */}
@@ -2267,7 +2370,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
               <div style={{ fontWeight: 700 }}>{nombrePeriodo(p.periodo)}</div>
               {verCuenta === "concepto" ? p.movimientos.map((m, k) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px dashed #eee", padding: "2px 0" }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dmy(m.fecha)} · {m.concepto}{m.origen === "lazarillo" ? " ·L" : ""}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dmy(m.fecha)} · {m.concepto}{m.observacion && !/\(Lazarillo\)$/.test(m.observacion) ? ` · ${m.observacion}` : ""}{m.origen === "lazarillo" ? " ·L" : ""}</span>
                   <b style={{ color: m.cod === cuenta.codigoAdelanto ? C.rojo : C.neg, whiteSpace: "nowrap" }}>{$fmt(m.importe)}</b></div>))
                 : Object.entries(p.movimientos.reduce((acc, m) => { const k = (m.medio || "Sin dato").trim() || "Sin dato"; acc[k] = (acc[k] || 0) + m.importe; return acc; }, {}))
                   .sort((a, b) => b[1] - a[1]).map(([medio, imp]) => (
@@ -2282,6 +2385,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
                   <BtnEliminar onConfirmar={() => anular(c.id)} style={{ fontSize: 11.5, color: C.rojo }} /></div>))}
             </div>))}
       </div>
+      {pie}
     </div>
   );
 }

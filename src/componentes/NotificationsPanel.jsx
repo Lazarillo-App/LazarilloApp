@@ -28,18 +28,33 @@ import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAccess } from '@/context/AccessContext';
+import { useAuth } from '@/context/AuthContext';
 import { ScopeGestion } from '@/gestion/compat';
 import { ActividadContenido, useActividadNuevos } from '@/componentes/gestion/pagos/actividad-campana';
 import { agruparPorDia, horaDe } from '@/gestion/actividadFormato';
 
-const VerFactura = React.lazy(() => import('@/componentes/gestion/CargarFactura').then((m) => ({ default: m.VerFactura })));
+// VerFactura necesita el contexto del Panel (negocio activo) para traer los maestros de la carga.
+// La campana vive en el header, fuera del Panel: sin este envoltorio businessId quedaba null, los
+// maestros nunca se pedían y el modal se quedaba cargando para siempre (Diego 12/11/2026, Comercio).
+const VerFactura = React.lazy(() => Promise.all([
+  import('@/componentes/gestion/CargarFactura'),
+  import('@/componentes/gestion/FacturaEnRecetas'),
+]).then(([cf, fr]) => ({
+  default: function VerFacturaConContexto(props) {
+    return <fr.ConContextoGestion><cf.VerFactura {...props} /></fr.ConContextoGestion>;
+  },
+})));
 
 // Campana única (Diego 10/11/2026, opción A): una sola campana en el header con solapas por
 // módulo, que abre en el módulo donde estás. Resultados = Actividad (facturas cargadas, editadas,
 // eliminadas); Recetas = los avisos de artículos/insumos; Cuenta = pedidos de acceso.
+// RRHH (Diego 12/11/2026, «todo ABM queda en Notificaciones»): altas, bajas, cambios de la
+// nómina y de los cronogramas, con su propia solapa.
 const moduloDeRuta = (p) => (p.startsWith('/gestion') ? 'resultados'
+  : p.startsWith('/rrhh') ? 'rrhh'
   : (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) ? 'recetas' : null);
 const esDeCuenta = (n) => n?.kind === 'access_request';
+const esDeRrhh = (n) => String(n?.kind || '').startsWith('rrhh_');
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
@@ -104,6 +119,11 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   const moduloActual = moduloDeRuta(location.pathname);
   const actividad = useActividadNuevos(verResultados);
   const [solapa, setSolapa] = useState('recetas');
+  // «Mías» / «Del equipo» (Diego 12/11/2026, como en el Panel de Gestión): los avisos que dejó
+  // otra persona (alta, baja o discontinuar de artículos e insumos) traen metadata.actor_user_id.
+  const { user } = useAuth() || {};
+  const miId = Number(user?.id) || null;
+  const [quien, setQuien] = useState('todas');
   const [vistoAlAbrir, setVistoAlAbrir] = useState('');
   const [verFactura, setVerFactura] = useState(null);
 
@@ -409,6 +429,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       message: n.message,
       created_at: n.created_at,
       metadata: n.metadata,
+      scope: n.metadata?.scope ?? null,
       resolved: false,
     }));
   }, [notifications]);
@@ -428,6 +449,8 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   const cerrarToast = (id) => markAsRead([id]);
 
+  const deEquipo = (n) => n?.source === 'backend' && n.metadata?.actor_user_id != null && Number(n.metadata.actor_user_id) !== miId;
+
   // ✅ 4) UI notifs (no resueltas) + notifs del backend, ordenadas por fecha
   const merged = useMemo(() => {
     const ui = (uiNotifs || []).filter((n) => !n.resolved);
@@ -443,17 +466,23 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
 
   // ✅ Badge: UI notifs + no leídas del backend (pedidos de acceso, sync, etc.)
   const badgeCount = unreadUiCount + (unreadCount || 0);
-  const noLeidaRecetas = (n) => !n.read && !esDeCuenta(n);
+  const noLeidaRecetas = (n) => !n.read && !esDeCuenta(n) && !esDeRrhh(n);
   const nRecetas = useMemo(() => merged.filter(noLeidaRecetas).length, [merged]); // eslint-disable-line react-hooks/exhaustive-deps
   const nCuenta = useMemo(() => merged.filter((n) => !n.read && esDeCuenta(n)).length, [merged]);
+  const nRrhh = useMemo(() => merged.filter((n) => !n.read && esDeRrhh(n)).length, [merged]);
+  const hayRrhh = merged.some(esDeRrhh);
+  // solapa a la que pertenece cada aviso
+  const enSolapa = (n, sol) => (sol === 'cuenta' ? esDeCuenta(n) : sol === 'rrhh' ? esDeRrhh(n) : !esDeCuenta(n) && !esDeRrhh(n));
   const hayCuenta = merged.some(esDeCuenta);
   // El número de la campana es el del módulo donde estás; fuera de un módulo, el total.
   const numeroCampana = moduloActual === 'resultados' ? actividad.nuevos
     : moduloActual === 'recetas' ? nRecetas
-      : nRecetas + nCuenta + (verResultados ? actividad.nuevos : 0);
+      : moduloActual === 'rrhh' ? nRrhh
+        : nRecetas + nCuenta + nRrhh + (verResultados ? actividad.nuevos : 0);
   const abrirCampana = () => {
     setSolapa(moduloActual === 'resultados' && verResultados ? 'resultados'
       : moduloActual === 'recetas' ? 'recetas'
+      : moduloActual === 'rrhh' ? 'rrhh'
         : (verResultados && actividad.nuevos > 0 && nRecetas === 0) ? 'resultados' : 'recetas');
     setVistoAlAbrir(actividad.visto);
     setOpen(true);
@@ -533,7 +562,8 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       const kind = notif.kind;
       const scope = notif.scope || notif.payload?.scope || 'articulo';
       if (kind === 'objetivo_update' || kind === 'objetivo_change') return true;
-      return kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
+      // Deshacer solo lo que hiciste en esta sesión (el aviso de otra persona no trae con qué).
+      return notif.source === 'ui' && kind === 'discontinue' && (scope === 'articulo' || scope === 'insumo');
     };
 
     // "Ir al artículo/insumo": solo cuando el payload trae UN solo id (alta,
@@ -594,6 +624,9 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
             {notif.scope === 'insumo' && <Chip label="Insumo" size="small" sx={{ ml: 0.75, height: 16, fontSize: '0.65rem' }} />}
           </Typography>
           {notif.message && <Typography sx={{ fontSize: 11.5, color: 'text.secondary', whiteSpace: 'pre-line' }}>{notif.message}</Typography>}
+          {deEquipo(notif) && notif.metadata?.actor_nombre && (
+            <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>por {notif.metadata.actor_nombre}</Typography>
+          )}
           {(canUndo(notif) || getGotoId(notif) != null) && (
             <Box sx={{ display: 'flex', gap: 1.5, mt: 0.25 }}>
               {canUndo(notif) && (
@@ -672,10 +705,11 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           <Typography sx={{ fontWeight: 700, fontSize: 16, flex: 1 }}>Notificaciones</Typography>
           <IconButton onClick={cerrarCampana} size="small" aria-label="Cerrar"><CloseIcon fontSize="small" /></IconButton>
         </Box>
-        <Box sx={{ display: 'flex', gap: 0.75, px: 2, pb: 1.25, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, px: 2, pb: 1.25, flexWrap: 'wrap' }}>
           {[
             verResultados && { id: 'resultados', nombre: 'Resultados', n: actividad.nuevos },
             { id: 'recetas', nombre: 'Recetas', n: nRecetas },
+            (hayRrhh || moduloActual === 'rrhh') && { id: 'rrhh', nombre: 'RRHH', n: nRrhh },
             hayCuenta && { id: 'cuenta', nombre: 'Cuenta', n: nCuenta },
           ].filter(Boolean).map((m) => (
             <Box key={m.id} component="button" type="button" onClick={() => setSolapa(m.id)}
@@ -689,6 +723,27 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
               {m.n > 0 && <Box component="span" sx={{ bgcolor: '#ef4444', color: '#fff', borderRadius: 999, px: 0.75, fontSize: 10.5, fontWeight: 700, lineHeight: '16px' }}>{m.n > 99 ? '99+' : m.n}</Box>}
             </Box>
           ))}
+          {(solapa === 'recetas' || solapa === 'rrhh') && merged.some((n) => enSolapa(n, solapa) && deEquipo(n)) && (() => {
+            const opciones = [
+              { id: 'todas', nombre: 'Todas' },
+              { id: 'mias', nombre: 'Mías', n: merged.filter((n) => !n.read && enSolapa(n, solapa) && !deEquipo(n)).length },
+              { id: 'equipo', nombre: 'Del equipo', n: merged.filter((n) => !n.read && enSolapa(n, solapa) && deEquipo(n)).length },
+            ];
+            return (
+              <Box sx={{ ml: 'auto', display: 'inline-flex', alignItems: 'center', height: 26, boxSizing: 'border-box', border: '1px solid #e3e6eb', borderRadius: 999, p: '2px' }}>
+                {opciones.map((o) => (
+                  <Box key={o.id} component="button" type="button" onClick={() => setQuien(o.id)}
+                    sx={{
+                      display: 'inline-flex', alignItems: 'center', gap: 0.5, border: 0, cursor: 'pointer', font: 'inherit', fontSize: 11.5,
+                      px: 1, height: 20, borderRadius: 999, whiteSpace: 'nowrap',
+                      bgcolor: quien === o.id ? 'rgba(91,194,234,.18)' : 'transparent', color: quien === o.id ? '#0d6fa8' : '#5b6577', fontWeight: quien === o.id ? 600 : 400,
+                    }}>
+                    {o.nombre}{o.n > 0 && <Box component="span" sx={{ fontSize: 10.5, opacity: 0.8 }}>{o.n > 99 ? '99+' : o.n}</Box>}
+                  </Box>
+                ))}
+              </Box>
+            );
+          })()}
         </Box>
         <Divider />
         <Box sx={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
@@ -701,7 +756,9 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           ) : loading ? (
             <Box sx={{ display: 'grid', placeItems: 'center', py: 3 }}><CircularProgress size={20} /></Box>
           ) : (() => {
-            const lista = merged.filter((n) => (solapa === 'cuenta' ? esDeCuenta(n) : !esDeCuenta(n)));
+            const hayEquipo = merged.some((n) => enSolapa(n, solapa) && deEquipo(n));
+            const lista = merged.filter((n) => enSolapa(n, solapa)
+              && (solapa === 'cuenta' || quien === 'todas' || !hayEquipo || (quien === 'equipo') === deEquipo(n)));
             if (!lista.length) return <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center', fontSize: 12.5 }}>No hay notificaciones</Typography>;
             return agruparPorDia(lista.map((n) => ({ ...n, creadoEn: n.created_at }))).map((g) => (
               <Box key={g.dia}>

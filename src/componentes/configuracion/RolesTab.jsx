@@ -14,6 +14,7 @@ import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { RolesAPI } from '@/servicios/apiRoles';
 import { showConfirm } from '@/servicios/appConfirm';
+import { esOculto, alternarOculto } from '@/gestion/ocultosRol';
 
 // Catálogo de lo que se puede ocultar. Cada clave = un permiso (lo que no figura, se ve).
 const SECCIONES = [
@@ -28,6 +29,7 @@ const SECCIONES = [
         ['tabla.totales_rubro', 'Totales por rubro'],
         ['tabla.ing_egr', 'Ingresos, egresos, resultado y equilibrio'],
         ['tabla.dif_caja', 'Flujo y diferencia de caja'], ['tabla.pct', 'Vista en % de ingresos'],
+        ['tabla.col_total', 'Columna Total (oculta salvo que la habilites)'],
       ] },
       { nombre: 'Pestañas y botones', items: [
         ['tab.ventas', 'Pestaña Ventas'], ['tab.resultados', 'Pestaña Resultados'],
@@ -84,11 +86,14 @@ const subrolDe = (sr) => ({ id: `staff:${sr.id}`, staffId: sr.id, staff: true, n
 const SUBROL_NUEVO = { id: 'staff:nuevo', staff: true, nombre: '', personas: 0, nota: 'Subrol de Staff', permisos: {}, secciones: {}, ocultos: [] };
 const STAFF = staffBaseDe({});
 // Administración: editable por el dueño (vale para todos los admins sin rol a medida).
-// Sin ajustar, ve todo.
-const adminDe = (a) => ({
-  id: 'admin', nombre: 'Administración', base: true, personas: a?.personas ?? 0, ajustada: !!a?.ajustada,
-  secciones: a?.ajustada ? { ...a.secciones } : { ...TODAS }, ocultos: a?.ajustada ? [...(a.ocultos || [])] : [],
-});
+// Sin ajustar, la Administración por defecto del sistema (viene del back, Diego 12/11/2026).
+const adminDe = (a) => {
+  const conDatos = a?.ajustada || a?.porDefecto;
+  return {
+    id: 'admin', nombre: 'Administración', base: true, personas: a?.personas ?? 0, ajustada: !!a?.ajustada, porDefecto: !a?.ajustada && !!a?.porDefecto,
+    secciones: conDatos ? { ...a.secciones } : { ...TODAS }, ocultos: conDatos ? [...(a.ocultos || [])] : [],
+  };
+};
 const NUEVO = { id: 'nuevo', nombre: '', secciones: { resultados: 'ver' }, ocultos: [], personas: 0 };
 
 function resumen(rol) {
@@ -97,9 +102,10 @@ function resumen(rol) {
     const n = Object.entries(rol.permisos || {}).filter(([k, v]) => v && k !== 'aprobar_equipo').length;
     return `${rol.permisos?.aprobar_equipo ? 'Jefe · ' : ''}${n ? `${n} habilitado${n !== 1 ? 's' : ''}` : 'lo básico'}`;
   }
-  if (rol.base && !rol.ajustada) return 'Ve y edita todo';
+  if (rol.base && !rol.ajustada && !rol.porDefecto) return 'Ve y edita todo';
   const vis = SECCIONES.filter((s) => rol.secciones[s.id]).map((s) => s.nombre);
-  const parcial = rol.ocultos.length ? ` · ${rol.ocultos.length} oculto${rol.ocultos.length !== 1 ? 's' : ''}` : '';
+  const nOcultos = SECCIONES.flatMap((s) => s.grupos.flatMap((g) => g.items)).filter(([k]) => esOculto(rol.ocultos, k)).length;
+  const parcial = nOcultos ? ` · ${nOcultos} oculto${nOcultos !== 1 ? 's' : ''}` : '';
   return (vis.join(', ') || 'Sin secciones') + parcial;
 }
 
@@ -148,7 +154,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
 
   const rol = borrador;
   const seccion = SECCIONES.find((s) => s.id === seccionId);
-  const ocultos = useMemo(() => new Set(rol?.ocultos || []), [rol]);
+  const ocultos = useMemo(() => ({ has: (k) => esOculto(rol?.ocultos, k) }), [rol]);
   const editable = !!rol && !rol.fijo && !soloLectura;
   const original = rolId === 'nuevo' ? NUEVO : rolId === 'staff:nuevo' ? SUBROL_NUEVO : todos.find((x) => x.id === rolId);
   const normPerm = (p) => Object.keys(p || {}).filter((k) => p[k]).sort();
@@ -161,7 +167,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
     return { ...r, secciones: s };
   });
   const setModo = (id, modo) => modo && cambiar((r) => ({ ...r, secciones: { ...r.secciones, [id]: modo } }));
-  const toggleItem = (k) => cambiar((r) => ({ ...r, ocultos: ocultos.has(k) ? r.ocultos.filter((x) => x !== k) : [...r.ocultos, k] }));
+  const toggleItem = (k) => cambiar((r) => ({ ...r, ocultos: alternarOculto(r.ocultos, k) }));
   const ocultosDe = (s) => s.grupos.flatMap((g) => g.items).filter(([k]) => ocultos.has(k)).length;
 
   const guardar = async () => {
@@ -187,7 +193,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
     } catch (e) { setError(mensajeDe(e)); } finally { setGuardando(false); }
   };
   const volverATodo = async () => {
-    if (!(await showConfirm('¿Volver a que Administración vea y edite todo?', { confirmText: 'Volver a todo' }))) return;
+    if (!(await showConfirm('¿Volver a la Administración por defecto del sistema? Se pierde lo que ajustaste para esta cuenta.', { confirmText: 'Volver al default' }))) return;
     setGuardando(true); setError(null);
     try { await RolesAPI.resetAdministracion(); await cargar('admin'); onCambio?.(); }
     catch (e) { setError(mensajeDe(e)); } finally { setGuardando(false); }
@@ -255,12 +261,12 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
               InputProps={{ sx: { fontSize: '0.85rem', fontWeight: 700 } }} sx={{ width: 240 }} />
           ) : rol.nombre}
           subtitle={rol.fijo ? `Rol fijo · ${rol.nota}` : rol.staff ? (rol.esBase ? 'Lo que puede todo el Staff · los subroles suman lo suyo' : `Subrol de Staff · ${rol.personas ? `${rol.personas} persona${rol.personas !== 1 ? 's' : ''}` : 'todavía nadie lo tiene'}`)
-            : rol.base ? `${original?.ajustada ? 'Ajustado' : 'Ve y edita todo'} · vale para quienes tienen Administración${rol.personas ? ` (${rol.personas})` : ''}`
+            : rol.base ? `${original?.ajustada ? 'Ajustado para esta cuenta' : original?.porDefecto ? 'Default del sistema' : 'Ve y edita todo'} · vale para quienes tienen Administración${rol.personas ? ` (${rol.personas})` : ''}`
             : `Basado en Administración · ${rol.personas ? `${rol.personas} persona${rol.personas !== 1 ? 's' : ''}` : 'todavía nadie lo tiene'}`}
           action={editable && (
             <Stack direction="row" gap={1} alignItems="center">
               {rol.esBase ? null : rol.base ? (
-                original?.ajustada && <Button size="small" onClick={volverATodo} disabled={guardando} sx={{ color: 'text.secondary' }}>Volver a todo</Button>
+                original?.ajustada && <Button size="small" onClick={volverATodo} disabled={guardando} sx={{ color: 'text.secondary' }}>Volver al default</Button>
               ) : (
               <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={borrar} disabled={guardando}>
                 {rolId === 'nuevo' || rolId === 'staff:nuevo' ? 'Descartar' : 'Borrar'}

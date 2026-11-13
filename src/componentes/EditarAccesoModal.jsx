@@ -291,17 +291,32 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
   useEffect(() => {
     if (nuevoRol.startsWith('rol:') && !rolesMedidaNuevo.some((r) => `rol:${r.id}` === nuevoRol)) setNuevoRol('admin');
   }, [rolesMedidaNuevo]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Subroles de Staff (Jefe de cocina…) del negocio elegido: también al agregar a otro negocio
+  // (Diego 12/11/2026). El back ya acepta role 'staff' + customRoleId en la invitación.
+  const [subrolesNuevo, setSubrolesNuevo] = useState([]);
+  useEffect(() => {
+    if (!bizParaRoles) { setSubrolesNuevo([]); return; }
+    let alive = true;
+    RolesAPI.listStaff(bizParaRoles)
+      .then((st) => { if (alive) setSubrolesNuevo(st?.subroles || []); })
+      .catch(() => { if (alive) setSubrolesNuevo([]); });
+    return () => { alive = false; };
+  }, [bizParaRoles]);
+  useEffect(() => {
+    if (nuevoRol.startsWith('staff:') && !subrolesNuevo.some((x) => `staff:${x.id}` === nuevoRol)) setNuevoRol('staff');
+  }, [subrolesNuevo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const esStaffNuevo = nuevoRol === 'staff' || nuevoRol.startsWith('staff:');
 
   // Sector (Vista Operación): mismo criterio que InvitarMiembroModal — solo
   // tiene sentido con rol Staff, y se carga para el negocio recién elegido.
   useEffect(() => {
-    if (nuevoRol !== 'staff' || !nuevoBizId) { setSectores([]); setSectorIds(new Set()); return; }
+    if (!esStaffNuevo || !nuevoBizId) { setSectores([]); setSectorIds(new Set()); return; }
     let alive = true;
     listarSectores(nuevoBizId)
       .then((list) => { if (alive) setSectores(Array.isArray(list) ? list : []); })
       .catch(() => { if (alive) setSectores([]); });
     return () => { alive = false; };
-  }, [nuevoRol, nuevoBizId]);
+  }, [esStaffNuevo, nuevoBizId]);
 
   // Negocios donde la persona YA tiene acceso (por scopeId de tipo business)
   const idsConAcceso = useMemo(() => {
@@ -341,10 +356,11 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
         email: persona.email,
         scopeType: 'business',
         scopeId: Number(nuevoBizId),
-        role: nuevoRol.startsWith('rol:') ? 'admin' : nuevoRol,
+        role: nuevoRol.startsWith('rol:') ? 'admin' : esStaffNuevo ? 'staff' : nuevoRol,
         ...(nuevoRol.startsWith('rol:') ? { customRoleId: Number(nuevoRol.slice(4)) } : {}),
+        ...(nuevoRol.startsWith('staff:') ? { customRoleId: Number(nuevoRol.slice(6)) } : {}),
         alias: persona.alias || persona.email, // el backend igual lo pisa con el heredado
-        sectorIds: nuevoRol === 'staff' && sectorIds.size ? Array.from(sectorIds) : undefined,
+        sectorIds: esStaffNuevo && sectorIds.size ? Array.from(sectorIds) : undefined,
       });
       try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
       setNuevoBizId('');
@@ -426,11 +442,16 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                   size="small"
                   value={nuevoRol}
                   onChange={(e) => setNuevoRol(e.target.value)}
-                  sx={{ width: 140 }}
+                  sx={{ width: 170 }}
                 >
                   {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
                   {puedeInvitarAdmin && rolesMedidaNuevo.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`}>{r.nombre}</MenuItem>)}
                   <MenuItem value="staff">Staff</MenuItem>
+                  {subrolesNuevo.map((x) => (
+                    <MenuItem key={x.id} value={`staff:${x.id}`} sx={{ pl: 3.5 }}>
+                      <Typography component="span" sx={{ fontSize: 'inherit', color: 'text.secondary', mr: 0.75 }}>└</Typography>{x.nombre}
+                    </MenuItem>
+                  ))}
                 </TextField>
                 <Button
                   variant="contained"
@@ -446,7 +467,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
             )}
 
             {/* Sector (Vista Operación) — solo con rol Staff y negocio elegido */}
-            {nuevoRol === 'staff' && nuevoBizId && (
+            {esStaffNuevo && nuevoBizId && (
               <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30`, mt: 1.5 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
                   SECTOR DENTRO DE {negociosDisponibles.find((b) => String(b.id) === String(nuevoBizId))?.name || `#${nuevoBizId}`}

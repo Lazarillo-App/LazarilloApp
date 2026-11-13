@@ -22,7 +22,7 @@ export function VerComoItems({ onElegido }) {
     RolesAPI.listCompleto()
       .then(({ roles, administracion, staff }) => setOpciones([
         { id: 'admin', nombre: 'Administración', rol: 'admin',
-          permisos: administracion?.ajustada ? { secciones: administracion.secciones, ocultos: administracion.ocultos } : null },
+          permisos: administracion?.ajustada || administracion?.porDefecto ? { secciones: administracion.secciones, ocultos: administracion.ocultos } : null },
         ...roles.map((r) => ({ id: `rol:${r.id}`, nombre: r.nombre, rol: 'admin', permisos: { secciones: r.secciones, ocultos: r.ocultos } })),
         { id: 'staff', nombre: 'Staff', rol: 'staff', permisos: null, permisosStaff: { ...(staff?.base || {}) } },
         // Subroles de Staff (Diego 11/11/2026): lo del Staff base + lo del subrol.

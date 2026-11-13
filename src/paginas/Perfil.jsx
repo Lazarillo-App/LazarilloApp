@@ -19,6 +19,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import LinkIcon from '@mui/icons-material/Link';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import EditIcon from '@mui/icons-material/Edit';
@@ -230,6 +231,21 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
     setMenuRow(null); setMenuAnchor(null);
   };
 
+  // Enlace de invitación para compartir a mano (WhatsApp, etc.): el back regenera el
+  // token y devuelve el link siempre; se copia al portapapeles y se muestra para copiar.
+  const handleCopiarEnlace = async (assignmentId) => {
+    setMenuRow(null); setMenuAnchor(null);
+    try {
+      const res = await resendInvitation(assignmentId);
+      if (!res?.link) { showAlert('No se pudo generar el enlace.', 'error'); return; }
+      try { await navigator.clipboard.writeText(res.link); } catch { /* sin permiso: queda el prompt */ }
+      await showPrompt('Enlace de invitación (ya copiado). El anterior deja de funcionar:', res.link);
+      fetchMembers();
+    } catch (e) {
+      showAlert(`Error: ${e?.message || 'no_se_pudo_generar'}`, 'error');
+    }
+  };
+
   // Elimina a la persona del equipo por completo: revoca TODOS sus accesos
   // (uno por negocio/org donde tenga assignment), no solo uno a la vez como
   // "Editar acceso" → "Quitar acceso". El backend igual protege al owner y
@@ -360,7 +376,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             <TableHead>
               <TableRow>
                 {['Alias', 'Email', 'Rol', 'Negocios', 'Estado', ''].map(h => (
-                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', ...(h === '' ? COL_ACCIONES : {}) }}>{h}</TableCell>
+                  <TableCell key={h} align={h === 'Alias' || h === '' ? 'left' : 'center'} sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', ...(h === '' ? COL_ACCIONES : {}) }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -375,20 +391,20 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                 return (
                   <React.Fragment key={m.email}>
                     <TableRow>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
+                      <TableCell sx={{ whiteSpace: 'nowrap', maxWidth: 220 }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
                           <Avatar sx={{ width: 26, height: 26, fontSize: '0.72rem', bgcolor: tc, flexShrink: 0 }}>
                             {(m.alias || m.name || m.email || 'U')[0].toUpperCase()}
                           </Avatar>
-                          <Typography variant="body2" fontWeight={600} noWrap>
+                          <Typography variant="body2" fontWeight={600} noWrap title={m.alias || m.name || ''} sx={{ minWidth: 0 }}>
                             {m.alias || m.name || '—'}
                           </Typography>
                         </Stack>
                       </TableCell>
-                      <TableCell title={m.email} sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <TableCell align="center" title={m.email} sx={{ fontSize: '0.8rem', color: 'text.secondary', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {m.email}
                       </TableCell>
-                      <TableCell>
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                         <Chip
                           label={m.rolNombre}
                           size="small"
@@ -396,7 +412,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           sx={{ fontSize: '0.7rem', bgcolor: `${tc}15`, color: tc, fontWeight: 600 }}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell align="center">
                         {unSoloNegocio ? (
                           <Typography variant="body2" sx={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                             {m.negocios[0].scopeName}
@@ -411,14 +427,18 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                           />
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                         <Chip
-                          label={invitacionVencida ? 'Invitación vencida' : estaInvitado ? 'Invitación pendiente' : 'Activo'}
+                          label={invitacionVencida ? 'Vencida' : estaInvitado ? 'Pendiente' : 'Activo'}
                           size="small"
                           color={invitacionVencida ? 'error' : estaInvitado ? 'warning' : 'success'}
                           variant={estaInvitado ? 'outlined' : 'filled'}
-                          sx={{ fontSize: '0.7rem' }}
-                          title={invitacionVencida ? 'El link venció — hay que reenviarla' : undefined}
+                          sx={{ fontSize: '0.7rem', minWidth: 76, '& .MuiChip-label': { px: 1.25, overflow: 'visible' } }}
+                          title={invitacionVencida
+                            ? 'La invitación venció — hay que reenviarla'
+                            : estaInvitado
+                              ? `Invitación pendiente${m.invitation_expires_at ? ` · vence el ${new Date(m.invitation_expires_at).toLocaleDateString('es-AR')}` : ''}`
+                              : undefined}
                         />
                       </TableCell>
                       <TableCell align="right" sx={{ ...COL_ACCIONES, backgroundColor: 'inherit' }}>
@@ -482,6 +502,12 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           <MenuItem onClick={() => handleResend(menuRow.negocios[0].assignmentId)}>
             <RefreshIcon fontSize="small" sx={{ mr: 1 }} />
             Reenviar invitación
+          </MenuItem>
+        )}
+        {menuRow?.account_status === 'invited' && menuRow?.negocios?.[0]?.assignmentId && (
+          <MenuItem onClick={() => handleCopiarEnlace(menuRow.negocios[0].assignmentId)}>
+            <LinkIcon fontSize="small" sx={{ mr: 1 }} />
+            Copiar enlace
           </MenuItem>
         )}
         {menuRow?.rolMasAlto !== 'owner' && menuRow?.email !== propioEmail && (
@@ -723,15 +749,48 @@ function PerfilContenido() {
     }
   }, [renameValue, me, setUser]);
 
-  const userInitials = meName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  // ── Cambiar email (Diego 12/11/2026): pide la contraseña actual ──
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailNuevo, setEmailNuevo] = useState('');
+  const [emailPass, setEmailPass] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailGuardando, setEmailGuardando] = useState(false);
+  const openEmail = useCallback(() => {
+    setEmailNuevo(''); setEmailPass(''); setEmailError(''); setEmailOpen(true);
+  }, [me]);
+  const ERR_EMAIL = {
+    invalid_email: 'Ese email no es válido',
+    wrong_password: 'La contraseña no es correcta',
+    same_email: 'Es el mismo email que ya tenés',
+    email_in_use: 'Ese email ya lo usa otra cuenta',
+    password_required: 'Escribí tu contraseña actual',
+  };
+  // El error va debajo del campo que hay que corregir (clave o email)
+  const errorEsDeClave = emailError === ERR_EMAIL.wrong_password || emailError === ERR_EMAIL.password_required;
+  const ejecutarEmail = useCallback(async () => {
+    setEmailGuardando(true); setEmailError('');
+    try {
+      const r = await MeAPI.changeEmail({ email: emailNuevo.trim(), password: emailPass });
+      if (r?.token) { try { localStorage.setItem('token', r.token); } catch { } }
+      const newUser = { ...me, email: r?.user?.email || emailNuevo.trim().toLowerCase() };
+      setUser?.(newUser);
+      try { localStorage.setItem('user', JSON.stringify(newUser)); } catch { }
+      setSnack({ open: true, msg: 'Email actualizado: desde ahora entrás con ' + newUser.email, type: 'success' });
+      setEmailOpen(false);
+    } catch (e) {
+      setEmailError(ERR_EMAIL[e?.message] || 'No se pudo cambiar el email');
+    } finally {
+      setEmailGuardando(false);
+    }
+  }, [emailNuevo, emailPass, me, setUser]);
+
+  const userInitials = (meName.match(/[\p{L}\p{N}]+/gu) || []).map(n => n[0]).slice(0, 2).join('').toUpperCase();
 
   // Rol mostrado en el perfil: el MÁS ALTO entre todos los negocios (estable, no cambia
   // al switchear de negocio). El perfil es una vista global del usuario, no del negocio activo.
   const rolPerfil = highestRole || currentRole;
-  const roleLabel = rolPerfil === 'admin' ? 'Administrador'
-    : rolPerfil === 'owner' ? 'Propietario'
-      : rolPerfil === 'staff' ? 'Staff'
-        : 'Usuario';
+  // Misma palabra que en la tabla de Equipo (antes arriba decía «Propietario» y abajo «Dueño»).
+  const roleLabel = ROL_LABEL[rolPerfil] || 'Usuario';
 
   return (
     <Box className="zoom-reset" sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -797,6 +856,11 @@ function PerfilContenido() {
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
                       {me.email}
                     </Typography>
+                    <Tooltip title="Cambiar email">
+                      <IconButton size="small" onClick={openEmail} sx={{ p: 0.25, color: tc }}>
+                        <EditIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Tooltip>
                   </Stack>
                 )}
 
@@ -804,7 +868,7 @@ function PerfilContenido() {
                   <Stack direction="row" alignItems="center" spacing={0.75} mt={0.25}>
                     <BusinessIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-                      {organization.name}
+                      {organization.name}{isStaff && currentBusiness?.name ? ` · ${currentBusiness.name}` : ''}
                     </Typography>
                   </Stack>
                 )}
@@ -866,17 +930,6 @@ function PerfilContenido() {
           }}
         />
 
-        <Section icon={<PersonIcon />} title="Información personal"
-        >
-          <Stack divider={<Divider flexItem />}>
-            <DataRow label="Nombre" value={meName} />
-            <DataRow label="Email" value={me?.email} />
-            <DataRow label="Rol" value={roleLabel} />
-            {isStaff && currentBusiness?.name && <DataRow label="Negocio" value={currentBusiness.name} />}
-            {organization?.name && <DataRow label="Organización" value={organization.name} />}
-          </Stack>
-        </Section>
-
         {/* Staff: no ve gestión de equipo (es de otras cuentas, no de la propia),
             pero sí Seguridad — cambiar su contraseña es de su propia cuenta,
             nada relativo al negocio. */}
@@ -920,6 +973,41 @@ function PerfilContenido() {
           <Button onClick={() => setRenameOpen(false)} disabled={renaming}>Cancelar</Button>
           <Button onClick={ejecutarRename} variant="contained" disabled={renaming || !renameValue.trim()}>
             {renaming ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo cambiar email */}
+      <Dialog open={emailOpen} onClose={() => !emailGuardando && setEmailOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Cambiar tu email</DialogTitle>
+        <DialogContent sx={{ pt: '12px !important' }}>
+          <Stack spacing={2}>
+            {/* El actual se ve pero no se toca; el nuevo arranca vacío (Diego 12/11/2026). */}
+            <TextField fullWidth size="small" label="Email actual" value={me?.email || ''} disabled />
+            <TextField
+              autoFocus fullWidth size="small" type="email"
+              label="Email nuevo"
+              value={emailNuevo}
+              onChange={(e) => { setEmailNuevo(e.target.value); setEmailError(''); }}
+              error={!!emailError && !errorEsDeClave}
+              helperText={(!errorEsDeClave && emailError) || 'Es tu usuario para entrar a Lazarillo'}
+            />
+            <TextField
+              fullWidth size="small" type="password"
+              label="Tu contraseña actual"
+              value={emailPass}
+              onChange={(e) => { setEmailPass(e.target.value); setEmailError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && emailPass && emailNuevo.trim()) ejecutarEmail(); }}
+              error={!!emailError && errorEsDeClave}
+              helperText={(errorEsDeClave && emailError) || 'Para confirmar que sos vos'}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button onClick={() => setEmailOpen(false)} disabled={emailGuardando}>Cancelar</Button>
+          <Button onClick={ejecutarEmail} variant="contained"
+            disabled={emailGuardando || !emailPass || !emailNuevo.trim() || emailNuevo.trim().toLowerCase() === String(me?.email || '').toLowerCase()}>
+            {emailGuardando ? 'Guardando…' : 'Cambiar email'}
           </Button>
         </DialogActions>
       </Dialog>
