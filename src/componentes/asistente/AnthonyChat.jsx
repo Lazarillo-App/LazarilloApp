@@ -11,6 +11,10 @@ import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
 import { capturarPantalla, imagenADataUrl } from '@/componentes/soporte/capturaPantalla';
+import { escucharCapturasDelSistema, estadoAuto, activarAuto, apagarAuto } from '@/componentes/soporte/capturaDelSistema';
+// 14/11 (usuaria): sin WhatsApp; el botón de Anthony abre directo este chat; "Chat" y "Mis pedidos"
+// son pestañas arriba; y las capturas que el cliente saca con su compu (Win+Shift+S, Impr Pant) o pega
+// con Ctrl+V abren el chat grande para mandarlas o cancelar (capturaDelSistema.js).
 
 const AZUL = 'var(--color-primary, #2492C8)';
 const burbuja = (deAnthony) => ({
@@ -52,9 +56,12 @@ export default function AnthonyChat() {
   const finRef = useRef(null);
   const archivoRef = useRef(null);
 
+  const [delSistema, setDelSistema] = useState(false); // la captura vino de la compu del cliente
+  const [auto, setAuto] = useState('no');              // capturas automáticas: activo | apagado | no
+
   const reiniciar = () => {
     setOpcion(null); setRespuesta(''); setPaso('menu'); setMensaje(''); setLibre(''); setError('');
-    setContexto(null); setCaptura(null); setGrande(false); setEnviado(null); setTipo('consulta');
+    setContexto(null); setCaptura(null); setGrande(false); setEnviado(null); setTipo('consulta'); setDelSistema(false);
   };
 
   const elegir = (op, resp = '') => {
@@ -101,11 +108,40 @@ export default function AnthonyChat() {
   }, []);
 
   useEffect(() => {
-    if (!abierto || cfg) return;
+    if ((!abierto && !grande) || cfg) return;
     SoporteAPI.chat()
-      .then((r) => setCfg({ chat: r.chat, whatsapp: r.whatsapp }))
+      .then((r) => setCfg({ chat: r.chat }))
       .catch(() => setError('No pude cargar el chat. Probá de nuevo en un rato.'));
-  }, [abierto, cfg]);
+  }, [abierto, grande, cfg]);
+
+  // Capturas sacadas con la compu (o pegadas con Ctrl+V): se abren en el chat grande para mandar o cancelar.
+  // Si el cliente ya estaba armando un pedido, la captura se suma a ese pedido.
+  const estadoRef = useRef({});
+  estadoRef.current = { abierto, paso, grande, enviando };
+  useEffect(() => {
+    estadoAuto().then(setAuto);
+    return escucharCapturasDelSistema(async (blob) => {
+      const st = estadoRef.current;
+      if (st.enviando) return;
+      let url;
+      try { url = await imagenADataUrl(blob); } catch { return; }
+      const enCurso = st.abierto && (st.paso === 'captura' || st.paso === 'mensaje');
+      if (!enCurso) {
+        reiniciar();
+        setTipo('problema');
+        setDelSistema(true);
+      }
+      setError('');
+      setCaptura(url);
+      setGrande(true);
+    });
+  }, []);
+  const cambiarAuto = async () => {
+    if (auto === 'activo') { apagarAuto(); setAuto('apagado'); return; }
+    const r = await activarAuto();
+    setAuto(r);
+    if (r !== 'activo') setError('El navegador no dio permiso para ver tus capturas. Igual podés pegarlas con Ctrl+V.');
+  };
 
   useEffect(() => {
     const d = pendienteRef.current;
@@ -127,7 +163,7 @@ export default function AnthonyChat() {
       setCaptura(await capturarPantalla());
       setGrande(true);
     } catch {
-      setError('No pude sacar la captura. Podés adjuntar una imagen o seguir sin captura.');
+      setError('No pude sacar la captura. Sacala vos con Windows + Shift + S y pegala acá con Ctrl + V, o adjuntá una imagen.');
     } finally {
       setCapturando(false);
     }
@@ -148,11 +184,16 @@ export default function AnthonyChat() {
       const r = await SoporteAPI.enviar({
         opcion: opcion?.id, respuesta, mensaje: mensaje.trim(), tipo, captura: captura || undefined,
         pantalla: `${window.location.pathname}${window.location.search}`,
-        contexto: { ...(contexto || {}), pantalla_ancho: window.innerWidth, pantalla_alto: window.innerHeight, navegador: navigator.userAgent.slice(0, 160) },
+        contexto: {
+          ...(contexto || {}), pantalla_ancho: window.innerWidth, pantalla_alto: window.innerHeight, navegador: navigator.userAgent.slice(0, 160),
+          ...(delSistema ? { origen: 'captura_propia' } : {}),
+        },
       });
       setEnviado({ id: r?.id, captura: r?.captura_url || captura || null });
       setGrande(false);
       setPaso('enviado');
+      setVista('chat');
+      setAbierto(true); // si vino de una captura propia, la confirmación queda en el chat chico
     } catch (e) {
       setError(e?.status === 429 ? 'Mandaste muchos mensajes seguidos: esperá un rato y probá de nuevo.' : 'No se pudo enviar. Probá de nuevo.');
     } finally {
@@ -160,11 +201,21 @@ export default function AnthonyChat() {
     }
   };
 
-  if (!abierto || capturando) return null;
+  if (capturando || (!abierto && !grande)) return null;
   const chat = cfg?.chat;
+  const pestaña = (activa) => ({
+    flex: 1, position: 'relative', background: 'none', border: 'none', borderBottom: `3px solid ${activa ? '#2492C8' : 'transparent'}`,
+    color: activa ? '#15213E' : '#64748b', fontWeight: activa ? 700 : 500, fontSize: 13.5, padding: '9px 6px 7px', cursor: 'pointer', fontFamily: 'inherit',
+  });
+  const cancelarGrande = () => {
+    if (delSistema) { reiniciar(); return; } // era una captura suelta: no queda nada abierto de más
+    setGrande(false);
+    setPaso(captura ? 'mensaje' : paso);
+  };
 
   return (
     <>
+      {abierto && (
       <div data-no-captura="" role="dialog" aria-label="Chat con Anthony" style={{
         position: 'fixed', right: 20, bottom: 20, zIndex: 1500, width: 'min(380px, calc(100vw - 32px))', maxHeight: 'min(620px, calc(100vh - 40px))',
         background: '#fff', borderRadius: 16, boxShadow: '0 12px 44px rgba(0,0,0,.3)', border: '1px solid #e5e7eb',
@@ -176,12 +227,14 @@ export default function AnthonyChat() {
             <div style={{ fontWeight: 700, fontSize: 14 }}>Anthony</div>
             <div style={{ fontSize: 11, opacity: 0.75 }}>Equipo de Lazarillo</div>
           </div>
-          <button type="button" onClick={() => setVista(vista === 'pedidos' ? 'chat' : 'pedidos')}
-            style={{ position: 'relative', background: 'rgba(255,255,255,.12)', border: 'none', color: '#fff', borderRadius: 8, padding: '5px 9px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-            {vista === 'pedidos' ? '← Chat' : 'Mis pedidos'}
-            {vista !== 'pedidos' && sinLeer > 0 && <PuntoRojo n={sinLeer} />}
-          </button>
           <button type="button" onClick={() => setAbierto(false)} aria-label="Cerrar" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.7)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+        </div>
+        <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+          <button type="button" role="tab" aria-selected={vista === 'chat'} onClick={() => setVista('chat')} style={pestaña(vista === 'chat')}>💬 Chat</button>
+          <button type="button" role="tab" aria-selected={vista === 'pedidos'} onClick={() => setVista('pedidos')} style={pestaña(vista === 'pedidos')}>
+            📋 Mis pedidos
+            {sinLeer > 0 && <PuntoRojo n={sinLeer} />}
+          </button>
         </div>
 
         {vista === 'pedidos' ? (
@@ -220,7 +273,10 @@ export default function AnthonyChat() {
                       <button type="button" style={{ ...opcionBtn, flex: 1, textAlign: 'center' }} onClick={() => archivoRef.current?.click()}>🖼 Adjuntar imagen</button>
                       <button type="button" style={{ ...opcionBtn, flex: 1, textAlign: 'center' }} onClick={() => setPaso('mensaje')}>Seguir sin captura</button>
                     </div>
-                    <div style={{ fontSize: 11.5, color: '#64748b' }}>Si es de otra pantalla, andá a esa pantalla primero (el chat queda abierto) y después tocá capturar.</div>
+                    <div style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.45 }}>
+                      Si es de otra pantalla, andá a esa pantalla primero (el chat queda abierto) y después tocá capturar.
+                      {' '}También podés sacarla vos como siempre (<b>Windows + Shift + S</b>) y pegarla con <b>Ctrl + V</b>.
+                    </div>
                   </>
                 )}
 
@@ -261,23 +317,36 @@ export default function AnthonyChat() {
             <div ref={finRef} />
           </div>
         )}
-        {cfg?.whatsapp && vista === 'chat' && (
-          <a href={`https://wa.me/${cfg.whatsapp}`} target="_blank" rel="noreferrer"
-            style={{ display: 'block', textAlign: 'center', padding: '8px 12px', fontSize: 12.5, color: '#15803d', borderTop: '1px solid #eef2f7', textDecoration: 'none' }}>
-            ¿Es urgente? Escribinos por WhatsApp
-          </a>
+        {vista === 'chat' && paso === 'menu' && auto !== 'no' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderTop: '1px solid #eef2f7', fontSize: 11.5, color: '#64748b' }}>
+            <span style={{ flex: 1 }}>
+              {auto === 'activo'
+                ? '📸 Cuando saques una captura con la compu, te la ofrezco para mandar.'
+                : '📸 ¿Sacás capturas con Windows + Shift + S? Te las puedo ofrecer para mandar.'}
+            </span>
+            <button type="button" onClick={cambiarAuto}
+              style={{ background: 'none', border: 'none', color: '#2492C8', fontWeight: 700, fontSize: 11.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              {auto === 'activo' ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>
         )}
-        <input ref={archivoRef} type="file" accept="image/*" hidden onChange={(e) => { usarArchivo(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
+      )}
+      <input data-no-captura="" ref={archivoRef} type="file" accept="image/*" hidden onChange={(e) => { usarArchivo(e.target.files?.[0]); e.target.value = ''; }} />
 
       {grande && (
         <ChatGrande
           captura={captura} tipo={tipo} setTipo={setTipo} mensaje={mensaje} setMensaje={setMensaje}
-          titulo={opcion?.texto} pedido={opcion?.pedido} enviando={enviando} error={error}
-          onEnviar={enviar} onCancelar={() => { setGrande(false); setPaso(captura ? 'mensaje' : paso); }}
+          titulo={delSistema ? '¿Le mandamos esta captura al equipo?' : opcion?.texto}
+          pedido={delSistema
+            ? 'Vi que sacaste una captura. Si es por un problema o algo que querés pedir, contame qué pasa y la mando con tu mensaje. Si no era para nosotros, tocá Cancelar y seguí con lo tuyo.'
+            : opcion?.pedido}
+          enviando={enviando} error={error}
+          onEnviar={enviar} onCancelar={cancelarGrande}
           onRecapturar={() => { setGrande(false); sacarCaptura(); }}
-          onCambiar={() => archivoRef.current?.click()} onQuitar={() => { setCaptura(null); setGrande(false); setPaso('mensaje'); }}
-          onPegar={alPegar}
+          onCambiar={() => archivoRef.current?.click()}
+          onQuitar={() => { setCaptura(null); setGrande(false); setPaso('mensaje'); setAbierto(true); }}
+          onPegar={alPegar} delSistema={delSistema}
         />
       )}
     </>
@@ -287,14 +356,14 @@ export default function AnthonyChat() {
 function PuntoRojo({ n }) {
   return (
     <span style={{
-      position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: '#dc2626', color: '#fff',
+      marginLeft: 6, verticalAlign: 'middle', minWidth: 18, height: 18, borderRadius: 9, background: '#dc2626', color: '#fff',
       fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px',
     }}>{n}</span>
   );
 }
 
 // Chat grande: la captura a la izquierda (o arriba en celular) y el pedido al lado.
-function ChatGrande({ captura, tipo, setTipo, mensaje, setMensaje, titulo, pedido, enviando, error, onEnviar, onCancelar, onRecapturar, onCambiar, onQuitar, onPegar }) {
+function ChatGrande({ captura, tipo, setTipo, mensaje, setMensaje, titulo, pedido, enviando, error, onEnviar, onCancelar, onRecapturar, onCambiar, onQuitar, onPegar, delSistema }) {
   return (
     <div data-no-captura="" role="dialog" aria-label="Contanos tu pedido" onPaste={onPegar}
       style={{ position: 'fixed', inset: 0, zIndex: 1600, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: "'Archivo', system-ui, sans-serif" }}>
@@ -312,9 +381,9 @@ function ChatGrande({ captura, tipo, setTipo, mensaje, setMensaje, titulo, pedid
               <div style={{ height: 200, borderRadius: 10, border: '2px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: 13 }}>Sin captura</div>
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-              <button type="button" style={{ ...opcionBtn, fontSize: 12.5 }} onClick={onRecapturar}>📷 Volver a capturar</button>
+              {!delSistema && <button type="button" style={{ ...opcionBtn, fontSize: 12.5 }} onClick={onRecapturar}>📷 Volver a capturar</button>}
               <button type="button" style={{ ...opcionBtn, fontSize: 12.5 }} onClick={onCambiar}>🖼 Usar otra imagen</button>
-              {captura && <button type="button" style={{ ...opcionBtn, fontSize: 12.5 }} onClick={onQuitar}>Quitar captura</button>}
+              {captura && !delSistema && <button type="button" style={{ ...opcionBtn, fontSize: 12.5 }} onClick={onQuitar}>Quitar captura</button>}
             </div>
           </div>
           <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 10 }}>

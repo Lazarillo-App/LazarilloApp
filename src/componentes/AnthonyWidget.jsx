@@ -1,20 +1,17 @@
 // src/componentes/AnthonyWidget.jsx
-// Botón flotante de Anthony para páginas públicas (antes de ingresar) —
-// mismo lugar/rol que suele ocupar un botón de WhatsApp. Por ahora solo
-// deriva a soporte real por WhatsApp; más adelante esto se convierte en el
-// chatbot de Anthony con preguntas/autorespuestas predefinidas.
+// Botón flotante de Anthony (logueado). 14/11 (usuaria): un clic abre directo el chat de Anthony
+// (AnthonyChat); sin globo intermedio y sin WhatsApp. Si hay respuestas del equipo sin leer, abre
+// en "Mis pedidos".
 //
 // Se puede minimizar (el "–" sobre el botón): queda una pestañita pegada al borde derecho que no
 // tapa datos, y al tocarla vuelve. Se recuerda por navegador (solo comodidad: sin storage,
 // arranca visible).
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 import { useLocation } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { abrirChatAnthony, SIN_LEER } from '@/componentes/asistente/chatEvento';
 
-// Número de soporte temporal — se reemplaza por el definitivo más adelante.
-const SOPORTE_WHATSAPP = '541130211649';
 const CLAVE_MINIMIZADO = 'lazarillo:anthony:minimizado';
 
 function leerMinimizado() {
@@ -25,9 +22,8 @@ function guardarMinimizado(v) {
 }
 
 export default function AnthonyWidget() {
-  const [open, setOpen] = useState(false);
   const [minimizado, setMinimizado] = useState(leerMinimizado);
-  const minimizar = (v) => { setMinimizado(v); setOpen(false); guardarMinimizado(v); };
+  const minimizar = (v) => { setMinimizado(v); guardarMinimizado(v); };
   // Respuestas del equipo sin leer (las cuenta AnthonyChat): globito rojo y acceso a Mis pedidos (13/11).
   const [sinLeer, setSinLeer] = useState(0);
   useEffect(() => {
@@ -38,9 +34,6 @@ export default function AnthonyWidget() {
   const globito = sinLeer > 0 ? (
     <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, background: '#dc2626', color: '#fff', fontSize: 11.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', boxShadow: '0 1px 4px rgba(0,0,0,.3)' }}>{sinLeer}</span>
   ) : null;
-  // Logueado: ofrece volver al asistente de alta (Diego, 08/11), salvo si ya está en él.
-  const logueado = (() => { try { return !!localStorage.getItem('token'); } catch { return false; } })();
-  const enAsistente = typeof window !== 'undefined' && /^\/(alta|perfil)/.test(window.location.pathname);
   // En el asistente de alta (usuario sin negocio) no se muestra: el asistente ya tiene su propio
   // Anthony en pantalla (pedido de la usuaria, 09/11). Misma condición que el Navbar.
   const location = useLocation();
@@ -69,86 +62,7 @@ export default function AnthonyWidget() {
   }
 
   return (
-    <div data-no-captura="" style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
-      {open && (
-        <div style={{
-          width: 280, background: '#fff', borderRadius: 16, boxShadow: '0 10px 40px rgba(0,0,0,.28)',
-          border: '1px solid #e5e7eb', overflow: 'hidden',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#15213E' }}>
-            <img src={ANT.saluda} alt="Anthony" style={{ height: 42, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
-            <div style={{ color: '#fff' }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Anthony</div>
-              <div style={{ fontSize: 11, opacity: .75 }}>Asistente de Lazarillo</div>
-            </div>
-            <button
-              onClick={() => setOpen(false)}
-              aria-label="Cerrar"
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4 }}
-            >
-              ×
-            </button>
-          </div>
-          <div style={{ padding: 16 }}>
-            <p style={{ margin: 0, fontSize: 13.5, color: '#334155', lineHeight: 1.5 }}>
-              {logueado
-                ? '¡Hola! 👋 Soy Anthony. Si querés seguir cargando tu negocio, volvé al asistente. Si necesitás ayuda, escribinos por WhatsApp.'
-                : '¡Hola! 👋 Soy Anthony. Si tenés dudas antes de registrarte o necesitás ayuda urgente, escribinos por WhatsApp.'}
-            </p>
-            {logueado && !enAsistente && (
-              <a
-                href="/alta"
-                style={{
-                  marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  background: '#15213E', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 13.5,
-                  borderRadius: 10, padding: '10px 14px',
-                }}
-              >
-                ↩ Volver al asistente de alta
-              </a>
-            )}
-            {logueado && (
-              <button
-                type="button"
-                onClick={() => { setOpen(false); abrirChatAnthony(); }}
-                style={{
-                  marginTop: 14, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  background: '#2492C8', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5,
-                  borderRadius: 10, padding: '10px 14px', cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                ✉ Escribirle al equipo
-              </button>
-            )}
-            {logueado && (
-              <button
-                type="button"
-                onClick={() => { setOpen(false); abrirChatAnthony({ vista: 'pedidos' }); }}
-                style={{
-                  marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  background: '#fff', color: '#15213E', border: '1px solid #cbd5e1', fontWeight: 700, fontSize: 13.5,
-                  borderRadius: 10, padding: '9px 14px', cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                📋 Mis pedidos{sinLeer > 0 ? ` (${sinLeer} respuesta${sinLeer === 1 ? '' : 's'} nueva${sinLeer === 1 ? '' : 's'})` : ''}
-              </button>
-            )}
-            <a
-              href={`https://wa.me/${SOPORTE_WHATSAPP}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                background: '#25D366', color: '#fff', textDecoration: 'none', fontWeight: 700, fontSize: 13.5,
-                borderRadius: 10, padding: '10px 14px',
-              }}
-            >
-              💬 Hablar por WhatsApp
-            </a>
-          </div>
-        </div>
-      )}
-      <div style={{ position: 'relative' }}>
+    <div data-no-captura="" style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 1400 }}>
       <button
         onClick={() => minimizar(true)}
         aria-label="Minimizar a Anthony"
@@ -163,8 +77,9 @@ export default function AnthonyWidget() {
         –
       </button>
       <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? 'Cerrar chat de ayuda' : 'Abrir chat de ayuda'}
+        onClick={() => abrirChatAnthony(sinLeer > 0 ? { vista: 'pedidos' } : {})}
+        aria-label="Abrir el chat con Anthony"
+        title="Hablar con Anthony"
         style={{
           width: 64, height: 64, borderRadius: 20, border: 'none', cursor: 'pointer',
           background: '#15213E', boxShadow: '0 6px 20px rgba(0,0,0,.3)',
@@ -174,7 +89,6 @@ export default function AnthonyWidget() {
         <img src={ANT.saluda} alt="" style={{ height: 52, width: 'auto', objectFit: 'contain' }} />
       </button>
       {globito}
-      </div>
     </div>
   );
 }

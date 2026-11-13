@@ -1,6 +1,6 @@
 // src/componentes/super/SuperChatConfig.jsx
 // Chat de Anthony (10/11; pasó del /admin al panel de super usuarios el 13/11): a qué mails llegan
-// los pedidos, el WhatsApp de contacto, todo lo que dice Anthony (saludo, opciones, pregunta corta,
+// los pedidos, todo lo que dice Anthony (saludo, opciones, pregunta corta,
 // si pide captura) y a qué chats de Telegram llega el aviso al instante.
 import React, { useEffect, useState } from 'react';
 import { TextField, Button, IconButton, MenuItem, Select, Tooltip, Chip, Switch, FormControlLabel, Alert, Stack } from '@mui/material';
@@ -142,8 +142,7 @@ export default function SuperChatConfig() {
             onKeyDown={(e) => { if (e.key === 'Enter') agregarMail(); }} sx={{ flex: 1 }} />
           <Button onClick={agregarMail}>Agregar</Button>
         </div>
-        <TextField size="small" label="WhatsApp para lo urgente (con código de país, ej. 5491163989934)"
-          value={cfg.whatsapp || ''} onChange={(e) => set((c) => { c.whatsapp = e.target.value; return c; })} />
+        {/* 14/11 (usuaria): sin WhatsApp en el chat por ahora; el número guardado queda sin usar. */}
       </div>
 
       {/* ── Lo que dice Anthony ── */}
