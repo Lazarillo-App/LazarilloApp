@@ -41,4 +41,12 @@ export const SuperAPI = {
   borrarAjuste: (id) => http(`/superusuarios/ajustes/${id}`, { method: 'DELETE', withBusinessId: false }),
   buscarAlcance: (tipo, q) => http(`/superusuarios/buscar-alcance${qs({ tipo, q })}`, { withBusinessId: false, cache: false }),
   superusuarios: () => http('/superusuarios', { withBusinessId: false, cache: false }),
+  // Tablero de tareas del equipo (13/11/2026).
+  tareas: () => http('/superusuarios/tareas', { withBusinessId: false, cache: false }),
+  tarea: (id) => http(`/superusuarios/tareas/${id}`, { withBusinessId: false, cache: false }),
+  crearTarea: (t) => http('/superusuarios/tareas', { method: 'POST', withBusinessId: false, body: t }),
+  actualizarTarea: (id, cambios) => http(`/superusuarios/tareas/${id}`, { method: 'PATCH', withBusinessId: false, body: cambios }),
+  borrarTarea: (id) => http(`/superusuarios/tareas/${id}`, { method: 'DELETE', withBusinessId: false }),
+  notaTarea: (id, texto) => http(`/superusuarios/tareas/${id}/notas`, { method: 'POST', withBusinessId: false, body: { texto } }),
+  borrarNotaTarea: (id, notaId) => http(`/superusuarios/tareas/${id}/notas/${notaId}`, { method: 'DELETE', withBusinessId: false }),
 };
