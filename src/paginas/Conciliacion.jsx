@@ -33,6 +33,7 @@ export default function Conciliacion() {
   const pagT = useRef(null);
   const [ver, setVer] = useState(0);             // sube cuando se recargan las fuentes (rearma el módulo)
   const [mp, setMp] = useState(null);            // estado de la conexión con Mercado Pago
+  const [verBanco, setVerBanco] = useState(false); // lista simple de lo cargado (sirve sin ventas)
 
   const avisar = useCallback((t, ms = 2500) => {
     setAviso(t);
@@ -150,7 +151,11 @@ export default function Conciliacion() {
       )}
       <BarraMercadoPago bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
       {inicial.fuentes.banco?.length > 0 && (
-        <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', textAlign: 'right' }}>
+        <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => setVerBanco((v) => !v)}
+            style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
+            {verBanco ? 'Ocultar movimientos del banco' : `Ver movimientos del banco (${inicial.fuentes.banco.length})`}
+          </button>
           <button type="button" onClick={borrarBanco}
             title="Saca todos los movimientos del banco cargados en esta sucursal (por archivo o traídos de Mercado Pago)"
             style={{ border: 'none', background: 'none', color: '#8a93a3', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline' }}>
@@ -158,9 +163,48 @@ export default function Conciliacion() {
           </button>
         </div>
       )}
+      {verBanco && inicial.fuentes.banco?.length > 0 && <ListaBanco filas={inicial.fuentes.banco} />}
       {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
       <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
         pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} />
+    </div>
+  );
+}
+
+// Lista simple de los movimientos del banco cargados (13/11): el módulo arma sus tablas recién
+// cuando hay ventas y banco; esto deja ver lo traído de Mercado Pago (o subido) igual.
+const pesos = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+function ListaBanco({ filas }) {
+  const orden = [...filas].sort((a, b) => String(b.ts || b.fecha || '').localeCompare(String(a.ts || a.fecha || '')));
+  const total = orden.reduce((a, f) => a + (Number(f.imp) || 0), 0);
+  const th = { textAlign: 'left', padding: '7px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#8a93a3', fontWeight: 700, borderBottom: '1px solid rgba(21,33,62,.12)', position: 'sticky', top: 0, background: '#F7F9FB' };
+  const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid rgba(21,33,62,.07)', color: '#15213E' };
+  return (
+    <div style={{ maxWidth: 1180, margin: '8px auto 0', padding: '0 22px' }}>
+      <div style={{ background: '#fff', border: '1px solid rgba(21,33,62,.16)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', fontSize: 13, color: '#5b6577', borderBottom: '1px solid rgba(21,33,62,.1)' }}>
+          {orden.length} movimiento{orden.length === 1 ? '' : 's'} · total <b style={{ color: '#15213E' }}>{pesos(total)}</b>
+        </div>
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Archivo', system-ui, sans-serif" }}>
+            <thead><tr>
+              <th style={th}>Fecha</th><th style={th}>Hora</th><th style={th}>Pagador</th><th style={th}>Medio</th><th style={th}>Descripción</th><th style={{ ...th, textAlign: 'right' }}>Importe</th>
+            </tr></thead>
+            <tbody>
+              {orden.map((f) => (
+                <tr key={f.id}>
+                  <td style={td}>{f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : '—'}</td>
+                  <td style={{ ...td, color: '#8a93a3' }}>{f.hora || '—'}</td>
+                  <td style={td}>{f.cliente || <span style={{ color: '#8a93a3' }}>sin nombre</span>}</td>
+                  <td style={{ ...td, color: '#5b6577' }}>{f.tipoMedio || f.medio || '—'}</td>
+                  <td style={{ ...td, color: '#5b6577', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.descripcion || ''}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontFamily: "'Sora', sans-serif" }}>{pesos(f.imp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
