@@ -147,10 +147,14 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
   const [apellido, setApellido] = useState(empleado?.apellido || '');
   const [sector] = useState(empleado?.sector || '');
   const [activo, setActivo] = useState(empleado ? empleado.activo !== false : true);
-  const [fechaBaja, setFechaBaja] = useState(empleado?.fechaBaja || '');
+  const [fechaBaja, setFechaBajaRaw] = useState(empleado?.fechaBaja || '');
   // Fecha de alta y DNI (Diego 12/11/2026). El DNI no es obligatorio todavía: va a ser la clave
   // única de cada persona para accesos y fichajes.
-  const [fechaAlta, setFechaAlta] = useState(empleado?.fechaAlta || (empleado ? '' : hoyIso()));
+  // Fecha de alta vacía → hoy, también al editar (Diego 13/11/2026)
+  const [fechaAlta, setFechaAlta] = useState(empleado?.fechaAlta || hoyIso());
+  // Fecha de baja: cargarla es dar de baja; borrarla, reactivar. Al ir a cargarla propone hoy si hay alta.
+  const setFechaBaja = (v) => { setFechaBajaRaw(v); setActivo(!v); };
+  const proponerBaja = () => { if (!fechaBaja && fechaAlta) setFechaBaja(hoyIso()); };
   const [dni, setDni] = useState(empleado?.dni || '');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -203,11 +207,28 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
             <div style={rotulo}>Fecha de alta</div>
             <input type="date" value={fechaAlta} max={hoyIso()} onChange={(e) => setFechaAlta(e.target.value)} style={input} />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={rotulo}>DNI</div>
-            <input value={dni} inputMode="numeric" onChange={(e) => { setDni(e.target.value.replace(/[^\d.\s]/g, '')); setError(''); }} placeholder="Opcional" style={input} />
-          </div>
+          {nuevo ? (
+            <div style={{ flex: 1 }}>
+              <div style={rotulo}>DNI</div>
+              <input value={dni} inputMode="numeric" onChange={(e) => { setDni(e.target.value.replace(/[^\d.\s]/g, '')); setError(''); }} placeholder="Opcional" style={input} />
+            </div>
+          ) : (
+            <div style={{ flex: 1 }}>
+              <div style={rotulo}>Fecha de baja</div>
+              <input type="date" value={fechaBaja} min={fechaAlta || undefined} max={hoyIso()} onFocus={proponerBaja} onClick={proponerBaja}
+                onChange={(e) => setFechaBaja(e.target.value)} style={{ ...input, color: fechaBaja ? T.bad : T.text3 }} />
+            </div>
+          )}
         </div>
+        {!nuevo && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={rotulo}>DNI</div>
+              <input value={dni} inputMode="numeric" onChange={(e) => { setDni(e.target.value.replace(/[^\d.\s]/g, '')); setError(''); }} placeholder="Opcional" style={input} />
+            </div>
+            <div style={{ flex: 1 }} />
+          </div>
+        )}
         <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 6 }}>
           {empleado?.origen === 'maxirest'
             ? 'Si están en tu PDV, la fecha de alta y el DNI se completan solos; lo que cargues acá no se pisa. '
@@ -216,18 +237,16 @@ function ModalEmpleado({ empleado, sectores, onGuardar, onCerrar }) {
         </div>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: FB, fontSize: 13, color: T.text, cursor: 'pointer', marginTop: 14 }}>
-          <input type="checkbox" checked={activo} onChange={(e) => setActivo(e.target.checked)} style={{ accentColor: T.accent }} />
+          <input type="checkbox" checked={activo} onChange={(e) => {
+            const v = e.target.checked; setActivo(v);
+            if (v) setFechaBajaRaw('');
+            else if (!fechaBaja && fechaAlta) setFechaBajaRaw(hoyIso());
+          }} style={{ accentColor: T.accent }} />
           Activo
         </label>
-        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '2px 0 0 24px' }}>Los inactivos no aparecen para asignar en los cronogramas.</div>
-        {!activo && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0 0 24px' }}>
-            <span style={{ fontFamily: FB, fontSize: 12, color: T.text2 }}>Fecha de baja</span>
-            <input type="date" value={fechaBaja} max={hoyIso()} onChange={(e) => setFechaBaja(e.target.value)}
-              style={{ height: 32, fontFamily: FB, fontSize: 12.5, padding: '0 8px', borderRadius: 8, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
-            <span style={{ fontFamily: FB, fontSize: 11.5, color: T.text3 }}>vacía = hoy</span>
-          </div>
-        )}
+        <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '2px 0 0 24px' }}>
+          {nuevo ? 'Los inactivos no aparecen para asignar en los cronogramas.' : 'Cargar una fecha de baja lo da de baja; borrarla lo reactiva. Los inactivos no aparecen en los cronogramas.'}
+        </div>
         {empleado?.bajaMaxi && (
           <div style={{ fontFamily: FB, fontSize: 12, color: T.warn, marginTop: 6 }}>
             MaxiRest le dio la baja el {ddmmaaaa(empleado.bajaMaxi)}. Si lo reactivás, la sincronización lo respeta.
