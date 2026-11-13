@@ -6,7 +6,9 @@
 // Dos caminos:
 //  1. Pegar (Ctrl+V) una imagen en cualquier parte de Lazarillo que no sea un campo que la use:
 //     funciona en todos los navegadores y no pide permiso.
-//  2. Automático: al volver a Lazarillo después de sacar la captura (o al apretar Impr Pant), se mira
+//  2. Arrastrar y soltar una imagen sobre Lazarillo (en Mac: la miniatura de la esquina). Si
+//     la suelta sobre una zona que ya recibe archivos (subir planillas, etc.) manda esa zona.
+//  3. Automático: al volver a Lazarillo después de sacar la captura (o al apretar Impr Pant), se mira
 //     si en el portapapeles hay una imagen NUEVA. Solo en Chrome/Edge y solo si el cliente lo activó
 //     (el navegador le pide permiso una vez para "ver el portapapeles"). Se puede apagar.
 const CLAVE_AUTO = 'lazarillo:anthony:capturas-auto';
@@ -18,6 +20,13 @@ const leerPref = () => { try { return localStorage.getItem(CLAVE_AUTO); } catch 
 const guardarPref = (v) => { try { localStorage.setItem(CLAVE_AUTO, v); } catch { /* sin storage */ } };
 
 /** ¿El navegador permite leer imágenes del portapapeles? (Chrome/Edge) */
+/** ¿Es una Mac? (ahí la captura va al escritorio salvo que se cambie a "Portapapeles") */
+export function esMac() {
+  if (typeof navigator === 'undefined') return false;
+  const p = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '';
+  return /mac/i.test(p) && !(navigator.maxTouchPoints > 1); // un iPad se presenta como Mac
+}
+
 export function autoDisponible() {
   return typeof navigator !== 'undefined' && !!navigator.clipboard?.read && !!navigator.permissions?.query;
 }
@@ -70,7 +79,7 @@ const esCampoQueUsaImagenes = (el) => !!el?.closest?.('[data-no-captura], [data-
  * Empieza a escuchar. onImagen(blob) se llama con cada captura nueva.
  * Devuelve la función para dejar de escuchar.
  */
-export function escucharCapturasDelSistema(onImagen) {
+export function escucharCapturasDelSistema(onImagen, { onArrastre } = {}) {
   let salioEn = 0;
   let viva = true;
 
@@ -110,13 +119,46 @@ export function escucharCapturasDelSistema(onImagen) {
   };
   const alTecla = (e) => { if (e.key === 'PrintScreen') setTimeout(revisar, 600); };
 
+  // Arrastrar y soltar. Solo archivos de imagen; las zonas de la app que reciben archivos frenan el
+  // evento (preventDefault) y ahí no nos metemos.
+  let apagarAviso = null;
+  const avisar = (v) => {
+    clearTimeout(apagarAviso);
+    onArrastre?.(v);
+    if (v) apagarAviso = setTimeout(() => onArrastre?.(false), 300);
+  };
+  const traeImagen = (dt) => [...(dt?.items || [])].some((i) => i.kind === 'file' && i.type.startsWith('image/'));
+  const alArrastrar = (e) => {
+    if (!traeImagen(e.dataTransfer)) return;
+    if (e.defaultPrevented || e.target?.closest?.('[data-acepta-imagen]')) { avisar(false); return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    avisar(true);
+  };
+  const alSoltar = async (e) => {
+    if (!traeImagen(e.dataTransfer)) return;
+    avisar(false);
+    // Sobre el chat grande también vale (cambia la imagen); solo se respetan las zonas que la usan.
+    if (e.defaultPrevented || e.target?.closest?.('[data-acepta-imagen]')) return;
+    e.preventDefault();
+    const archivo = [...(e.dataTransfer.files || [])].find((x) => x.type.startsWith('image/'));
+    if (!archivo) return;
+    ultimaFirma = await firma(archivo);
+    onImagen(archivo);
+  };
+
   window.addEventListener('paste', alPegar);
+  window.addEventListener('dragover', alArrastrar);
+  window.addEventListener('drop', alSoltar);
   window.addEventListener('blur', alSalir);
   window.addEventListener('focus', alVolver);
   window.addEventListener('keyup', alTecla);
   return () => {
     viva = false;
+    clearTimeout(apagarAviso);
     window.removeEventListener('paste', alPegar);
+    window.removeEventListener('dragover', alArrastrar);
+    window.removeEventListener('drop', alSoltar);
     window.removeEventListener('blur', alSalir);
     window.removeEventListener('focus', alVolver);
     window.removeEventListener('keyup', alTecla);

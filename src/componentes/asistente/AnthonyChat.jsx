@@ -11,7 +11,7 @@ import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
 import { capturarPantalla, imagenADataUrl } from '@/componentes/soporte/capturaPantalla';
-import { escucharCapturasDelSistema, estadoAuto, activarAuto, apagarAuto } from '@/componentes/soporte/capturaDelSistema';
+import { escucharCapturasDelSistema, estadoAuto, activarAuto, apagarAuto, esMac } from '@/componentes/soporte/capturaDelSistema';
 // 14/11 (usuaria): sin WhatsApp; el botón de Anthony abre directo este chat; "Chat" y "Mis pedidos"
 // son pestañas arriba; y las capturas que el cliente saca con su compu (Win+Shift+S, Impr Pant) o pega
 // con Ctrl+V abren el chat grande para mandarlas o cancelar (capturaDelSistema.js).
@@ -34,6 +34,11 @@ const COLOR_ESTADO = {
 const fecha = (iso) => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const tipoDeOpcion = (op) => op?.tipo || (op?.id === 'tecnico' ? 'problema' : op?.id === 'cambio' ? 'pedido' : 'consulta');
 const MAX_POLL_MS = 3 * 60 * 1000;
+// Teclas según la compu (14/11): en Mac la captura al portapapeles es Cmd + Ctrl + Shift + 4.
+const MAC = esMac();
+const TECLAS = MAC
+  ? { captura: 'Cmd + Ctrl + Shift + 4', pegar: 'Cmd + V' }
+  : { captura: 'Windows + Shift + S', pegar: 'Ctrl + V' };
 
 export default function AnthonyChat() {
   const [abierto, setAbierto] = useState(false);
@@ -58,6 +63,8 @@ export default function AnthonyChat() {
 
   const [delSistema, setDelSistema] = useState(false); // la captura vino de la compu del cliente
   const [auto, setAuto] = useState('no');              // capturas automáticas: activo | apagado | no
+  const [comoMac, setComoMac] = useState(false);       // explicación de cómo activarlo en Mac
+  const [arrastrando, setArrastrando] = useState(false); // una imagen arrastrada sobre Lazarillo
 
   const reiniciar = () => {
     setOpcion(null); setRespuesta(''); setPaso('menu'); setMensaje(''); setLibre(''); setError('');
@@ -125,7 +132,8 @@ export default function AnthonyChat() {
       if (st.enviando) return;
       let url;
       try { url = await imagenADataUrl(blob); } catch { return; }
-      const enCurso = st.abierto && (st.paso === 'captura' || st.paso === 'mensaje');
+      // Con el chat grande abierto solo se cambia la imagen; armando un pedido, se suma a ese pedido.
+      const enCurso = st.grande || (st.abierto && (st.paso === 'captura' || st.paso === 'mensaje'));
       if (!enCurso) {
         reiniciar();
         setTipo('problema');
@@ -134,13 +142,14 @@ export default function AnthonyChat() {
       setError('');
       setCaptura(url);
       setGrande(true);
-    });
+    }, { onArrastre: setArrastrando });
   }, []);
   const cambiarAuto = async () => {
     if (auto === 'activo') { apagarAuto(); setAuto('apagado'); return; }
     const r = await activarAuto();
     setAuto(r);
-    if (r !== 'activo') setError('El navegador no dio permiso para ver tus capturas. Igual podés pegarlas con Ctrl+V.');
+    if (r === 'activo') setComoMac(false);
+    else setError(`El navegador no dio permiso para ver tus capturas. Igual podés pegarlas con ${TECLAS.pegar} o arrastrarlas.`);
   };
 
   useEffect(() => {
@@ -163,7 +172,7 @@ export default function AnthonyChat() {
       setCaptura(await capturarPantalla());
       setGrande(true);
     } catch {
-      setError('No pude sacar la captura. Sacala vos con Windows + Shift + S y pegala acá con Ctrl + V, o adjuntá una imagen.');
+      setError(`No pude sacar la captura. Sacala vos con ${TECLAS.captura} y pegala acá con ${TECLAS.pegar}, o adjuntá una imagen.`);
     } finally {
       setCapturando(false);
     }
@@ -201,7 +210,19 @@ export default function AnthonyChat() {
     }
   };
 
-  if (capturando || (!abierto && !grande)) return null;
+  const avisoArrastre = arrastrando && !grande ? (
+    <div data-no-captura="" style={{
+      position: 'fixed', inset: 12, zIndex: 1700, pointerEvents: 'none', border: '3px dashed #2492C8', borderRadius: 18,
+      background: 'rgba(36,146,200,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{ background: '#15213E', color: '#fff', borderRadius: 14, padding: '14px 20px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, fontFamily: "'Archivo', system-ui, sans-serif" }}>
+        <img src={ANT.saluda} alt="" style={{ height: 36, width: 'auto' }} />
+        Soltá la imagen y se la mandamos al equipo
+      </div>
+    </div>
+  ) : null;
+  if (capturando) return null;
+  if (!abierto && !grande) return avisoArrastre;
   const chat = cfg?.chat;
   const pestaña = (activa) => ({
     flex: 1, position: 'relative', background: 'none', border: 'none', borderBottom: `3px solid ${activa ? '#2492C8' : 'transparent'}`,
@@ -215,6 +236,7 @@ export default function AnthonyChat() {
 
   return (
     <>
+      {avisoArrastre}
       {abierto && (
       <div data-no-captura="" role="dialog" aria-label="Chat con Anthony" style={{
         position: 'fixed', right: 20, bottom: 20, zIndex: 1500, width: 'min(380px, calc(100vw - 32px))', maxHeight: 'min(620px, calc(100vh - 40px))',
@@ -275,7 +297,7 @@ export default function AnthonyChat() {
                     </div>
                     <div style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.45 }}>
                       Si es de otra pantalla, andá a esa pantalla primero (el chat queda abierto) y después tocá capturar.
-                      {' '}También podés sacarla vos como siempre (<b>Windows + Shift + S</b>) y pegarla con <b>Ctrl + V</b>.
+                      {' '}También podés sacarla vos (<b>{TECLAS.captura}</b>) y pegarla con <b>{TECLAS.pegar}</b>, o arrastrar una imagen sobre Lazarillo.
                     </div>
                   </>
                 )}
@@ -317,17 +339,38 @@ export default function AnthonyChat() {
             <div ref={finRef} />
           </div>
         )}
-        {vista === 'chat' && paso === 'menu' && auto !== 'no' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderTop: '1px solid #eef2f7', fontSize: 11.5, color: '#64748b' }}>
-            <span style={{ flex: 1 }}>
-              {auto === 'activo'
-                ? '📸 Cuando saques una captura con la compu, te la ofrezco para mandar.'
-                : '📸 ¿Sacás capturas con Windows + Shift + S? Te las puedo ofrecer para mandar.'}
-            </span>
-            <button type="button" onClick={cambiarAuto}
-              style={{ background: 'none', border: 'none', color: '#2492C8', fontWeight: 700, fontSize: 11.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-              {auto === 'activo' ? 'Desactivar' : 'Activar'}
-            </button>
+        {vista === 'chat' && paso === 'menu' && (auto !== 'no' || MAC) && (
+          <div style={{ borderTop: '1px solid #eef2f7', padding: '7px 12px', fontSize: 11.5, color: '#64748b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1 }}>
+                {auto === 'activo'
+                  ? '📸 Cuando saques una captura con la compu, te la ofrezco para mandar.'
+                  : MAC
+                    ? '📸 ¿Sacás capturas en tu Mac? Te las puedo ofrecer para mandar.'
+                    : '📸 ¿Sacás capturas con Windows + Shift + S? Te las puedo ofrecer para mandar.'}
+              </span>
+              {auto === 'activo' ? (
+                <button type="button" onClick={cambiarAuto} style={{ background: 'none', border: 'none', color: '#2492C8', fontWeight: 700, fontSize: 11.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Desactivar</button>
+              ) : MAC ? (
+                <button type="button" onClick={() => setComoMac((v) => !v)} style={{ background: 'none', border: 'none', color: '#2492C8', fontWeight: 700, fontSize: 11.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>{comoMac ? 'Cerrar' : 'Cómo activarlo'}</button>
+              ) : (
+                <button type="button" onClick={cambiarAuto} style={{ background: 'none', border: 'none', color: '#2492C8', fontWeight: 700, fontSize: 11.5, cursor: 'pointer', padding: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Activar</button>
+              )}
+            </div>
+            {MAC && comoMac && auto !== 'activo' && (
+              <ol style={{ margin: '8px 0 2px', paddingLeft: 18, color: '#334155', fontSize: 12, lineHeight: 1.5, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <li>Apretá <b>Cmd + Shift + 5</b>, tocá <b>Opciones</b> y en «Guardar en» elegí <b>Portapapeles</b>. Se hace una sola vez.</li>
+                {auto !== 'no' ? (
+                  <li>
+                    Tocá <button type="button" onClick={cambiarAuto} style={{ ...btnPrimario, padding: '2px 10px', fontSize: 12, borderRadius: 6 }}>Activar</button>
+                    {' '}y, cuando el navegador pregunte, poné <b>Permitir</b>. Listo: cada captura que saques te la ofrezco para mandar.
+                  </li>
+                ) : (
+                  <li>Después de sacar la captura, pegala en Lazarillo con <b>Cmd + V</b>. (En este navegador no puedo verla solo; en Chrome sí.)</li>
+                )}
+                <li>Si preferís que quede en el escritorio, arrastrá la miniatura que aparece en la esquina y soltala sobre Lazarillo.</li>
+              </ol>
+            )}
           </div>
         )}
       </div>
