@@ -141,6 +141,37 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .rtxt{padding:20px 22px 24px;}
 .rtxt .k{font-family:'Sora',system-ui,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;color:var(--skydeep);text-transform:uppercase;}
 .rtxt h3{font-family:'Sora',system-ui,sans-serif;font-size:19px;line-height:1.3;color:var(--ink);font-weight:700;margin-top:8px;}
+.cal{display:flex;flex-direction:column;gap:4px;font-size:12px;}
+.vcoc{flex:1;border-radius:10px;overflow:hidden;background:#fffdf7;display:flex;flex-direction:column;}
+.vcoc-h{background:#1c1917;color:#fef9c3;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;}
+.vcoc-h b{display:block;font-size:12.5px;font-weight:800;}
+.vcoc-h span{display:block;font-size:10px;opacity:.7;font-family:'Archivo',system-ui,sans-serif;}
+.vcoc-h em{font-style:normal;background:#fef9c3;color:#1c1917;border-radius:50px;padding:1px 8px;font-size:10px;font-weight:700;}
+.vcoc-b{padding:5px 10px;color:#1c1917;font-family:'Archivo',system-ui,sans-serif;}
+.vcoc-t{font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#78350f;margin-bottom:1px;}
+.vcoc-r{display:flex;justify-content:space-between;font-size:11.5px;padding:1.5px 0;border-bottom:1px solid #e7e5e4;}
+.vcoc-r span{font-weight:600;}
+.cal-h,.cal-r{display:grid;grid-template-columns:64px repeat(7,1fr);gap:4px;align-items:center;}
+.cal-h span{text-align:center;color:rgba(255,255,255,.55);font-size:11px;}
+.cal-t{color:rgba(255,255,255,.75);}
+.cal-c{height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;}
+.asesores{background:var(--navy);color:#fff;padding:90px 0;}
+.asesores h2{font-size:38px;font-weight:800;letter-spacing:-.8px;line-height:1.15;margin:10px 0 14px;max-width:1000px;}
+.asesores h2 span{color:var(--sky);}
+.asesores .sub{font-size:18px;color:rgba(255,255,255,.72);max-width:760px;}
+.pasos{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:40px 0 44px;}
+.paso{display:flex;gap:14px;align-items:flex-start;border-top:2px solid rgba(91,194,234,.35);padding-top:16px;}
+.paso-n{font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:28px;color:var(--sky);line-height:1;}
+.paso b{font-family:'Sora',system-ui,sans-serif;font-size:17px;}
+.paso p{font-size:15px;color:rgba(255,255,255,.65);margin-top:4px;}
+.agrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.acard{background:var(--navy2);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:28px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;transition:border-color .2s,transform .2s;}
+.acard:hover{border-color:rgba(91,194,234,.6);transform:translateY(-4px);}
+.aini{width:64px;height:64px;border-radius:50%;background:var(--sky);color:var(--navy);display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:22px;margin-bottom:12px;}
+.anm{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:20px;}
+.arol{font-size:15px;color:rgba(255,255,255,.8);}
+.aexp{font-size:14px;color:rgba(255,255,255,.55);margin-bottom:16px;}
+.aesp{margin-top:auto;font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:700;color:var(--sky);border:1px solid rgba(91,194,234,.45);border-radius:50px;padding:6px 14px;}
 .vlbl{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:600;}
 .vchip{display:inline-flex;align-items:center;gap:6px;border-radius:50px;padding:7px 13px;font-size:13.5px;font-weight:700;}
 .vrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:13.5px;}
@@ -154,7 +185,7 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm img{height:56px;width:auto;display:block;opacity:.7;transition:opacity .2s;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
-@media(max-width:820px){.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:820px){.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
   .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
@@ -197,6 +228,13 @@ const integraciones = [
   { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
   { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
+];
+
+// Asesores (Florencia se suma cuando confirme).
+const asesores = [
+  { ini: 'DA', nm: 'Diego Sebastián Albo', rol: 'Emprendedor desde la cuna', exp: 'Gastronómico hace una década', esp: 'Rentabilidad y manejo de equipos' },
+  { ini: 'MG', nm: 'Martín Gil Herrera', rol: 'Empresario y chef ejecutivo', exp: 'Gastronómico hace más de tres décadas', esp: 'Finanzas y costos' },
+  { ini: 'MV', nm: 'Mairene Villasmil', rol: 'Gastronómica operativa', exp: 'Programadora', esp: 'Implementaciones' },
 ];
 
 const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
@@ -311,7 +349,7 @@ export default function LazarilloLanding() {
       <section className="insight">
         <div className="wrap">
           <span className="q">"</span>
-          <p>Lo primero que falla en un equipo es la <b>comunicación</b>. Lazarillo viene a resolver eso:
+          <p>Lo primero que falla en un equipo es la <b>comunicación</b>. Lazarillo
             convierte el corazón de tu restaurante —su menú y su ingeniería— en información clara para toda tu operación.</p>
         </div>
       </section>
@@ -321,36 +359,34 @@ export default function LazarilloLanding() {
         <div className="wrap">
           <div className="kick">Qué cambia</div>
           <h2>Un negocio con Lazarillo <span>sabe dónde está parado.</span></h2>
-          <p className="sub">No es más información: son seis cosas que pasa a saber —y a hacer— todos los días.</p>
+          <p className="sub">No es más información: son procesos y áreas vinculadas que se ejecutan todos los días.</p>
           <div className="rgrid">
-            {/* 1 canasta */}
+            {/* 1+2 canasta y precios: van de la mano */}
             <div className="rcard">
-              <div className="rvis">
+              <div className="rvis" style={{ padding: '14px 18px' }}>
                 <svg viewBox="0 0 260 110" width="100%" height="100%">
-                  <polyline points="0,90 50,82 100,70 150,62 200,48 260,40" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="3" strokeDasharray="6 6" />
-                  <polyline points="0,92 50,78 100,72 150,50 200,40 260,18" fill="none" stroke="#5BC2EA" strokeWidth="4" strokeLinecap="round" />
-                  <circle cx="260" cy="18" r="6" fill="#5BC2EA" />
+                  <polyline points="0,100 50,94 100,86 150,80 200,72 260,66" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="3" strokeDasharray="6 6" />
+                  <polyline points="0,102 50,92 100,86 150,70 200,60 260,46" fill="none" stroke="#5BC2EA" strokeWidth="4" strokeLinecap="round" />
+                  <circle cx="254" cy="47" r="6" fill="#5BC2EA" />
                   <text x="0" y="12" fill="#5BC2EA" fontSize="13" fontWeight="700">Tu canasta</text>
-                  <text x="190" y="66" fill="rgba(255,255,255,.55)" fontSize="12">IPC</text>
+                  <text x="214" y="88" fill="rgba(255,255,255,.55)" fontSize="12">IPC</text>
                 </svg>
+                <span className="vchip" style={{ position: 'absolute', top: 12, right: 14, background: '#5BC2EA', color: '#12111F', fontSize: 12.5 }}>Aumento sugerido +6,5% ✓</span>
               </div>
-              <div className="rtxt"><div className="k">Costos</div><h3>Conoce su propia canasta de costos y no depende del IPC.</h3></div>
+              <div className="rtxt"><div className="k">Costos y precios</div><h3>Conoce su propia canasta de costos y sus precios de venta la siguen —no el IPC.</h3></div>
             </div>
-            {/* 2 precios */}
+            {/* 3 operación: la receta tal como la ve la cocina (Vista Cocina) */}
             <div className="rcard">
-              <div className="rvis" style={{ flexDirection: 'column', gap: 12 }}>
-                <div className="vrow"><span className="vlbl">Tu canasta subió</span><span className="vchip" style={{ background: 'rgba(91,194,234,.18)', color: '#5BC2EA' }}>+6,1%</span></div>
-                <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,.12)' }} />
-                <div className="vrow"><span className="vlbl">Aumento sugerido</span><span className="vchip" style={{ background: '#5BC2EA', color: '#12111F' }}>+6,5% ✓</span></div>
-              </div>
-              <div className="rtxt"><div className="k">Precios</div><h3>Sus precios de venta siguen a su canasta de costos, no solo a la receta.</h3></div>
-            </div>
-            {/* 3 operación */}
-            <div className="rcard">
-              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-                {[['Cocina', 'Elaboración paso a paso'], ['Barra', 'Armado y emplatado'], ['Salón', 'Despacho y descripción']].map(([a, b]) => (
-                  <div className="vrow" key={a}><span><b style={{ color: '#5BC2EA' }}>{a}</b> <span style={{ color: 'rgba(255,255,255,.7)', fontWeight: 400 }}>· {b}</span></span><span style={{ color: '#34d399' }}>✓</span></div>
-                ))}
+              <div className="rvis" style={{ alignItems: 'stretch', padding: '12px 16px' }}>
+                <div className="vcoc">
+                  <div className="vcoc-h"><div><b>🍽 Milanesa napolitana</b><span>Rinde 1 porción</span></div><em>Vista Cocina</em></div>
+                  <div className="vcoc-b">
+                    <div className="vcoc-t">Ingredientes</div>
+                    {[['Milanesa de ternera', '1 u'], ['Salsa de tomate', '60 g'], ['Muzzarella', '80 g']].map(([a, c]) => (
+                      <div className="vcoc-r" key={a}><span>{a}</span><b>{c}</b></div>
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="rtxt"><div className="k">Operación</div><h3>Todo el equipo sabe elaborar y despachar cada producto —y colabora en eso.</h3></div>
             </div>
@@ -387,6 +423,19 @@ export default function LazarilloLanding() {
               </div>
               <div className="rtxt"><div className="k">Menú</div><h3>Sabe en qué productos del menú tiene que enfocarse.</h3></div>
             </div>
+            {/* 7 personal: turnos a demanda y costo de abrir la jornada */}
+            <div className="rcard">
+              <div className="rvis" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6, padding: '14px 18px' }}>
+                <div className="cal">
+                  <div className="cal-h"><span /> {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <span key={i}>{d}</span>)}</div>
+                  {[['Mediodía', [2, 2, 2, 3, 3, 4, 4]], ['Noche', [2, 2, 3, 3, 5, 6, 4]]].map(([t, v]) => (
+                    <div className="cal-r" key={t}><span className="cal-t">{t}</span>{v.map((n, i) => <span key={i} className="cal-c" style={{ background: `rgba(91,194,234,${0.12 + n * 0.12})` }}>{n}</span>)}</div>
+                  ))}
+                </div>
+                <div className="vrow" style={{ borderTop: '1px solid rgba(255,255,255,.12)', paddingTop: 8 }}><span className="vlbl">Abrir el sábado te cuesta</span><b style={{ color: '#5BC2EA', fontSize: 18, whiteSpace: 'nowrap' }}>$ 1,2 M</b></div>
+              </div>
+              <div className="rtxt"><div className="k">Personal</div><h3>Arma sus turnos según la demanda y sabe cuánto le cuesta abrir cada jornada.</h3></div>
+            </div>
           </div>
         </div>
       </section>
@@ -416,6 +465,31 @@ export default function LazarilloLanding() {
                 <div className="lbl">{c.lbl}</div>
                 {c.q && <q>{c.q}</q>}
                 {c.by && <div className="by">{c.by}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ASESORES: el valor humano */}
+      <section className="asesores" id="asesores">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Asesores gastronómicos</div>
+          <h2>Software hay mucho. Hecho por gastronómicos para gastronómicos, poco. <span>Lo que nos diferencia es quién te acompaña en el proceso.</span></h2>
+          <p className="sub">Somos gastronómicos asesorando gastronómicos. Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
+          <div className="pasos">
+            {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
+              <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
+            ))}
+          </div>
+          <div className="agrid">
+            {asesores.map((a) => (
+              <div className="acard" key={a.nm}>
+                <div className="aini">{a.ini}</div>
+                <div className="anm">{a.nm}</div>
+                <div className="arol">{a.rol}</div>
+                <div className="aexp">{a.exp}</div>
+                <div className="aesp">{a.esp}</div>
               </div>
             ))}
           </div>
@@ -457,13 +531,6 @@ export default function LazarilloLanding() {
           <div className="chips">
             {visionChips.map((c) => <span className="chip" key={c}>{c}</span>)}
           </div>
-        </div>
-      </section>
-
-      {/* FOUNDER */}
-      <section className="founder">
-        <div className="wrap">
-          <p>Lazarillo nace de <b>más de una década</b> gestionando un restaurante propio. No es teoría: es el sistema que me hubiera gustado tener.</p>
         </div>
       </section>
 
