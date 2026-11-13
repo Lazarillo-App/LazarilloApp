@@ -5,7 +5,8 @@
 // el trabajo de cada período y la memoria de pagadores. Solo dueño y admin (App.jsx).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
-import { ConciliacionAPI } from '@/servicios/apiConciliacion';
+import { ConciliacionAPI, MercadoPagoAPI } from '@/servicios/apiConciliacion';
+import { Link as RouterLink } from 'react-router-dom';
 import ModuloConciliacion from '@/componentes/conciliacion/ModuloConciliacion';
 
 const iniciales = (nombre) => String(nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
@@ -18,12 +19,19 @@ export default function Conciliacion() {
   const [aviso, setAviso] = useState('');         // "Guardado" / errores de guardado
   const avisoT = useRef(null);
   const pagT = useRef(null);
+  const [ver, setVer] = useState(0);             // sube cuando se recargan las fuentes (rearma el módulo)
+  const [mp, setMp] = useState(null);            // estado de la conexión con Mercado Pago
 
   const avisar = useCallback((t, ms = 2500) => {
     setAviso(t);
     clearTimeout(avisoT.current);
     if (ms) avisoT.current = setTimeout(() => setAviso(''), ms);
   }, []);
+
+  useEffect(() => {
+    if (!bid) return;
+    MercadoPagoAPI.estado(bid).then(setMp).catch(() => setMp(null));
+  }, [bid, ver]);
 
   useEffect(() => {
     if (!bid) return;
@@ -45,7 +53,7 @@ export default function Conciliacion() {
       })
       .catch(() => { if (vivo) setError('No pude cargar la conciliación de este negocio. Probá de nuevo en un rato.'); });
     return () => { vivo = false; clearTimeout(pagT.current); };
-  }, [bid]);
+  }, [bid, ver]);
 
   const persist = useMemo(() => (bid && inicial ? {
     fuentes: inicial.fuentes,
@@ -90,9 +98,60 @@ export default function Conciliacion() {
           borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)',
         }}>{aviso}</div>
       )}
-      {/* key: al cambiar de negocio se arma de cero con lo de ese negocio */}
-      <ModuloConciliacion key={bid} business={business} embedded persist={persist}
+      <BarraMercadoPago bid={bid} mp={mp} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
+      {/* key: al cambiar de negocio (o al traer cobros nuevos) se arma de cero */}
+      <ModuloConciliacion key={bid + ':' + ver} business={business} embedded persist={persist}
         pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} />
+    </div>
+  );
+}
+
+// Barra de Mercado Pago arriba del módulo (14/11): con la cuenta conectada, trae los cobros del
+// período y los deja como "Movimientos del banco" (reemplaza lo que había de esas fechas).
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const inicioMes = () => hoyISO().slice(0, 8) + '01';
+function BarraMercadoPago({ bid, mp, onTraido, avisar }) {
+  const [desde, setDesde] = useState(inicioMes);
+  const [hasta, setHasta] = useState(hoyISO);
+  const [trayendo, setTrayendo] = useState(false);
+  if (!mp) return null;
+  const caja = { maxWidth: 1180, margin: '16px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
+  if (!mp.conectado) {
+    if (!mp.configurado) return null;
+    return (
+      <div style={{ ...caja, background: '#5BC2EA14', border: '1px solid #5BC2EA55', color: '#15213E' }}>
+        <span>💡 Conectá <b>Mercado Pago</b> y los movimientos del banco llegan solos, sin subir el extracto.</span>
+        <RouterLink to="/configuracion?tab=7" style={{ marginLeft: 'auto', fontWeight: 700 }}>Conectar</RouterLink>
+      </div>
+    );
+  }
+  const traer = async () => {
+    if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
+    setTrayendo(true);
+    try {
+      const r = await MercadoPagoAPI.sincronizar(bid, desde, hasta);
+      avisar(`Listo: ${r.cobros} cobro${r.cobros === 1 ? '' : 's'} de Mercado Pago`, 4000);
+      onTraido();
+    } catch (e) {
+      const c = String(e?.message || '').split(':')[0].trim();
+      avisar(c === 'periodo_muy_largo' ? 'Elegí hasta 3 meses por vez.' : c === 'mp_vencido' ? 'Venció la conexión con Mercado Pago: volvé a conectarla en Conexiones.' : 'Mercado Pago no respondió. Probá de nuevo en un rato.', 8000);
+    } finally { setTrayendo(false); }
+  };
+  const inp = { fontFamily: 'inherit', fontSize: 13.5, padding: '5px 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
+  return (
+    <div style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
+      <span style={{ fontWeight: 700 }}>🏦 Mercado Pago</span>
+      <span style={{ color: '#5b6577' }}>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · último: ${mp.ultimo_sync_desde} a ${mp.ultimo_sync_hasta}` : ''}</span>
+      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={inp} />
+        <span>a</span>
+        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={inp} />
+        <button type="button" onClick={traer} disabled={trayendo}
+          title="Trae los cobros de esas fechas y reemplaza los movimientos del banco de esos días"
+          style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: trayendo ? 'wait' : 'pointer' }}>
+          {trayendo ? 'Trayendo…' : 'Traer cobros'}
+        </button>
+      </span>
     </div>
   );
 }

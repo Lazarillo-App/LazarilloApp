@@ -15,3 +15,13 @@ export const ConciliacionAPI = {
     http(`${base(bid)}/estado`, { method: 'PUT', timeoutMs: 60000, body: { periodo, estado } }),
   guardarPagadores: (bid, mapa) => http(`${base(bid)}/pagadores`, { method: 'PUT', body: { mapa } }),
 };
+
+// Conexión con Mercado Pago (14/11/2026). Ver Backend/routes/mercadopagoRoutes.js.
+const mpBase = (bid) => `/businesses/${bid}/mercadopago`;
+export const MercadoPagoAPI = {
+  estado: (bid) => http(`${mpBase(bid)}/estado`, { cache: false }),
+  autorizar: (bid) => http(`${mpBase(bid)}/autorizar`, { cache: false }),
+  conectar: (bid, code, state) => http(`${mpBase(bid)}/conectar`, { method: 'POST', timeoutMs: 60000, body: { code, state } }),
+  desconectar: (bid) => http(mpBase(bid), { method: 'DELETE' }),
+  sincronizar: (bid, desde, hasta) => http(`${mpBase(bid)}/sincronizar`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
+};

@@ -22,6 +22,7 @@ import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { useBusiness } from '@/context/BusinessContext';
 import { abrirChatAnthony } from '@/componentes/asistente/chatEvento';
 import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador } from '@/componentes/asistente/posLista';
+import MercadoPagoCaja from './MercadoPagoCaja';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 // Valor del desplegable a partir del POS guardado (un nombre que no está en la lista es "Otro").
@@ -317,6 +318,9 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
         </Caja>
       </Box>
       </>)}
+
+      {/* Billeteras y bancos (14/11): Mercado Pago, para la conciliación */}
+      <MercadoPagoCaja businessId={businessId} themeColor={themeColor} />
     </Stack>
   );
 }
