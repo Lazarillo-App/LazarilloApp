@@ -3,9 +3,12 @@
 // las ventas del POS y las cobranzas de cuenta corriente de MaxiRest con Mercado Pago. Esta
 // página lo monta para el negocio activo y le da el guardado en el servidor: lo que se sube,
 // el trabajo de cada período y la memoria de pagadores. Solo dueño y admin (App.jsx).
+// Va por SUCURSAL (usuaria 14/11: cada sucursal cobra en su propia cuenta de Mercado Pago): con
+// "Todas" elegida y el negocio con sucursales, primero se pide elegir una.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
-import { ConciliacionAPI, MercadoPagoAPI } from '@/servicios/apiConciliacion';
+import { useBranch } from '@/hooks/useBranch';
+import { ConciliacionAPI, MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
 import { Link as RouterLink } from 'react-router-dom';
 import ModuloConciliacion from '@/componentes/conciliacion/ModuloConciliacion';
 
@@ -13,7 +16,13 @@ const iniciales = (nombre) => String(nombre || '?').split(/\s+/).filter(Boolean)
 
 export default function Conciliacion() {
   const { activeBusinessId, active } = useBusiness() || {};
+  const { branches = [], activeBranchId, setActiveBranch } = useBranch() || {};
   const bid = Number(activeBusinessId) || null;
+  const reales = branches.filter((b) => b.id !== 'main');
+  // Sucursal a conciliar: la elegida; con "Todas" solo vale si el negocio no tiene otras.
+  const suc = activeBranchId == null ? (reales.length ? null : 0) : sucursalNum(activeBranchId);
+  const sucNombre = suc === null ? '' : (branches.find((b) => sucursalNum(b.id) === suc)?.name || '');
+
   const [inicial, setInicial] = useState(null);   // { fuentes, pagadores } del servidor
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');         // "Guardado" / errores de guardado
@@ -29,15 +38,16 @@ export default function Conciliacion() {
   }, []);
 
   useEffect(() => {
-    if (!bid) return;
-    MercadoPagoAPI.estado(bid).then(setMp).catch(() => setMp(null));
-  }, [bid, ver]);
+    setMp(null);
+    if (!bid || suc === null) return;
+    MercadoPagoAPI.estado(bid, suc).then(setMp).catch(() => setMp(null));
+  }, [bid, suc, ver]);
 
   useEffect(() => {
-    if (!bid) return;
+    if (!bid || suc === null) return;
     let vivo = true;
     setInicial(null); setError('');
-    ConciliacionAPI.cargar(bid)
+    ConciliacionAPI.cargar(bid, suc)
       .then((r) => {
         if (!vivo) return;
         const f = r?.fuentes || {};
@@ -51,41 +61,62 @@ export default function Conciliacion() {
           pagadores: r?.pagadores || {},
         });
       })
-      .catch(() => { if (vivo) setError('No pude cargar la conciliación de este negocio. Probá de nuevo en un rato.'); });
+      .catch(() => { if (vivo) setError('No pude cargar la conciliación. Probá de nuevo en un rato.'); });
     return () => { vivo = false; clearTimeout(pagT.current); };
-  }, [bid, ver]);
+  }, [bid, suc, ver]);
 
-  const persist = useMemo(() => (bid && inicial ? {
+  const persist = useMemo(() => (bid && suc !== null && inicial ? {
     fuentes: inicial.fuentes,
     onFuente: (tipo, filas, archivo) => {
       avisar('Guardando el archivo…', 0);
-      ConciliacionAPI.guardarFuente(bid, tipo, filas, archivo)
+      ConciliacionAPI.guardarFuente(bid, suc, tipo, filas, archivo)
         .then(() => avisar('Archivo guardado'))
         .catch(() => avisar('No se pudo guardar el archivo en el servidor: si cerrás, se pierde.', 8000));
     },
-    cargarEstado: (periodo) => ConciliacionAPI.leerEstado(bid, periodo).then((r) => r?.estado || null),
+    cargarEstado: (periodo) => ConciliacionAPI.leerEstado(bid, suc, periodo).then((r) => r?.estado || null),
     guardarEstado: (periodo, estado) => {
-      ConciliacionAPI.guardarEstado(bid, periodo, estado)
+      ConciliacionAPI.guardarEstado(bid, suc, periodo, estado)
         .then(() => avisar('Cambios guardados', 1500))
         .catch(() => avisar('No se pudieron guardar los últimos cambios. Revisá la conexión.', 8000));
     },
-  } : null), [bid, inicial, avisar]);
+  } : null), [bid, suc, inicial, avisar]);
 
   // La memoria de pagadores cambia seguido (cada conciliación de cuenta corriente): se manda
   // con una pausa corta.
   const onPagadorMap = useCallback((mapa) => {
-    if (!bid) return;
+    if (!bid || suc === null) return;
     clearTimeout(pagT.current);
-    pagT.current = setTimeout(() => { ConciliacionAPI.guardarPagadores(bid, mapa).catch(() => {}); }, 1500);
-  }, [bid]);
+    pagT.current = setTimeout(() => { ConciliacionAPI.guardarPagadores(bid, suc, mapa).catch(() => {}); }, 1500);
+  }, [bid, suc]);
 
   if (!bid) return <div style={{ padding: 32 }}>Elegí un negocio para conciliar.</div>;
+
+  // "Todas" no se concilia junto: cada sucursal tiene su cuenta de Mercado Pago.
+  if (suc === null) {
+    return (
+      <div style={{ maxWidth: 640, margin: '48px auto', padding: '0 16px', fontFamily: "'Archivo', system-ui, sans-serif", color: '#15213E' }}>
+        <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: 20, margin: '0 0 6px' }}>¿Qué sucursal querés conciliar?</h2>
+        <p style={{ color: '#5b6577', margin: '0 0 18px', fontSize: 14 }}>
+          Cada sucursal se concilia por separado, porque cada una cobra en su propia cuenta de Mercado Pago.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {branches.map((b) => (
+            <button key={b.id} type="button" onClick={() => setActiveBranch(b.id)}
+              style={{ textAlign: 'left', padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(21,33,62,.16)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, color: '#15213E' }}>
+              {b.name}{b.id === 'main' ? <span style={{ color: '#8a93a3', fontWeight: 400 }}> · principal</span> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (error) return <div style={{ padding: 32, color: '#991b1b' }}>{error}</div>;
   if (!inicial) return <div style={{ padding: 32, color: '#64748b' }}>Cargando la conciliación…</div>;
 
   const business = {
     group: active?.organization_name || active?.org_name || '',
-    name: active?.name || 'Negocio',
+    name: reales.length && sucNombre ? `${active?.name || 'Negocio'} · ${sucNombre}` : (active?.name || 'Negocio'),
     initials: iniciales(active?.name),
     color: 'var(--color-primary, #5BC2EA)',
   };
@@ -98,29 +129,38 @@ export default function Conciliacion() {
           borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)',
         }}>{aviso}</div>
       )}
-      <BarraMercadoPago bid={bid} mp={mp} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
-      {/* key: al cambiar de negocio (o al traer cobros nuevos) se arma de cero */}
-      <ModuloConciliacion key={bid + ':' + ver} business={business} embedded persist={persist}
+      {reales.length > 0 && (
+        <div style={{ maxWidth: 1180, margin: '16px auto 0', padding: '0 22px', fontSize: 14, color: '#15213E', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>Conciliando: <b>{sucNombre || 'Sucursal'}</b></span>
+          <button type="button" onClick={() => setActiveBranch(null)}
+            style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, padding: 0, textDecoration: 'underline' }}>
+            Cambiar de sucursal
+          </button>
+        </div>
+      )}
+      <BarraMercadoPago bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
+      {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
+      <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
         pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} />
     </div>
   );
 }
 
-// Barra de Mercado Pago arriba del módulo (14/11): con la cuenta conectada, trae los cobros del
-// período y los deja como "Movimientos del banco" (reemplaza lo que había de esas fechas).
+// Barra de Mercado Pago arriba del módulo (14/11): con la cuenta de la sucursal conectada, trae
+// los cobros del período y los deja como "Movimientos del banco" (reemplaza lo que había de esas fechas).
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 const inicioMes = () => hoyISO().slice(0, 8) + '01';
-function BarraMercadoPago({ bid, mp, onTraido, avisar }) {
+function BarraMercadoPago({ bid, suc, sucNombre, mp, onTraido, avisar }) {
   const [desde, setDesde] = useState(inicioMes);
   const [hasta, setHasta] = useState(hoyISO);
   const [trayendo, setTrayendo] = useState(false);
   if (!mp) return null;
-  const caja = { maxWidth: 1180, margin: '16px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
+  const caja = { maxWidth: 1180, margin: '12px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
   if (!mp.conectado) {
     if (!mp.configurado) return null;
     return (
       <div style={{ ...caja, background: '#5BC2EA14', border: '1px solid #5BC2EA55', color: '#15213E' }}>
-        <span>💡 Conectá <b>Mercado Pago</b> y los movimientos del banco llegan solos, sin subir el extracto.</span>
+        <span>💡 Conectá el <b>Mercado Pago</b>{sucNombre ? ` de ${sucNombre}` : ''} y los movimientos del banco llegan solos, sin subir el extracto.</span>
         <RouterLink to="/configuracion?tab=7" style={{ marginLeft: 'auto', fontWeight: 700 }}>Conectar</RouterLink>
       </div>
     );
@@ -129,7 +169,7 @@ function BarraMercadoPago({ bid, mp, onTraido, avisar }) {
     if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
     setTrayendo(true);
     try {
-      const r = await MercadoPagoAPI.sincronizar(bid, desde, hasta);
+      const r = await MercadoPagoAPI.sincronizar(bid, suc, desde, hasta);
       avisar(`Listo: ${r.cobros} cobro${r.cobros === 1 ? '' : 's'} de Mercado Pago`, 4000);
       onTraido();
     } catch (e) {

@@ -1,27 +1,33 @@
 // src/servicios/apiConciliacion.js
-// Módulo de conciliación bancaria (14/11/2026): guardado por negocio. Ver
-// Backend/routes/conciliacionRoutes.js.
+// Módulo de conciliación bancaria y conexión con Mercado Pago (14/11/2026). Todo va por
+// SUCURSAL: `suc` = 0 para la principal, o el id de la sucursal. Ver
+// Backend/routes/conciliacionRoutes.js y mercadopagoRoutes.js.
 import { http } from '@/servicios/apiBusinesses';
 
 const base = (bid) => `/businesses/${bid}/conciliacion`;
+const q = (suc, extra = '') => `?sucursal=${Number(suc) || 0}${extra}`;
+
+/** id de sucursal del BranchContext ('main' / null / número) → número para el backend */
+export const sucursalNum = (branchId) => (branchId === 'main' || branchId == null ? 0 : Number(branchId) || 0);
 
 export const ConciliacionAPI = {
-  cargar: (bid) => http(base(bid), { cache: false, timeoutMs: 60000 }),
-  guardarFuente: (bid, tipo, filas, archivo) =>
-    http(`${base(bid)}/fuentes/${tipo}`, { method: 'PUT', timeoutMs: 120000, body: { filas, archivo } }),
-  borrarFuente: (bid, tipo) => http(`${base(bid)}/fuentes/${tipo}`, { method: 'DELETE' }),
-  leerEstado: (bid, periodo) => http(`${base(bid)}/estado?periodo=${encodeURIComponent(periodo)}`, { cache: false }),
-  guardarEstado: (bid, periodo, estado) =>
-    http(`${base(bid)}/estado`, { method: 'PUT', timeoutMs: 60000, body: { periodo, estado } }),
-  guardarPagadores: (bid, mapa) => http(`${base(bid)}/pagadores`, { method: 'PUT', body: { mapa } }),
+  cargar: (bid, suc) => http(`${base(bid)}${q(suc)}`, { cache: false, timeoutMs: 60000 }),
+  guardarFuente: (bid, suc, tipo, filas, archivo) =>
+    http(`${base(bid)}/fuentes/${tipo}${q(suc)}`, { method: 'PUT', timeoutMs: 120000, body: { filas, archivo } }),
+  borrarFuente: (bid, suc, tipo) => http(`${base(bid)}/fuentes/${tipo}${q(suc)}`, { method: 'DELETE' }),
+  leerEstado: (bid, suc, periodo) => http(`${base(bid)}/estado${q(suc, `&periodo=${encodeURIComponent(periodo)}`)}`, { cache: false }),
+  guardarEstado: (bid, suc, periodo, estado) =>
+    http(`${base(bid)}/estado${q(suc)}`, { method: 'PUT', timeoutMs: 60000, body: { periodo, estado } }),
+  guardarPagadores: (bid, suc, mapa) => http(`${base(bid)}/pagadores${q(suc)}`, { method: 'PUT', body: { mapa } }),
 };
 
-// Conexión con Mercado Pago (14/11/2026). Ver Backend/routes/mercadopagoRoutes.js.
+// Conexión con Mercado Pago, una por sucursal. En `conectar` la sucursal viaja en el state.
 const mpBase = (bid) => `/businesses/${bid}/mercadopago`;
 export const MercadoPagoAPI = {
-  estado: (bid) => http(`${mpBase(bid)}/estado`, { cache: false }),
-  autorizar: (bid) => http(`${mpBase(bid)}/autorizar`, { cache: false }),
+  estado: (bid, suc) => http(`${mpBase(bid)}/estado${q(suc)}`, { cache: false }),
+  autorizar: (bid, suc) => http(`${mpBase(bid)}/autorizar${q(suc)}`, { cache: false }),
   conectar: (bid, code, state) => http(`${mpBase(bid)}/conectar`, { method: 'POST', timeoutMs: 60000, body: { code, state } }),
-  desconectar: (bid) => http(mpBase(bid), { method: 'DELETE' }),
-  sincronizar: (bid, desde, hasta) => http(`${mpBase(bid)}/sincronizar`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
+  desconectar: (bid, suc) => http(`${mpBase(bid)}${q(suc)}`, { method: 'DELETE' }),
+  sincronizar: (bid, suc, desde, hasta) =>
+    http(`${mpBase(bid)}/sincronizar${q(suc)}`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
 };
