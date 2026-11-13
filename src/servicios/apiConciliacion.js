@@ -19,6 +19,10 @@ export const ConciliacionAPI = {
   guardarEstado: (bid, suc, periodo, estado) =>
     http(`${base(bid)}/estado${q(suc)}`, { method: 'PUT', timeoutMs: 60000, body: { periodo, estado } }),
   guardarPagadores: (bid, suc, mapa) => http(`${base(bid)}/pagadores${q(suc)}`, { method: 'PUT', body: { mapa } }),
+  // Ventas y cobranzas de cuenta corriente desde MaxiRest (lo que sube el kit a Render).
+  maxiEstado: (bid, suc) => http(`${base(bid)}/maxi${q(suc)}`, { cache: false }),
+  maxiTraer: (bid, suc, desde, hasta) =>
+    http(`${base(bid)}/maxi${q(suc, `&desde=${desde}&hasta=${hasta}`)}`, { cache: false, timeoutMs: 120000 }),
 };
 
 // Conexión con Mercado Pago, una por sucursal. En `conectar` la sucursal viaja en el state.

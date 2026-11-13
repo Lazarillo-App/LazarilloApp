@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars, react-hooks/exhaustive-deps -- módulo de Diego: se integró sin tocar su lógica (14/11/2026) */
+/* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, react-refresh/only-export-components -- módulo de Diego: se integró sin tocar su lógica (14/11/2026) */
 import React from "react";
 import INSTR_VD from './instructivo/venta-detallada-22.jpg';
 import INSTR_CC from './instructivo/cta-cte-por-comprobante-72.jpg';
@@ -270,7 +270,7 @@ function useSheetJS() {
 // Ventas del informe 22 con cliente asignado = movimientos de la cuenta del cliente.
 // Guardamos el medio de cobro: las de CTA CTE son débito a cobrar; las de contado
 // (efectivo/MP) ya están pagas.
-function parseFacturasCC(rows) {
+export function parseFacturasCC(rows) {
   const out = [];
   (rows || []).forEach((r, i) => {
     const cli = String(r["CLINOMBRE"] || "").trim();
@@ -286,7 +286,7 @@ function parseFacturasCC(rows) {
 }
 // Guardan TODOS los campos útiles de cada fuente (aunque no siempre se
 // muestren), para poder ofrecerlos como columnas opcionales.
-function parseVentas(rows) {
+export function parseVentas(rows) {
   const EXCL = ["EFECTIVO", "CTA CTE", "CUENTA CORRIENTE"];
   const out = [];
   rows.forEach((r, i) => {
@@ -326,7 +326,7 @@ function parseVentas(rows) {
 // (todavía no cargado); efectivo y retiros no pasan por banco.
 const esMP = (p) => /MERCADO\s*PAGO/i.test((p && p.cobro) || "");
 const esGalicia = (p) => /GALICIA/i.test((p && p.cobro) || "");
-function parsePagos(rows) {
+export function parsePagos(rows) {
   const out = [];
   rows.forEach((r, i) => {
     const forma = String(r["COBRANZA"] || "").trim();
