@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
+import { BASE } from '@/servicios/apiBase';
 import DOG from '@/assets/brand/anthony.png';
 import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG, TABLERO_EJEMPLO } from '@/componentes/landing-logos';
 
@@ -88,6 +89,12 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .modal-ok{background:var(--sky);color:var(--ink);border:none;border-radius:50px;padding:14px 32px;font-size:16px;font-weight:700;font-family:'Sora',system-ui,sans-serif;cursor:pointer;width:100%;margin-top:4px;transition:box-shadow .15s,transform .15s;}
 .modal-ok:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(91,194,234,.5);}
 .modal-ok:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+.prio{display:flex;flex-wrap:wrap;gap:8px;}
+.prio button{font-family:'Archivo',system-ui,sans-serif;font-size:14px;font-weight:600;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:50px;padding:8px 14px;cursor:pointer;transition:border-color .15s,background .15s;}
+.prio button:hover{border-color:var(--sky);}
+.prio button.on{background:var(--sky);border-color:var(--sky);}
+.modal-err{background:#fdecec;color:#b42318;border-radius:10px;padding:10px 14px;font-size:14px;margin-bottom:12px;}
+.modal-box{max-height:92vh;overflow-y:auto;}
 .modal-success{text-align:center;padding:20px 0;}
 .modal-success .modal-check{font-size:48px;margin-bottom:12px;}
 .modal-success h4{font-family:'Sora',system-ui,sans-serif;font-size:20px;font-weight:700;color:var(--ink);margin-bottom:8px;}
@@ -228,24 +235,39 @@ const asesores = [
 const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
 const WA = "https://wa.me/5491163989934";
 
-// Modal de contacto
+// Prioridades para el pedido de demo (las mismas áreas del relato).
+const PRIORIDADES = ['Costos y precios', 'Rentabilidad', 'Operación y equipo', 'Proveedores', 'Menú', 'Personal y turnos'];
+
+// Modal de contacto: el pedido se guarda en el servidor y le llega por mail a los asesores.
 function ContactModal({ onClose }) {
-  const [form, setForm] = useState({ nombre: '', restaurante: '', mensaje: '' });
+  const [form, setForm] = useState({ nombre: '', restaurante: '', contacto: '', prioridad: '', mensaje: '', web: '' });
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSending(true);
-    // Simula envío — reemplazar con lógica real (email, API, etc.)
-    await new Promise(r => setTimeout(r, 1200));
-    setSending(false);
-    setSent(true);
+    setError('');
+    try {
+      const r = await fetch(`${BASE}/public/demo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) throw new Error(data.error || 'No pudimos enviar el pedido.');
+      setSent(true);
+    } catch (err) {
+      setError(err.message || 'No pudimos enviar el pedido. Escribinos por WhatsApp.');
+    } finally {
+      setSending(false);
+    }
   };
 
-  const valid = form.nombre.trim().length >= 2 && form.restaurante.trim().length >= 2;
+  const valid = form.nombre.trim().length >= 2 && form.restaurante.trim().length >= 2 && form.contacto.trim().length >= 6;
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -271,9 +293,25 @@ function ContactModal({ onClose }) {
                 <input id="restaurante" name="restaurante" value={form.restaurante} onChange={handleChange} placeholder="Ej: La Parrilla del Centro" required />
               </div>
               <div className="modal-field">
-                <label htmlFor="mensaje">¿Qué querés mejorar? (opcional)</label>
+                <label htmlFor="contacto">WhatsApp o mail</label>
+                <input id="contacto" name="contacto" value={form.contacto} onChange={handleChange} placeholder="Ej: 11 5555-1234 o ana@laparrilla.com" required />
+              </div>
+              <div className="modal-field">
+                <label>¿Cuál es tu prioridad a resolver?</label>
+                <div className="prio">
+                  {PRIORIDADES.map((p) => (
+                    <button type="button" key={p} className={form.prioridad === p ? 'on' : ''}
+                      onClick={() => setForm(f => ({ ...f, prioridad: f.prioridad === p ? '' : p }))}>{p}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="modal-field">
+                <label htmlFor="mensaje">Contanos más (opcional)</label>
                 <textarea id="mensaje" name="mensaje" value={form.mensaje} onChange={handleChange} placeholder="Ej: quiero controlar mejor mis costos y precios." />
               </div>
+              {/* Trampa para robots: una persona no ve este campo. */}
+              <input name="web" value={form.web} onChange={handleChange} tabIndex={-1} autoComplete="off" aria-hidden="true" style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }} />
+              {error && <div className="modal-err">{error}</div>}
               <button className="modal-ok" type="submit" disabled={!valid || sending}>
                 {sending ? 'Enviando…' : 'Quiero mi demo gratuita'}
               </button>
@@ -455,7 +493,7 @@ export default function LazarilloLanding() {
       <section className="asesores" id="asesores">
         <div className="wrap">
           <div className="kick" style={{ color: 'var(--sky)' }}>Asesores gastronómicos · de gastronómicos para gastronómicos</div>
-          <h2>Software hay mucho. <span>Lo que nos diferencia es quién te acompaña.</span></h2>
+          <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br />quién te acompaña.</span></h2>
           <p className="sub">Somos gastronómicos asesorando gastronómicos. Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
           <div className="pasos">
             {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
