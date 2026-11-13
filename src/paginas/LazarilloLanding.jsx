@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
 import DOG from '@/assets/brand/anthony.png';
-import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG } from '@/componentes/landing-logos';
+import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG, TABLERO_EJEMPLO } from '@/componentes/landing-logos';
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Archivo:wght@300;400;500;600;700;900&display=swap');
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -22,7 +22,7 @@ h1,h2,h3,.kick,.btn{font-family:'Sora',system-ui,sans-serif;}
 .btn-sky:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(91,194,234,.5);}
 .btn-ghost{border:1.5px solid rgba(255,255,255,.4);color:#fff;background:transparent;}
 .btn-ghost:hover{background:rgba(255,255,255,.08);}
-nav{position:sticky;top:0;z-index:50;background:rgba(18,17,31,.92);backdrop-filter:blur(8px);}
+nav{position:sticky;top:0;z-index:50;background:var(--navy);border-bottom:1px solid rgba(255,255,255,.08);box-shadow:0 6px 20px rgba(0,0,0,.18);}
 nav .wrap{display:flex;align-items:center;justify-content:space-between;height:74px;}
 nav img{height:40px;}
 nav .btn-sky{padding:11px 22px;font-size:15px;}
@@ -56,10 +56,6 @@ nav .btn-sky{padding:11px 22px;font-size:15px;}
 .vision p{font-size:18px;max-width:620px;margin:0 auto;}
 .chips{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .chip{font-size:15px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:50px;padding:10px 22px;background:#fff;}
-.founder{background:var(--navy2);color:#fff;padding:64px 0;}
-.founder .wrap{max-width:820px;text-align:center;}
-.founder p{font-family:'Sora',system-ui,sans-serif;font-weight:500;font-size:28px;line-height:1.35;}
-.founder p b{color:var(--sky);}
 .cta{background:var(--navy);color:#fff;padding:80px 0;text-align:center;border-top:1px solid rgba(255,255,255,.08);}
 .cta h2{font-size:42px;font-weight:700;letter-spacing:-.5px;margin-bottom:10px;}
 .cta .tag{font-family:'Sora',system-ui,sans-serif;letter-spacing:3px;text-transform:uppercase;font-size:14px;color:var(--sky);font-weight:600;margin-top:18px;}
@@ -141,16 +137,8 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .rtxt{padding:20px 22px 24px;}
 .rtxt .k{font-family:'Sora',system-ui,sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;color:var(--skydeep);text-transform:uppercase;}
 .rtxt h3{font-family:'Sora',system-ui,sans-serif;font-size:19px;line-height:1.3;color:var(--ink);font-weight:700;margin-top:8px;}
+.rtab{width:100%;height:100%;object-fit:cover;object-position:top center;border-radius:10px;background:#fff;display:block;}
 .cal{display:flex;flex-direction:column;gap:4px;font-size:12px;}
-.vcoc{flex:1;border-radius:10px;overflow:hidden;background:#fffdf7;display:flex;flex-direction:column;}
-.vcoc-h{background:#1c1917;color:#fef9c3;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;}
-.vcoc-h b{display:block;font-size:12.5px;font-weight:800;}
-.vcoc-h span{display:block;font-size:10px;opacity:.7;font-family:'Archivo',system-ui,sans-serif;}
-.vcoc-h em{font-style:normal;background:#fef9c3;color:#1c1917;border-radius:50px;padding:1px 8px;font-size:10px;font-weight:700;}
-.vcoc-b{padding:5px 10px;color:#1c1917;font-family:'Archivo',system-ui,sans-serif;}
-.vcoc-t{font-size:9.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#78350f;margin-bottom:1px;}
-.vcoc-r{display:flex;justify-content:space-between;font-size:11.5px;padding:1.5px 0;border-bottom:1px solid #e7e5e4;}
-.vcoc-r span{font-weight:600;}
 .cal-h,.cal-r{display:grid;grid-template-columns:64px repeat(7,1fr);gap:4px;align-items:center;}
 .cal-h span{text-align:center;color:rgba(255,255,255,.55);font-size:11px;}
 .cal-t{color:rgba(255,255,255,.75);}
@@ -375,18 +363,10 @@ export default function LazarilloLanding() {
               </div>
               <div className="rtxt"><div className="k">Costos y precios</div><h3>Conoce su propia canasta de costos y sus precios de venta la siguen —no el IPC.</h3></div>
             </div>
-            {/* 3 operación: la receta tal como la ve la cocina (Vista Cocina) */}
+            {/* 3 operación: el tablero de ejemplo de la app (Tableros) */}
             <div className="rcard">
-              <div className="rvis" style={{ alignItems: 'stretch', padding: '12px 16px' }}>
-                <div className="vcoc">
-                  <div className="vcoc-h"><div><b>🍽 Milanesa napolitana</b><span>Rinde 1 porción</span></div><em>Vista Cocina</em></div>
-                  <div className="vcoc-b">
-                    <div className="vcoc-t">Ingredientes</div>
-                    {[['Milanesa de ternera', '1 u'], ['Salsa de tomate', '60 g'], ['Muzzarella', '80 g']].map(([a, c]) => (
-                      <div className="vcoc-r" key={a}><span>{a}</span><b>{c}</b></div>
-                    ))}
-                  </div>
-                </div>
+              <div className="rvis" style={{ padding: '12px 14px' }}>
+                <img className="rtab" src={TABLERO_EJEMPLO} alt="Tablero de cocina: cada plato con sus ingredientes por color" />
               </div>
               <div className="rtxt"><div className="k">Operación</div><h3>Todo el equipo sabe elaborar y despachar cada producto —y colabora en eso.</h3></div>
             </div>
@@ -474,8 +454,8 @@ export default function LazarilloLanding() {
       {/* ASESORES: el valor humano */}
       <section className="asesores" id="asesores">
         <div className="wrap">
-          <div className="kick" style={{ color: 'var(--sky)' }}>Asesores gastronómicos</div>
-          <h2>Software hay mucho. Hecho por gastronómicos para gastronómicos, poco. <span>Lo que nos diferencia es quién te acompaña en el proceso.</span></h2>
+          <div className="kick" style={{ color: 'var(--sky)' }}>Asesores gastronómicos · de gastronómicos para gastronómicos</div>
+          <h2>Software hay mucho. <span>Lo que nos diferencia es quién te acompaña.</span></h2>
           <p className="sub">Somos gastronómicos asesorando gastronómicos. Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
           <div className="pasos">
             {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
