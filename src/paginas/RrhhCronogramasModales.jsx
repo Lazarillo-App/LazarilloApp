@@ -590,20 +590,6 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
   const empBloqueado = bloqueado ? empleados.find((e) => e.id === ctx.duenoConDias) : null;
   // Puestos gestionables desde acá (alta y baja)
   const [editPuestos, setEditPuestos] = useState(false);
-  const [nuevoCod, setNuevoCod] = useState('');
-  const [nuevoNom, setNuevoNom] = useState('');
-  const [errPuesto, setErrPuesto] = useState('');
-  const agregarPuesto = async () => {
-    const codigo = nuevoCod.trim(); const nombre = nuevoNom.trim();
-    if (!codigo || !nombre) { setErrPuesto('Poné código y nombre'); return; }
-    if (puestos.some((p) => p.codigo.toLowerCase() === codigo.toLowerCase())) { setErrPuesto(`Ya existe el código ${codigo}`); return; }
-    const ok = await onPuestos([...puestos.map(({ codigo: c, nombre: n }) => ({ codigo: c, nombre: n })), { codigo, nombre }]);
-    if (ok) { setNuevoCod(''); setNuevoNom(''); setErrPuesto(''); setTag(codigo); }
-  };
-  const quitarPuesto = async (codigo) => {
-    await onPuestos(puestos.filter((p) => p.codigo !== codigo).map(({ codigo: c, nombre: n }) => ({ codigo: c, nombre: n })));
-    if (tag === codigo) setTag('');
-  };
   const [bajaDe, setBajaDe] = useState(null);     // empleado al que se le da de baja desde la lista
   const [fechaBaja, setFechaBaja] = useState('');
   const [q, setQ] = useState('');
@@ -742,37 +728,19 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '12px 0 6px' }}>
           <span style={{ fontFamily: FB, fontSize: 12, color: T.text2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Puesto (opcional)</span>
           {onPuestos && (
-            <span onClick={() => { setEditPuestos((v) => !v); setErrPuesto(''); }} style={{ fontFamily: FB, fontSize: 11.5, fontWeight: 700, color: T.accentTxt, cursor: 'pointer' }}>
+            <span onClick={() => setEditPuestos((v) => !v)} style={{ fontFamily: FB, fontSize: 11.5, fontWeight: 700, color: T.accentTxt, cursor: 'pointer' }}>
               {editPuestos ? 'Listo' : '✎ Puestos'}
             </span>
           )}
         </div>
+        {editPuestos ? <EditorPuestos puestos={puestos} onGuardar={onPuestos} sinRotulo /> : (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {ctx.puestoMixto && !editPuestos && <Chip color={T.text3} activoBg={tag === '__mixto'} onClick={() => setTag('__mixto')} title="Cada día conserva su puesto">Como están</Chip>}
           {!editPuestos && <Chip color={!tag ? T.accentTxt : T.text3} activoBg={!tag} onClick={() => setTag('')}>Sin puesto</Chip>}
-          {puestos.map((p) => (editPuestos ? (
-            <Chip key={p.codigo} color={T.text3} title="Quitar (si está en uso en algún cronograma no se borra)">
-              {p.codigo} · {p.nombre}
-              <span onClick={() => quitarPuesto(p.codigo)} style={{ cursor: 'pointer', color: T.bad, fontWeight: 800, marginLeft: 2 }}>×</span>
-            </Chip>
-          ) : (
-            <Chip key={p.codigo} color={T.text3} activoBg={tag === p.codigo} onClick={() => setTag(p.codigo)} title={p.nombre}>{p.codigo} · {p.nombre}</Chip>
-          )))}
+          {puestos.map((p) => (
+            <Chip key={p.codigo} color={T.text3} activoBg={tag === p.codigo} onClick={() => setTag(p.codigo)}>{p.nombre}</Chip>
+          ))}
         </div>
-        {editPuestos && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input value={nuevoCod} onChange={(e) => setNuevoCod(e.target.value.slice(0, 4))} placeholder="Cód." maxLength={4}
-                style={{ width: 64, height: 40, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '0 8px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head, textAlign: 'center' }} />
-              <input value={nuevoNom} onChange={(e) => setNuevoNom(e.target.value)} placeholder="Nombre del puesto (ej. Vereda)"
-                onKeyDown={(e) => { if (e.key === 'Enter') agregarPuesto(); }}
-                style={{ flex: 1, height: 40, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
-              <button type="button" onClick={agregarPuesto} style={{ height: 40, boxSizing: 'border-box', padding: '0 14px', borderRadius: 10, border: `1px solid ${T.accent}`, background: T.accent, color: T.ink, fontFamily: FB, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar</button>
-            </div>
-            <div style={{ fontFamily: FB, fontSize: 11.5, color: errPuesto ? T.bad : T.text3, marginTop: 5 }}>
-              {errPuesto || 'El código es lo que se ve en la celda (1 a 4 letras). Los que están en uso no se pueden quitar.'}
-            </div>
-          </div>
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', columnGap: 10, margin: '12px 0 0' }}>
@@ -852,14 +820,15 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
 /* ───────── puestos: agregar, editar y borrar desde el calendario (Diego 13/11/2026) ─────────
  * Un toque en el chip lo edita (código y nombre) o lo borra; «+ Puesto» agrega. Si cambia el
  * código, los turnos ya cargados con el código viejo pasan al nuevo (lo hace el servidor). */
-function EditorPuestos({ puestos = [], onGuardar }) {
+function EditorPuestos({ puestos = [], onGuardar, sinRotulo = false }) {
   const [ed, setEd] = useState(null); // { orig: codigo|null, codigo, nombre }
   const [err, setErr] = useState('');
   const limpio = (lista) => lista.map(({ codigo, nombre }) => ({ codigo, nombre }));
   const guardar = async () => {
-    const codigo = ed.codigo.trim(); const nombre = ed.nombre.trim();
-    if (!codigo || !nombre) { setErr('Poné código y nombre'); return; }
-    if (puestos.some((p) => p.codigo.toLowerCase() === codigo.toLowerCase() && p.codigo !== ed.orig)) { setErr(`Ya existe el código ${codigo}`); return; }
+    // sin abreviaturas: un puesto nuevo usa el nombre como código; al editar, el código no cambia
+    const nombre = ed.nombre.trim(); const codigo = ed.orig || nombre;
+    if (!nombre) { setErr('Poné el nombre del puesto'); return; }
+    if (puestos.some((p) => p.codigo !== ed.orig && (p.nombre.toLowerCase() === nombre.toLowerCase() || p.codigo.toLowerCase() === nombre.toLowerCase()))) { setErr(`Ya existe ${nombre}`); return; }
     const lista = ed.orig
       ? puestos.map((p) => (p.codigo === ed.orig ? { codigo, nombre } : p))
       : [...puestos, { codigo, nombre }];
@@ -873,11 +842,11 @@ function EditorPuestos({ puestos = [], onGuardar }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>
+        {!sinRotulo && <span style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginRight: 2 }}>Puestos:</span>}
         {puestos.map((p) => (
           <Chip key={p.codigo} color={T.accentTxt} activoBg={ed?.orig === p.codigo} title="Tocá para editar o borrar"
             onClick={() => { setEd({ orig: p.codigo, codigo: p.codigo, nombre: p.nombre }); setErr(''); }}>
-            {p.codigo} · {p.nombre}
+            {p.nombre}
           </Chip>
         ))}
         <Chip color={T.text3} activoBg={ed && !ed.orig} onClick={() => { setEd({ orig: null, codigo: '', nombre: '' }); setErr(''); }}>+ Puesto</Chip>
@@ -885,9 +854,7 @@ function EditorPuestos({ puestos = [], onGuardar }) {
       {ed && (
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input autoFocus value={ed.codigo} maxLength={4} placeholder="Cód." onChange={(e) => setEd({ ...ed, codigo: e.target.value.slice(0, 4) })}
-              style={{ ...campo, width: 64, textAlign: 'center', padding: '0 6px' }} />
-            <input value={ed.nombre} placeholder="Nombre del puesto (ej. Vereda)" onChange={(e) => setEd({ ...ed, nombre: e.target.value })}
+            <input autoFocus value={ed.nombre} placeholder="Nombre del puesto (ej. Vereda)" onChange={(e) => setEd({ ...ed, nombre: e.target.value })}
               onKeyDown={(e) => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setEd(null); }}
               style={{ ...campo, width: 220, padding: '0 10px' }} />
             <Boton activo onClick={guardar}>{ed.orig ? 'Guardar' : '+ Agregar'}</Boton>
@@ -895,7 +862,7 @@ function EditorPuestos({ puestos = [], onGuardar }) {
             <Boton onClick={() => { setEd(null); setErr(''); }}>Cancelar</Boton>
           </div>
           <div style={{ fontFamily: FB, fontSize: 11.5, color: err ? T.bad : T.text3, marginTop: 5 }}>
-            {err || (ed.orig ? 'Si cambiás el código, los turnos ya cargados pasan al nuevo. Los que están en uso no se pueden borrar.' : 'El código es lo que se ve en la celda (1 a 4 letras).')}
+            {err || (ed.orig ? 'El cambio de nombre se ve en todas las semanas. Los que están en uso no se pueden borrar.' : 'Queda disponible para todos los cronogramas.')}
           </div>
         </div>
       )}

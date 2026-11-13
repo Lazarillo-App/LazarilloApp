@@ -794,6 +794,8 @@ export default function RrhhCronogramas() {
   const sinHistoria = !(config?.historia?.semanas > 0);
   // un color por horario distinto de la semana (mismo mapa que la imagen de WhatsApp)
   const colHoras = useMemo(() => coloresHorarios(filas, espacio?.turnos), [filas, espacio]);
+  // puestos con su nombre (sin abreviaturas, Diego 13/11/2026); si no está en la lista, el código guardado
+  const nomPuesto = useMemo(() => new Map((config?.puestos || []).map((p) => [p.codigo, p.nombre || p.codigo])), [config]);
 
   /* ── estilos compartidos de la tabla ── */
   // El tema de la app pinta todo «thead th» con el color del negocio (!important): los textos del
@@ -1091,8 +1093,8 @@ export default function RrhhCronogramas() {
                                         {/* en el celu no se repite el nombre: la fila ya es de esa persona */}
                                         {!cel && <div style={{ ...dosRenglones, fontFamily: FB, fontWeight: 700, fontSize: 12.5, color: T.text, maxWidth: 90, textAlign: 'center' }}>{nombreCorto(emp)}</div>}
                                         {cel && !c.puesto && !horarioDe(c, t) && <span style={{ color: T.accentTxt, fontWeight: 800, fontSize: 14 }}>✓</span>}
-                                        <div style={{ height: 16, display: 'flex', gap: 3, alignItems: 'center' }}>
-                                          {c.puesto && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.accentTxt, border: `1px solid ${T.accentTxt}55`, borderRadius: 6, padding: '0 4px' }}>{c.puesto}</span>}
+                                        <div style={{ minHeight: 16, display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 3, alignItems: 'center' }}>
+                                          {c.puesto && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.accentTxt, border: `1px solid ${T.accentTxt}55`, borderRadius: 6, padding: '0 4px', whiteSpace: 'nowrap' }}>{nomPuesto.get(c.puesto) || c.puesto}</span>}
                                           {(() => {
                                             const h = horarioDe(c, t);
                                             if (!h) return null;
