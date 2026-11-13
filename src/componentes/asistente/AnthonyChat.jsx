@@ -448,7 +448,6 @@ function ChatGrande({ captura, tipo, setTipo, mensaje, setMensaje, titulo, pedid
               </button>
               <button type="button" onClick={onCancelar} style={opcionBtn}>Cancelar</button>
             </div>
-            <div style={{ fontSize: 11.5, color: '#64748b' }}>Junto con tu pedido mandamos tu usuario, el negocio y la pantalla donde estabas, para no tener que preguntártelo.</div>
           </div>
         </div>
       </div>
