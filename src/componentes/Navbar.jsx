@@ -19,6 +19,7 @@ import { RecetasAPI } from '@/servicios/apiBusinesses';
 import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
+import NovedadesPanel from '@/componentes/NovedadesPanel';
 import ModulosDrawer from './ModulosDrawer';
 import TablerosBotonera from './plazas/TablerosBotonera';
 import PulsoDatos from './PulsoDatos';
@@ -654,6 +655,12 @@ export default function Navbar() {
               )}
             </Box>
             {conPendientes && <MisPendientesDrawer open={verPendientes} onClose={() => setVerPendientes(false)} />}
+            {/* ✦ Novedades de Lazarillo, a la izquierda de la campana (Diego 13/11/2026). */}
+            {!isAppAdmin && logged && !enAlta && (
+              <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <NovedadesPanel />
+              </Box>
+            )}
             {/* 🔔 Notificaciones (no en el asistente de alta: todavía no hay negocio; pedido de la usuaria 09/11). */}
             {!isAppAdmin && logged && !enAlta && (
               <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
