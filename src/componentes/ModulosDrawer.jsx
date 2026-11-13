@@ -41,7 +41,7 @@ const GROUPS = [
   {
     id: 'administracion', label: 'Administración',
     modules: [
-      { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: null },
+      { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: '/conciliacion' },
       // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
       { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
       // Conceptos de caja y Carga de gastos salen del menú (Diego 10/11/2026): Conceptos va en el

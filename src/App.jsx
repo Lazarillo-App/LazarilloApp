@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 
 import Navbar from './componentes/Navbar';
@@ -42,6 +42,8 @@ import Inicio from './paginas/Inicio';
 import RrhhCronogramas from './paginas/RrhhCronogramas';
 import RrhhNomina from './paginas/RrhhNomina';
 import GestionPanel from './paginas/GestionPanel';
+// Conciliación bancaria (14/11): pesada, se carga solo al entrar.
+const Conciliacion = lazy(() => import('./paginas/Conciliacion'));
 import GestionConceptos from './paginas/GestionConceptos';
 import GestionMediosPago from './paginas/GestionMediosPago';
 import GestionMovil from './paginas/GestionMovil';
@@ -318,6 +320,7 @@ export default function App() {
                 <Route path="/rrhh/nomina" element={<RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhNomina /></RequireSeccion></RequireAdminOrOwner>} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/conciliacion" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Conciliacion /></Suspense></RequireAdminOrOwner>} />
                 <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><RequireSeccion seccion="conceptos"><GestionConceptos /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><RequireSeccion seccion="medios"><GestionMediosPago /></RequireSeccion></RequireAdminOrOwner>} />

@@ -34,7 +34,7 @@ const GROUPS = [
   {
     id: 'administracion', label: 'Administración', icon: '💼',
     modules: [
-      { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: null },
+      { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: '/conciliacion' },
       { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
       { id: 'balance', label: 'Balance', emoji: '💳', desc: 'Estado contable y patrimonial.', to: null },
     ],
