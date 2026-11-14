@@ -36,6 +36,7 @@ export default function Conciliacion() {
   const [mp, setMp] = useState(null);            // estado de la conexión con Mercado Pago
   const [maxi, setMaxi] = useState(null);        // ¿hay datos de MaxiRest (kit) para esta sucursal?
   const [verBanco, setVerBanco] = useState(false); // lista simple de lo cargado (sirve sin ventas)
+  const [verEgresos, setVerEgresos] = useState(false); // lo que salió de Mercado Pago (14/11)
 
   const avisar = useCallback((t, ms = 2500) => {
     setAviso(t);
@@ -71,6 +72,7 @@ export default function Conciliacion() {
             facturas_cc: f.facturas_cc?.filas || [],
           },
           pagadores: r?.pagadores || {},
+          egresos: f.egresos?.filas || [],   // lo que salió de Mercado Pago (no va al módulo de Diego)
         });
       })
       .catch(() => { if (vivo) setError('No pude cargar la conciliación. Probá de nuevo en un rato.'); });
@@ -159,8 +161,15 @@ export default function Conciliacion() {
       )}
       <BarraTraer bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} maxi={maxi}
         guardadas={inicial.fuentes} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
-      {inicial.fuentes.banco?.length > 0 && (
+      {(inicial.fuentes.banco?.length > 0 || inicial.egresos.length > 0) && (
         <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {inicial.egresos.length > 0 && (
+            <button type="button" onClick={() => setVerEgresos((v) => !v)}
+              style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
+              {verEgresos ? 'Ocultar egresos de Mercado Pago' : `Ver egresos de Mercado Pago (${inicial.egresos.length})`}
+            </button>
+          )}
+          {inicial.fuentes.banco?.length > 0 && <>
           <button type="button" onClick={() => setVerBanco((v) => !v)}
             style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
             {verBanco ? 'Ocultar movimientos del banco' : `Ver movimientos del banco (${inicial.fuentes.banco.length})`}
@@ -170,8 +179,10 @@ export default function Conciliacion() {
             style={{ border: 'none', background: 'none', color: '#8a93a3', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline' }}>
             Borrar los movimientos del banco cargados ({inicial.fuentes.banco.length})
           </button>
+          </>}
         </div>
       )}
+      {verEgresos && inicial.egresos.length > 0 && <ListaEgresos filas={inicial.egresos} />}
       {verBanco && inicial.fuentes.banco?.length > 0 && <ListaBanco filas={inicial.fuentes.banco} />}
       {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
       <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
@@ -218,6 +229,46 @@ function ListaBanco({ filas }) {
   );
 }
 
+// Egresos de Mercado Pago (14/11): pagos hechos desde la cuenta, retiros, impuestos, comisiones,
+// devoluciones. Arriba, el total por tipo; abajo, el detalle.
+function ListaEgresos({ filas }) {
+  const orden = [...filas].sort((a, b) => `${b.fecha} ${b.hora || ''}`.localeCompare(`${a.fecha} ${a.hora || ''}`));
+  const porTipo = new Map();
+  orden.forEach((f) => porTipo.set(f.tipo || 'Otro', (porTipo.get(f.tipo || 'Otro') || 0) + (Number(f.imp) || 0)));
+  const total = orden.reduce((a, f) => a + (Number(f.imp) || 0), 0);
+  const th = { textAlign: 'left', padding: '7px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#8a93a3', fontWeight: 700, borderBottom: '1px solid rgba(21,33,62,.12)', position: 'sticky', top: 0, background: '#F7F9FB' };
+  const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid rgba(21,33,62,.07)', color: '#15213E' };
+  return (
+    <div style={{ maxWidth: 1180, margin: '8px auto 0', padding: '0 22px' }}>
+      <div style={{ background: '#fff', border: '1px solid rgba(21,33,62,.16)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', fontSize: 13, color: '#5b6577', borderBottom: '1px solid rgba(21,33,62,.1)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <span>{orden.length} egreso{orden.length === 1 ? '' : 's'} · total <b style={{ color: '#D64545' }}>{pesos(total)}</b></span>
+          {[...porTipo.entries()].sort((a, b) => b[1] - a[1]).map(([t, v]) => <span key={t}>{t}: <b style={{ color: '#15213E' }}>{pesos(v)}</b></span>)}
+        </div>
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Archivo', system-ui, sans-serif" }}>
+            <thead><tr>
+              <th style={th}>Fecha</th><th style={th}>Hora</th><th style={th}>Tipo</th><th style={th}>Detalle</th><th style={{ ...th, textAlign: 'right' }}>Importe</th>
+            </tr></thead>
+            <tbody>
+              {orden.map((f) => (
+                <tr key={f.id}>
+                  <td style={td}>{f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : '—'}</td>
+                  <td style={{ ...td, color: '#8a93a3' }}>{f.hora || '—'}</td>
+                  <td style={td}>{f.tipo || 'Otro'}</td>
+                  <td style={{ ...td, color: '#5b6577', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={f.cuenta ? `Cuenta destino ${f.cuenta}` : undefined}>{f.detalle || ''}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontFamily: "'Sora', sans-serif", color: '#D64545' }}>−{pesos(f.imp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Barra de arriba del módulo (13/11): con un solo botón trae lo del período sin subir archivos.
 //  - MaxiRest: ventas detalladas (22) y cobranzas de cuenta corriente, de lo que el kit sube a
 //    Render todos los días (llegan hasta el día anterior). Reemplaza lo guardado de esas fechas.
@@ -230,6 +281,35 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
   const [desde, setDesde] = useState(inicioMes);
   const [hasta, setHasta] = useState(hoyISO);
   const [trayendo, setTrayendo] = useState(false);
+  // Reporte de MP (nombres de pagadores y egresos) que todavía se está armando: { desde, hasta }.
+  const [esperando, setEsperando] = useState(null);
+  // Las funciones del padre cambian en cada render: por ref, así la espera no se reinicia.
+  const cb = useRef({ avisar, onTraido });
+  cb.current = { avisar, onTraido };
+
+  // MP arma el reporte en unos minutos: se vuelve a preguntar cada 40 s, hasta 10 veces.
+  useEffect(() => {
+    if (!esperando) return undefined;
+    let intentos = 0;
+    let vivo = true;
+    const t = setInterval(async () => {
+      intentos += 1;
+      try {
+        const r = await MercadoPagoAPI.reporte(bid, suc, esperando.desde, esperando.hasta);
+        if (!vivo) return;
+        if (r.reporte === 'listo') {
+          setEsperando(null);
+          cb.current.avisar(`Llegó el reporte de Mercado Pago: ${r.nombres} nombre${r.nombres === 1 ? '' : 's'} de pagadores y ${r.egresos} egreso${r.egresos === 1 ? '' : 's'}`, 6000);
+          cb.current.onTraido();
+          return;
+        }
+        if (r.reporte === 'error') { setEsperando(null); cb.current.avisar('Mercado Pago no pudo armar el reporte de movimientos. Probá Traer de nuevo más tarde.', 8000); return; }
+      } catch { /* se reintenta */ }
+      if (intentos >= 10 && vivo) { setEsperando(null); cb.current.avisar('El reporte de Mercado Pago está tardando: tocá Traer de nuevo en un rato.', 8000); }
+    }, 40000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [esperando, bid, suc]);
+
   if (!mp && !maxi) return null;
   const conMaxi = !!maxi?.disponible;
   const conMp = !!mp?.conectado;
@@ -257,6 +337,12 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
       try {
         const r = await MercadoPagoAPI.sincronizar(bid, suc, desde, hasta);
         partes.push(`${r.cobros} cobro${r.cobros === 1 ? '' : 's'} de Mercado Pago`);
+        if (r.pagos_hechos) partes.push(`${r.pagos_hechos} pago${r.pagos_hechos === 1 ? '' : 's'} hecho${r.pagos_hechos === 1 ? '' : 's'} desde la cuenta`);
+        if (r.reporte === 'listo') partes.push(`${r.egresos} egreso${r.egresos === 1 ? '' : 's'} y ${r.nombres} nombre${r.nombres === 1 ? '' : 's'} de pagadores`);
+        if (r.reporte === 'pendiente') {
+          setEsperando({ desde, hasta });
+          partes.push('el reporte con nombres y egresos lo está armando Mercado Pago: lo traigo solo en unos minutos');
+        }
       } catch (e) {
         errores.push(ERROR_MP[codigo(e)] || 'Mercado Pago no respondió. Probá de nuevo en un rato.');
       }
@@ -280,7 +366,8 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
         <span style={fuente}>
           <b style={{ color: '#15213E' }}>🏦 Mercado Pago</b>
           {conMp
-            ? <span>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}</span>
+            ? <span>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
+                {esperando ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}</span>
             : mp?.configurado
               ? <span>sin conectar{sucNombre ? ` en ${sucNombre}` : ''} · <RouterLink to="/configuracion?tab=7" style={{ fontWeight: 700 }}>Conectar</RouterLink></span>
               : <span>{mp ? 'no disponible todavía' : '…'}</span>}

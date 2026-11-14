@@ -34,4 +34,7 @@ export const MercadoPagoAPI = {
   desconectar: (bid, suc) => http(`${mpBase(bid)}${q(suc)}`, { method: 'DELETE' }),
   sincronizar: (bid, suc, desde, hasta) =>
     http(`${mpBase(bid)}/sincronizar${q(suc)}`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
+  // Reporte de liberaciones (nombres de pagadores y egresos): MP lo arma en unos minutos.
+  reporte: (bid, suc, desde, hasta) =>
+    http(`${mpBase(bid)}/reporte${q(suc)}`, { method: 'POST', timeoutMs: 120000, body: { desde, hasta } }),
 };
