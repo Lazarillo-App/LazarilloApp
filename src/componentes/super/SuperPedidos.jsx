@@ -28,7 +28,6 @@ const ALCANCES = [['', 'Sin definir'], ['negocio', 'Solo este negocio'], ['usuar
 const FILTROS = [['abiertos', 'Abiertos'], ...ESTADOS.map(([k, l]) => [k, l]), ['', 'Todos']];
 const colorDe = (lista, k) => lista.find((x) => x[0] === k)?.[2] || '#64748b';
 const nombreDe = (lista, k) => lista.find((x) => x[0] === k)?.[1] || k || '—';
-const fecha = (iso) => (iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 // Título del pedido armado con lo que eligió en el chat (Diego 14/11/2026: el texto libre no sirve
 // de título). Motivo + la respuesta a la pregunta o, si no hubo, la pantalla desde donde escribió.
 const MOTIVOS = { armar: 'Armar mi negocio', pos: 'Conectar el POS', tecnico: 'Problema técnico', duda: 'Duda de uso',
@@ -45,6 +44,7 @@ export const tituloPedido = (p) => {
   const extra = resp && !/^(otra|nada todav[ií]a)$/i.test(resp) ? resp : nombrePantalla(p.pantalla);
   return extra ? `${motivo} · ${extra}` : motivo;
 };
+const fecha = (iso) => (iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 
 const ChipColor = ({ label, color, ...p }) => (
   <Chip size="small" label={label} sx={{ bgcolor: `${color}1a`, color, fontWeight: 700, height: 22, ...p.sx }} />
