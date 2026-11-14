@@ -104,6 +104,17 @@ export default function Navbar() {
   const veMenuDiseno = !isStaff || staffPuede('ver_menu');
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
+  // Movimientos bancarios: en el header van solo los bancos conectados (Diego 14/11/2026).
+  // Lo informa la página al leer el estado de Mercado Pago; se recuerda por negocio para no pestañear.
+  const [mpConectado, setMpConectado] = useState(null);
+  useEffect(() => {
+    let v = null;
+    try { const x = sessionStorage.getItem(`bancos:mp:${activeBusinessId}`); v = x == null ? null : x === '1'; } catch { /* sin storage */ }
+    setMpConectado(v);
+    const onEstado = (e) => { if (String(e?.detail?.bid) === String(activeBusinessId)) setMpConectado(!!e.detail.mp); };
+    window.addEventListener('bancos:estado', onEstado);
+    return () => window.removeEventListener('bancos:estado', onEstado);
+  }, [activeBusinessId]);
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
   // dice "Asistente de alta" en lugar de Artículos/Insumos/Menú.
   const enAlta = !isAppAdmin && (location.pathname.startsWith('/alta') || (location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0)));
@@ -356,7 +367,7 @@ export default function Navbar() {
                     puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
                   ] : null}
                   {!enAlta && !isAppAdmin && location.pathname.startsWith('/movimientos-bancarios') ? [
-                    <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
+                    mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
                     <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
                   ] : null}
                   {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/movimientos-bancarios') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
@@ -420,15 +431,19 @@ export default function Navbar() {
                 // Administración › Movimientos bancarios (Diego 14/11/2026): los bancos conectados (hoy Mercado
                 // Pago) | CONECTÁ TU BANCO (las tarjetas de bancos: listos y próximamente).
                 if (path.startsWith('/movimientos-bancarios')) {
-                  const enBancos = new URLSearchParams(location.search).get('vista') === 'bancos';
+                  const enBancos = mpConectado !== true || new URLSearchParams(location.search).get('vista') === 'bancos';
                   return (
                     <>
-                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(!enBancos) }}
-                        onClick={() => navigate('/movimientos-bancarios')}>
-                        Mercado Pago
-                      </Button>
-                      <Box component="span" aria-hidden
-                        sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                      {mpConectado === true && (
+                        <>
+                          <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(!enBancos) }}
+                            onClick={() => navigate('/movimientos-bancarios')}>
+                            Mercado Pago
+                          </Button>
+                          <Box component="span" aria-hidden
+                            sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                        </>
+                      )}
                       <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(enBancos) }}
                         onClick={() => navigate('/movimientos-bancarios?vista=bancos')}>
                         Conectá tu banco
