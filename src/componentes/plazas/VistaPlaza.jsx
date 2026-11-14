@@ -182,6 +182,15 @@ function PanelIngrediente({ r, producto, onCambiar, onEditarItem, onCrearEquival
             <ToggleButton value="obs">Observación</ToggleButton>
             <ToggleButton value="ambos">Ambos</ToggleButton>
           </ToggleButtonGroup>
+          {/* Lo normal es seguir a la plaza; tocar otra opción lo deja como excepción de este ingrediente (Diego 14/11/2026). */}
+          <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary', textAlign: 'center', mt: -0.5, mb: 1, lineHeight: 1.3 }}>
+            {r.mostrarPropio ? (
+              <>Propio de este ingrediente ·{' '}
+                <Box component="span" onClick={() => onCambiar({ mostrar: 'plaza' })}
+                  sx={{ color: '#2492C8', fontWeight: 700, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>usar el de la plaza</Box>
+              </>
+            ) : 'Sigue a la plaza. Si lo cambiás, queda propio de este ingrediente.'}
+          </Typography>
         </>
       )}
       <Typography sx={{ ...lbl, fontWeight: 600 }}>Color</Typography>
@@ -204,7 +213,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+function Tarjeta({ p, armando, mostrarPlaza = 'peso', onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -339,7 +348,8 @@ function Tarjeta({ p, armando, onQuitar, onCambiar, onColorIngrediente, onMostra
           <PanelIngrediente key={paleta.renglon.key} r={paleta.renglon} producto={p.nombre}
             onCambiar={(cambio) => {
               const r = paleta.renglon;
-              setPaleta({ ...paleta, renglon: { ...r, ...cambio } });
+              const vista = cambio.mostrar ? { mostrar: cambio.mostrar === 'plaza' ? mostrarPlaza : cambio.mostrar, mostrarPropio: cambio.mostrar !== 'plaza' } : {};
+              setPaleta({ ...paleta, renglon: { ...r, ...cambio, ...vista } });
               if (r.extra) { if (cambio.color != null) guardar(p.renglones.map((x) => (x.key === r.key ? { ...x, color: cambio.color } : x))); return; }
               if (cambio.color != null) onColorIngrediente?.(r.ref, cambio.color);
               if (cambio.mostrar) onMostrarIngrediente?.(r.ref, cambio.mostrar);
@@ -356,11 +366,11 @@ function Tarjeta({ p, armando, onQuitar, onCambiar, onColorIngrediente, onMostra
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, mostrarPlaza, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
-        <Tarjeta key={p.articleId} p={p} armando={armando} onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
+        <Tarjeta key={p.articleId} p={p} armando={armando} mostrarPlaza={mostrarPlaza} onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
           onAliasIngrediente={onAliasIngrediente} onOcultarIngrediente={onOcultarIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
       ))}
     </Box>

@@ -15,6 +15,8 @@ export const PlazasAPI = {
   },
   async crear(sectorId, nombre, articleIds) { return ok(await httpBiz('/plazas', { method: 'POST', body: { sectorId, nombre, articleIds } }), 'No se pudo crear la plaza'); },
   async editar(id, nombre, articleIds) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds } }), 'No se pudo guardar la plaza'); },
+  // Qué muestra la plaza por defecto ('peso' | 'obs' | 'ambos'); cada ingrediente puede tener el suyo.
+  async mostrar(id, mostrar) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { mostrar } }), 'No se pudo guardar'); },
   async borrar(id) { return ok(await httpBiz(`/plazas/${id}`, { method: 'DELETE' }), 'No se pudo borrar la plaza'); },
   async vista(id, articleId) { return ok(await httpBiz(`/plazas/${id}/vista${articleId ? `?articleId=${articleId}` : ''}`, { method: 'GET', cache: false }), 'No se pudo cargar la plaza'); },
   async guardarFicha(id, articleId, ficha) { return ok(await httpBiz(`/plazas/${id}/fichas/${articleId}`, { method: 'PUT', body: ficha }), 'No se pudo guardar'); },
@@ -27,6 +29,7 @@ export const PlazasAPI = {
   },
   // Ojito: oculta / muestra el ingrediente en TODAS las recetas (queda como «Oculto» en cada receta).
   async ocultar(id, ref, oculto) { return ok(await httpBiz(`/plazas/${id}/ocultar`, { method: 'PUT', body: { ref, oculto } }), 'No se pudo ocultar'); },
-  // color, mostrar ('peso' | 'obs') y/o alias ('' lo borra): lo que no se manda queda como estaba.
+  // color, mostrar ('peso' | 'obs' | 'ambos'; 'plaza' = sin excepción, sigue a cada plaza) y/o alias ('' lo borra):
+  // lo que no se manda queda como estaba.
   async guardarColor(ref, color, mostrar, alias) { return ok(await httpBiz('/plazas/colores', { method: 'PUT', body: { ref, color, mostrar, alias } }), 'No se pudo guardar el ingrediente'); },
 };
