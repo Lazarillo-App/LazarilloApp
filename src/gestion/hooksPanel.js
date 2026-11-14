@@ -211,7 +211,9 @@ export function useMaestrosFactura(enabled = true) {
 
 // Tras cargar, editar o borrar un gasto: todo lo que se calcula con las compras.
 export function refrescarCompras(queryClient) {
-  for (const k of ['gestionPivot', 'gestionDetalle', 'gestionFactura', 'gestionCompraLineas', 'gestionProyeccion', 'gestionEquilibrio', 'gestionAnual', 'gestionActualizado', 'gestionRangoAnios', 'gestionMaestrosFactura', 'impagas', 'sin-carga', 'cta-cte']) {
+  // gestionSinRubro (Diego 14/11/2026): una factura nueva sin concepto aparecía en la tabla pero
+  // «corregir» seguía mostrando la lista vieja («No hay nada sin rubro»).
+  for (const k of ['gestionPivot', 'gestionDetalle', 'gestionSinRubro', 'gestionFactura', 'gestionCompraLineas', 'gestionProyeccion', 'gestionEquilibrio', 'gestionAnual', 'gestionActualizado', 'gestionRangoAnios', 'gestionMaestrosFactura', 'impagas', 'sin-carga', 'cta-cte']) {
     queryClient.invalidateQueries({ queryKey: [k] });
   }
 }

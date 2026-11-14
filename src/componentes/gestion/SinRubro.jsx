@@ -85,7 +85,8 @@ function BuscadorConcepto({ valor, maestros, placeholder = 'Concepto', ancho = '
 export function useSinRubro() {
   const { businessId, year, sucursal } = usePanelGestion();
   return useQuery({
-    queryKey: ['gestionSinRubro', businessId, year, sucursal ?? 'todas'],
+    // «Todas» (undefined) y la principal (null) son pedidos distintos: no comparten caché.
+    queryKey: ['gestionSinRubro', businessId, year, sucursal === undefined ? 'todas' : sucursal ?? 'principal'],
     queryFn: () => GestionAPI.sinRubro({ anio: year, sucursal }),
     enabled: !!businessId,
     staleTime: 60_000,
