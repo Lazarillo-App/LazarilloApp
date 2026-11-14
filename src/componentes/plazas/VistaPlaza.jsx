@@ -204,7 +204,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+function Tarjeta({ p, armando, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -291,8 +291,18 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
   // usa menos renglones, queda el espacio (Diego 11/11/2026).
   return (
     <Box sx={{ width: '100%', display: 'grid', gridRow: 'span 2', gridTemplateRows: 'subgrid', rowGap: 0 }}>
+      {/* En «Armar», ✕ arriba a la derecha para sacar el producto de la plaza (Diego 14/11/2026:
+          «no puedo quitar un producto del tablero»). Padding a los dos lados para que el título siga centrado. */}
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.3rem', textAlign: 'center',
-        textTransform: 'uppercase', lineHeight: 1.05, mb: 1, alignSelf: 'start' }}>
+        textTransform: 'uppercase', lineHeight: 1.05, mb: 1, alignSelf: 'start', position: 'relative', px: armando && onQuitar ? 3.5 : 0 }}>
+        {armando && onQuitar && (
+          <Tooltip title="Quitar de la plaza">
+            <IconButton size="small" aria-label={`Quitar ${p.nombre} de la plaza`} onClick={() => onQuitar(p)}
+              sx={{ position: 'absolute', right: 0, top: -2, width: 26, height: 26, color: 'text.secondary', '&:hover': { color: '#C0392B', bgcolor: 'rgba(192,57,43,.08)' } }}>
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title={onAbrir ? 'Abrir la receta' : ''} placement="top">
           <Box component="span" onClick={onAbrir ? () => onAbrir(p) : undefined}
             sx={{ cursor: onAbrir ? 'pointer' : 'default', '&:hover': onAbrir ? { color: '#2492C8' } : undefined }}>
@@ -346,11 +356,11 @@ function Tarjeta({ p, armando, onCambiar, onColorIngrediente, onMostrarIngredien
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
       {productos.map((p) => (
-        <Tarjeta key={p.articleId} p={p} armando={armando} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
+        <Tarjeta key={p.articleId} p={p} armando={armando} onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
           onAliasIngrediente={onAliasIngrediente} onOcultarIngrediente={onOcultarIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
       ))}
     </Box>
