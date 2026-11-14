@@ -20,6 +20,14 @@ export const GUIAS = [
 ];
 export const GRUPOS_GUIAS = ['Recetas', 'Resultados', 'RRHH', 'Equipo y ajustes'];
 
+/** Al terminar una guía, Anthony ofrece hacerlo ahora con su ayuda (Diego 14/11/2026): abre la guía
+ *  del modal que sigue sobre el formulario real, así el usuario carga el primero acompañado. */
+export function seguirConGuia(id) {
+  const g = GUIAS.find((x) => x.id === id);
+  if (!g) return;
+  pedirGuia(g, (ruta) => window.location.assign(ruta));
+}
+
 const CLAVE = 'lazarillo:guia-pendiente';
 export const VER_GUIA = 'lazarillo:ver-guia';
 // Si la pantalla no la pudo abrir (sin permiso, vista sin artículos…), el pedido vence y no
