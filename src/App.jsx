@@ -46,6 +46,7 @@ import GestionPanel from './paginas/GestionPanel';
 const Conciliacion = lazy(() => import('./paginas/Conciliacion'));
 const MovimientosBancarios = lazy(() => import('./paginas/MovimientosBancarios'));
 import MercadoPagoVuelta from './paginas/MercadoPagoVuelta';
+import MercadoLibreVuelta from './paginas/MercadoLibreVuelta';
 import GestionConceptos from './paginas/GestionConceptos';
 import GestionMediosPago from './paginas/GestionMediosPago';
 import GestionMovil from './paginas/GestionMovil';
@@ -329,6 +330,7 @@ export default function App() {
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/mercadopago/vuelta" element={<RequireAdminOrOwner><MercadoPagoVuelta /></RequireAdminOrOwner>} />
+                <Route path="/mercadolibre/vuelta" element={<RequireAdminOrOwner><MercadoLibreVuelta /></RequireAdminOrOwner>} />
                 <Route path="/conciliacion" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Conciliacion /></Suspense></RequireAdminOrOwner>} />
                 <Route path="/movimientos-bancarios" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><MovimientosBancarios /></Suspense></RequireAdminOrOwner>} />
                 <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />

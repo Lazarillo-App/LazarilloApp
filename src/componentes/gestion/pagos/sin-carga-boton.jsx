@@ -16,6 +16,9 @@ import { useCargaFactura } from "@/gestion/compat";
 import { ModalNuevaCarga } from "@/gestion/compat";
 import { VerFactura } from "@/componentes/gestion/CargarFactura";
 import { ARCA_KEY, ctxArca, ListaArca, ListaCorregir, SubirArca, useAjusteAutomatico, useCruceArca } from "./arca";
+// Compras de Mercado Libre por cargar (14/11/2026).
+import { ctxML, ListaComprasML, ML_KEY, useComprasML } from "./mercadolibre-compras";
+import { MercadoLibreAPI } from "@/servicios/apiMercadoLibre";
 export const sinCargaKey = (pdvId) => ["sin-carga", pdvId ?? null];
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
 export function useSinCarga(pdvId) {
@@ -54,6 +57,8 @@ function SinCargaModal({ pdvId, localId, onClose }) {
     const { data: arca, isLoading: cargandoArca, isError: falloArca, refetch: releerArca } = useCruceArca(true);
     const [cargando, setCargando] = useState(null);
     const [cargandoArcaC, setCargandoArcaC] = useState(null);
+    const ml = useComprasML();
+    const [cargandoML, setCargandoML] = useState(null);
     const [viendo, setViendo] = useState(null);
     // Un gasto que llega por apertura se carga en su PDV de origen (con su regla), por el importe entero.
     const { data: locales } = useFetchQuery(["locales"], "/api/locales");
@@ -138,6 +143,16 @@ function SinCargaModal({ pdvId, localId, onClose }) {
                 void queryClient.invalidateQueries({ queryKey: ARCA_KEY });
             }}/>);
     }
+    if (cargandoML && maestros) {
+        const c = cargandoML;
+        const { ctx, aviso } = ctxML(c);
+        return (<ModalNuevaCarga maestros={maestros} pdvsRef={pdvsRef} pdvActual={nombrePdv(pdvId)} reglaDe={reglaDe} ctx={ctx} aviso={aviso} onCerrar={() => setCargandoML(null)} onGuardado={(d) => {
+                setCargandoML(null);
+                toast.success(d.pago ? "Cargado y pagado" : "Cargado", { description: `Mercado Libre · ${fmtPesos(d.total)}` });
+                refrescarCompras(queryClient);
+                void MercadoLibreAPI.marcar(ml.bid, c.order_id, "cargada").finally(() => queryClient.invalidateQueries({ queryKey: ML_KEY(ml.bid) }));
+            }}/>);
+    }
     if (cargando && maestros) {
         const { item, mes } = cargando;
         const ctx = item.proveedorId
@@ -150,7 +165,8 @@ function SinCargaModal({ pdvId, localId, onClose }) {
                 void queryClient.invalidateQueries({ queryKey: ARCA_KEY });
             }}/>);
     }
-    const descripcion = tab === "arca" ? "Comprobantes que ARCA dice que te facturaron y no están cargados en ningún local. Es de la empresa (CUIT), no de este PDV: se carga en el PDV que corresponda."
+    const descripcion = tab === "ml" ? "Compras que el negocio hizo en Mercado Libre y todavía no se cargaron como factura. «Cargar» abre la carga con el proveedor y la fecha puestos."
+        : tab === "arca" ? "Comprobantes que ARCA dice que te facturaron y no están cargados en ningún local. Es de la empresa (CUIT), no de este PDV: se carga en el PDV que corresponda."
         : tab === "corregir" ? "Lo cargado que no coincide con ARCA. Fecha y número distintos se ajustan solos; acá quedan para decidir: cargadas dos veces e importe distinto."
             : "Gastos que aparecieron en 3 de los últimos 4 meses y en el mes todavía no están. Solo rubros visibles en Compras.";
     return (<div className="fixed inset-0 z-[1350] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -164,7 +180,7 @@ function SinCargaModal({ pdvId, localId, onClose }) {
         </div>
         <div className="flex items-center gap-3 px-6 pb-3">
           <div className="inline-flex rounded-lg bg-zinc-100 dark:bg-zinc-800 p-1 text-xs font-semibold">
-            {[["sin", `Por proyección (${kpi?.n ?? "…"})`], ["arca", `ARCA (${arca ? arca.faltan.length : "…"})`], ["corregir", `Corregir (${nCorregir ?? "…"})`], ["no", `Ya no van (${noVan.length + (arca?.anuladas.length ?? 0) + (arca?.agregadas.length ?? 0)})`]].map(([k, t]) => (<button key={k} type="button" onClick={() => setTab(k)} className={cn("rounded-md px-3 py-1.5", tab === k ? "bg-white dark:bg-zinc-950 shadow-sm" : "text-zinc-500")}>{t}</button>))}
+            {[["sin", `Por proyección (${kpi?.n ?? "…"})`], ["arca", `ARCA (${arca ? arca.faltan.length : "…"})`], ["corregir", `Corregir (${nCorregir ?? "…"})`], ...(ml.estado?.configurado ? [["ml", `Mercado Libre (${ml.conectado ? ml.pendientes.length : "—"})`]] : []), ["no", `Ya no van (${noVan.length + (arca?.anuladas.length ?? 0) + (arca?.agregadas.length ?? 0)})`]].map(([k, t]) => (<button key={k} type="button" onClick={() => setTab(k)} className={cn("rounded-md px-3 py-1.5", tab === k ? "bg-white dark:bg-zinc-950 shadow-sm" : "text-zinc-500")}>{t}</button>))}
           </div>
           {tab === "sin" && (<label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
               <input type="checkbox" checked={chicos} onChange={(e) => setChicos(e.target.checked)}/> Mostrar los chicos (menos de {fmtPesos(CHICO)})
@@ -181,7 +197,8 @@ function SinCargaModal({ pdvId, localId, onClose }) {
         {tab === "sin" && fusionados > 0 && (<p className="px-6 pb-2 text-[11px] text-sky-700 dark:text-sky-400">{fusionados} gasto{fusionados === 1 ? "" : "s"} de la proyección ya figura{fusionados === 1 ? "" : "n"} en ARCA con el comprobante real: están en la pestaña ARCA.</p>)}
 
         <div className="flex-1 overflow-y-auto border-t border-zinc-100 dark:border-zinc-800">
-          {(tab === "sin" || tab === "no" ? isLoading : cargandoArca) && <p className="p-6 text-sm text-muted-foreground">Buscando…</p>}
+          {tab !== "ml" && (tab === "sin" || tab === "no" ? isLoading : cargandoArca) && <p className="p-6 text-sm text-muted-foreground">Buscando…</p>}
+          {tab === "ml" && <ListaComprasML ml={ml} onCargar={setCargandoML}/>}
           {tab === "arca" && arca && <ListaArca data={arca} onCargar={setCargandoArcaC}/>}
           {tab === "corregir" && arca && <ListaCorregir data={arca} onVer={(rowId, detalle) => setViendo({ rowId, detalle })}/>}
           {tab === "sin" && meses.map((m) => {
