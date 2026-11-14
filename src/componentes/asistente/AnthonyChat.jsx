@@ -9,6 +9,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
+import { GUIAS, pedirGuia } from './guias';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
 import { capturarPantalla, imagenADataUrl } from '@/componentes/soporte/capturaPantalla';
 import { escucharCapturasDelSistema, estadoAuto, activarAuto, apagarAuto, esMac } from '@/componentes/soporte/capturaDelSistema';
@@ -42,7 +44,9 @@ const TECLAS = MAC
 
 export default function AnthonyChat() {
   const [abierto, setAbierto] = useState(false);
-  const [vista, setVista] = useState('chat');        // chat | pedidos
+  const [vista, setVista] = useState('chat');        // chat | pedidos | guias
+  const navigate = useNavigate();
+  const location = useLocation();
   const [cfg, setCfg] = useState(null);
   const [error, setError] = useState('');
   const [opcion, setOpcion] = useState(null);
@@ -257,9 +261,12 @@ export default function AnthonyChat() {
             📋 Mis pedidos
             {sinLeer > 0 && <PuntoRojo n={sinLeer} />}
           </button>
+          <button type="button" role="tab" aria-selected={vista === 'guias'} onClick={() => setVista('guias')} style={pestaña(vista === 'guias')}>🧭 Guías</button>
         </div>
 
-        {vista === 'pedidos' ? (
+        {vista === 'guias' ? (
+          <Guias ruta={location.pathname} onVer={(g) => { setAbierto(false); pedirGuia(g, navigate); }} />
+        ) : vista === 'pedidos' ? (
           <MisPedidos onSinLeer={actualizarSinLeer} />
         ) : (
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }} onPaste={alPegar}>
@@ -529,6 +536,34 @@ function MisPedidos({ onSinLeer }) {
         );
       })}
       {error && <div style={{ ...burbuja(true), background: '#fdecec', color: '#991b1b' }}>{error}</div>}
+    </div>
+  );
+}
+
+// Pestaña «Guías» (Diego 14/11/2026): el lugar común para volver a ver el recorrido de cada sección.
+// Primero la de la pantalla donde estás.
+function Guias({ ruta, onVer }) {
+  const aca = GUIAS.filter((g) => ruta === g.ruta);
+  const otras = GUIAS.filter((g) => ruta !== g.ruta);
+  const item = (g, destacada) => (
+    <button key={g.id} type="button" onClick={() => onVer(g)} style={{
+      ...opcionBtn, display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+      borderColor: destacada ? '#5BC2EA' : '#bfdcef', background: destacada ? '#eef8fd' : '#fff',
+    }}>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontWeight: 700 }}>{g.titulo}</span>
+        <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 1 }}>{g.detalle}</span>
+      </span>
+      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2492C8', whiteSpace: 'nowrap' }}>Ver ›</span>
+    </button>
+  );
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={burbuja(true)}>Te muestro cómo se usa cada parte, paso a paso. Elegí una:</div>
+      {aca.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>En esta pantalla</div>}
+      {aca.map((g) => item(g, true))}
+      {otras.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>{aca.length ? 'Otras secciones' : 'Secciones'}</div>}
+      {otras.map((g) => item(g, false))}
     </div>
   );
 }

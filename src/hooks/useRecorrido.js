@@ -3,9 +3,10 @@
 // (crear_articulo, receta, insumos, gestion, …). Aparece mientras el negocio no haya elegido
 // "No mostrar más" (props.onboarding.recorrido_<id>_off). "Omitir" lo cierra solo hasta la próxima
 // vez que se entra (sessionStorage); "No mostrar más" lo apaga para ese negocio.
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
+import { VER_GUIA, tomarGuiaPendiente } from '@/componentes/asistente/guias';
 
 // Solo para negocios nuevos (pedido de la usuaria, 10/11): los creados desde que salieron los
 // recorridos, tengan datos o no (un cliente nuevo de MaxiRest trae todo pero nunca usó Lazarillo).
@@ -21,8 +22,10 @@ export function negocioConRecorridos(negocio) {
 const claveSesion = (biz, id) => `lazarillo:recorrido-omitido:${biz}:${id}`;
 const omitidoEnSesion = (biz, id) => { try { return sessionStorage.getItem(claveSesion(biz, id)) === '1'; } catch { return false; } };
 
-/** pasos = cantidad de pasos; activo = si el lugar está listo para mostrarlo (ej. el modal abierto). */
-export function useRecorrido(id, pasos, activo = true) {
+/** pasos = cantidad de pasos; activo = si el lugar está listo para mostrarlo (ej. el modal abierto).
+ *  opciones.sinDatos (Diego 14/11/2026): si se pasa, arranca solo mientras la sección no tenga datos
+ *  propios del negocio (en vez de mirar si el negocio es nuevo). */
+export function useRecorrido(id, pasos, activo = true, opciones = {}) {
   const { active, activeBusinessId, refetchBusinesses } = useBusiness() || {};
   const [paso, setPaso] = useState(1);
   const [cerrado, setCerrado] = useState(() => omitidoEnSesion(activeBusinessId, id));
@@ -33,11 +36,19 @@ export function useRecorrido(id, pasos, activo = true) {
   const apagado = !!active?.props?.onboarding?.[`recorrido_${id}_off`];
   // "Omitir" se relee cada vez: hay recorridos que viven en muchas copias (el menú de cada fila de la
   // tabla) y omitirlo en una tiene que valer para todas.
+  const automatico = opciones.sinDatos !== undefined ? !!opciones.sinDatos : negocioConRecorridos(active);
   const visible = !!activo && !!activeBusinessId && (forzado
-    || (negocioConRecorridos(active) && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado));
+    || (automatico && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado));
 
   const siguiente = useCallback(() => setPaso((p) => Math.min(p + 1, pasos)), [pasos]);
   const ver = useCallback(() => { setPaso(1); setForzado(true); }, []);
+  // Guías de Anthony (pestaña «Guías»): arranca al llegar a la pantalla o si ya estás en ella.
+  useEffect(() => {
+    if (tomarGuiaPendiente(id)) ver();
+    const f = (e) => { if (e?.detail === id && tomarGuiaPendiente(id)) ver(); };
+    window.addEventListener(VER_GUIA, f);
+    return () => window.removeEventListener(VER_GUIA, f);
+  }, [id, ver]);
   const omitir = useCallback(() => {
     setForzado(false);
     setCerrado(true);
@@ -59,6 +70,7 @@ export function useRecorrido(id, pasos, activo = true) {
     noMostrarMas,
     terminar,
     ver,
-    props: (n) => ({ onSkip: omitir, onNever: noMostrarMas, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' }),
+    // Sin «No mostrar más» (Diego 14/11/2026): se cierra con Omitir y se vuelve a ver desde Guías.
+    props: (n) => ({ onSkip: omitir, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' }),
   };
 }
