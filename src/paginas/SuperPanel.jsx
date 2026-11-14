@@ -14,7 +14,7 @@ import SuperChatConfig from '@/componentes/super/SuperChatConfig';
 import SuperUsuariosSection from '@/componentes/SuperUsuariosSection';
 import { SuperAPI } from '@/servicios/apiSoporte';
 
-const PESTANAS = [['pedidos', 'Pedidos'], ['tareas', 'Tareas del equipo'], ['ajustes', 'Ajustes a medida'], ['chat', 'Chat y avisos'], ['super', 'Super usuarios']];
+const PESTANAS = [['pedidos', 'Pedidos'], ['tareas', 'Pendientes de desarrollo'], ['ajustes', 'Ajustes a medida'], ['chat', 'Chat y avisos'], ['super', 'Super usuarios']];
 
 export default function SuperPanel() {
   const { user } = useAuth() || {};
@@ -42,7 +42,7 @@ export default function SuperPanel() {
     <Box sx={{ maxWidth: 1180, mx: 'auto', px: { xs: 2, md: 3 }, py: { xs: 2, md: 3 } }}>
       <Typography sx={{ fontFamily: FT, fontWeight: 700, fontSize: { xs: 20, md: 24 }, color: T.text }}>Panel de super usuarios</Typography>
       <Typography sx={{ fontFamily: FB, fontSize: 13.5, color: T.text2, mb: 2 }}>
-        Los pedidos de los clientes, las tareas del equipo y lo que se configura a medida para cada uno.
+        Lo que piden los clientes, lo que falta desarrollar por módulo y lo que se configura a medida para cada uno.
       </Typography>
       <Tabs value={tab} onChange={(_e, v) => cambiarTab(v)} variant="scrollable" allowScrollButtonsMobile
         sx={{ mb: 2.5, borderBottom: `1px solid ${T.border}`, minHeight: 40,

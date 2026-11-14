@@ -4,15 +4,16 @@
 // (lo ve en el chat y le llega por mail) o se deja una nota interna; y se crean ajustes a medida.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Box, Stack, Typography, Chip, TextField, MenuItem, InputAdornment, Drawer, IconButton, Button,
-  Switch, FormControlLabel, CircularProgress, Alert, Tooltip, Divider,
+  Box, Stack, Typography, Chip, TextField, MenuItem, Drawer, IconButton, Button,
+  Switch, FormControlLabel, CircularProgress, Alert, Divider,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { SuperAPI } from '@/servicios/apiSoporte';
 import { showAlert } from '@/servicios/appAlert';
+import { Link } from 'react-router-dom';
 import AjusteDialog from './AjusteDialog';
+import { T, FT, FB } from '@/componentes/ui/temaDiego';
 
 const ESTADOS = [
   ['nuevo', 'Nuevo', '#64748b'],
@@ -53,53 +54,75 @@ export default function SuperPedidos({ pedidoInicial = null, onPedidoAbierto, ca
   const cuentas = datos?.cuentas || {};
   const abiertos = ESTADOS.filter(([k]) => !['resuelto', 'descartado'].includes(k)).reduce((s, [k]) => s + (cuentas[k] || 0), 0);
 
+  const ALTO = 40;
+  const campo = { height: ALTO, boxSizing: 'border-box', fontFamily: FB, fontSize: 14, color: T.text, border: `1px solid ${T.border2}`,
+    borderRadius: 10, padding: '0 12px', background: T.band, outline: 'none' };
+  const chip = (label, color) => (
+    <span style={{ fontFamily: FB, fontSize: 11.5, fontWeight: 700, color, background: `${color}18`, borderRadius: 7, padding: '2px 8px', whiteSpace: 'nowrap' }}>{label}</span>
+  );
+
   return (
-    <Box>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ mb: 2 }}>
-        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ flex: 1 }}>
+    <Box sx={{ fontFamily: FB, color: T.text }}>
+      {/* Barra en una fila, todo de 40 px (Diego 14/11/2026: depurar el diseño del panel) */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+        <select value={filtro} onChange={(e) => setFiltro(e.target.value)} title="Estado" style={{ ...campo, width: 230, cursor: 'pointer' }}>
           {FILTROS.map(([k, l]) => {
             const n = k === 'abiertos' ? abiertos : k ? cuentas[k] : undefined;
-            return (
-              <Chip key={k || 'todos'} label={n ? `${l} · ${n}` : l} onClick={() => setFiltro(k)}
-                color={filtro === k ? 'primary' : 'default'} variant={filtro === k ? 'filled' : 'outlined'} sx={{ fontWeight: 600 }} />
-            );
+            return <option key={k || 'todos'} value={k}>{n ? `${l} · ${n}` : l}</option>;
           })}
-        </Stack>
-        <TextField size="small" placeholder="Buscar: texto, mail, negocio o #" value={q} onChange={(e) => setQ(e.target.value)} sx={{ minWidth: 260 }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }} />
-        <Tooltip title="Actualizar"><IconButton onClick={cargar}><RefreshIcon /></IconButton></Tooltip>
-      </Stack>
+        </select>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar: texto, mail, negocio o #"
+          style={{ ...campo, flex: '1 1 220px', minWidth: 180 }} />
+        <button type="button" onClick={cargar} title="Actualizar" style={{ ...campo, width: ALTO, padding: 0, cursor: 'pointer', color: T.text2 }}>
+          <RefreshIcon sx={{ fontSize: 20, verticalAlign: 'middle' }} />
+        </button>
+      </div>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {!datos && !error && <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack>}
-      {datos?.pedidos?.length === 0 && <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>No hay pedidos con ese filtro.</Typography>}
+      {datos?.pedidos?.length === 0 && (
+        <div style={{ background: T.card, borderRadius: 14, padding: '36px 16px', textAlign: 'center', fontSize: 13.5, color: T.text2 }}>
+          No hay pedidos con ese filtro. Los clientes los mandan desde el chat de Anthony.
+        </div>
+      )}
 
-      <Stack spacing={1}>
-        {datos?.pedidos?.map((p) => (
-          <Box key={p.id} onClick={() => abrir(p.id)} sx={{
-            display: 'flex', gap: 1.5, alignItems: 'center', p: 1.25, borderRadius: 2, cursor: 'pointer', bgcolor: 'background.paper',
-            border: '1px solid', borderColor: p.estado === 'nuevo' ? 'primary.light' : 'divider', '&:hover': { borderColor: 'primary.main' },
-          }}>
-            {p.captura_url
-              ? <Box component="img" src={p.captura_url} alt="" sx={{ width: 72, height: 48, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider', flexShrink: 0 }} />
-              : <Box sx={{ width: 72, height: 48, borderRadius: 1, bgcolor: 'action.hover', flexShrink: 0 }} />}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Typography fontWeight={800} sx={{ fontSize: 13 }}>#{p.id}</Typography>
-                <ChipColor label={nombreDe(TIPOS, p.tipo)} color={colorDe(TIPOS, p.tipo)} />
-                <ChipColor label={nombreDe(ESTADOS, p.estado)} color={colorDe(ESTADOS, p.estado)} />
-                {p.ultima_del_equipo === false && <Chip size="small" label="Respondió el cliente" color="warning" sx={{ height: 22 }} />}
-                <Typography variant="caption" color="text.secondary">{fecha(p.created_at)}</Typography>
-                {p.asignado_nombre && <Typography variant="caption" color="text.secondary">· {p.asignado_nombre}</Typography>}
-              </Stack>
-              <Typography variant="body2" noWrap sx={{ mt: 0.25 }}>{p.mensaje}</Typography>
-              <Typography variant="caption" color="text.secondary" noWrap component="div">
-                {p.usuario_nombre || p.usuario_email || 'Sin usuario'}{p.usuario_email ? ` · ${p.usuario_email}` : ''}{p.negocio ? ` · ${p.negocio}` : ''}
-              </Typography>
-            </Box>
-          </Box>
-        ))}
-      </Stack>
+      {!!datos?.pedidos?.length && (
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden', boxShadow: T.sombraSuave }}>
+          {datos.pedidos.map((p, i) => (
+            <div key={p.id} onClick={() => abrir(p.id)} style={{
+              display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px', cursor: 'pointer', background: T.band,
+              borderTop: i ? `1px solid ${T.border}` : 'none', borderLeft: `3px solid ${p.estado === 'nuevo' ? T.accent : 'transparent'}`,
+            }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = T.head; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = T.band; }}>
+              {p.captura_url && (
+                <img src={p.captura_url} alt="" style={{ width: 64, height: 42, objectFit: 'cover', borderRadius: 8, border: `1px solid ${T.border}`, flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: FT, fontSize: 12.5, fontWeight: 700, color: T.text3 }}>#{p.id}</span>
+                  {chip(nombreDe(TIPOS, p.tipo), colorDe(TIPOS, p.tipo))}
+                  {chip(nombreDe(ESTADOS, p.estado), colorDe(ESTADOS, p.estado))}
+                  {p.ultima_del_equipo === false && chip('Respondió el cliente', T.warn)}
+                  {p.tarea_id && chip(`En pendientes #${p.tarea_id}`, T.accentTxt)}
+                </div>
+                <div style={{ fontFamily: FT, fontSize: 13.5, fontWeight: 600, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.mensaje}</div>
+                <div style={{ fontSize: 12, color: T.text3, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.usuario_nombre || p.usuario_email || 'Sin usuario'}{p.asignado_nombre ? ` · lo atiende ${p.asignado_nombre.split(' ')[0]}` : ''}
+                </div>
+              </div>
+              <div style={{ width: 168, flexShrink: 0, textAlign: 'center' }} className="lz-ped-neg">
+                <span title={p.negocio || 'Sin negocio'} style={{
+                  display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, fontWeight: 700,
+                  borderRadius: 7, padding: '3px 8px', boxSizing: 'border-box',
+                  color: p.negocio ? T.accentTxt : T.text3, background: p.negocio ? `${T.accent}1c` : T.card,
+                }}>{p.negocio || 'Sin negocio'}</span>
+              </div>
+              <div style={{ width: 92, flexShrink: 0, textAlign: 'right', fontSize: 11.5, color: T.text3 }}>{fecha(p.created_at)}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <Drawer anchor="right" open={!!abiertoId} onClose={cerrar} PaperProps={{ sx: { width: { xs: '100%', md: 760 } } }}>
         {abiertoId && <DetallePedido id={abiertoId} onCerrar={cerrar} catalogo={catalogo} />}
@@ -140,6 +163,24 @@ function DetallePedido({ id, onCerrar, catalogo }) {
     finally { setMandando(false); }
   };
 
+  // Pasar el pedido a «Pendientes de desarrollo» con su negocio (Diego 14/11/2026).
+  const pasarAPendientes = async () => {
+    const pant = String(p.pantalla || '');
+    const modulo = [[/^\/rrhh/, 'rrhh'], [/^\/(menu|insumos|recetas|articulos)/, 'recetas'], [/^\/(gestion|resultados|panel)/, 'resultados'],
+      [/^\/(tableros|plaza)/, 'tableros'], [/^\/(conciliacion|movimientos)/, 'administracion'], [/^\/m(\/|$)/, 'celular']]
+      .find(([re]) => re.test(pant))?.[1] || 'general';
+    try {
+      const r = await SuperAPI.crearTarea({
+        titulo: String(p.mensaje || `Pedido #${p.id}`).replace(/\s+/g, ' ').slice(0, 200),
+        detalle: `Pedido #${p.id} de ${p.usuario_nombre || p.usuario_email || 'un cliente'}${pant ? ` · pantalla ${pant}` : ''}.\n\n${p.mensaje || ''}`,
+        modulo, business_id: p.business_id || null, pedido_id: p.id, prioridad: 'normal',
+      });
+      if (p.estado === 'nuevo' || p.estado === 'revision') await cambiar({ estado: 'desarrollo' });
+      setP((x) => ({ ...x, tarea_id: r.tarea.id }));
+      showAlert(`Quedó en Pendientes de desarrollo (#${r.tarea.id}).`, 'success');
+    } catch { showAlert('No se pudo pasar a pendientes.', 'error'); }
+  };
+
   const rapidas = useMemo(() => {
     if (!p) return [];
     const out = [];
@@ -165,6 +206,9 @@ function DetallePedido({ id, onCerrar, catalogo }) {
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }}>Pedido #{p.id}</Typography>
         <ChipColor label={nombreDe(TIPOS, p.tipo)} color={colorDe(TIPOS, p.tipo)} />
+        {p.tarea_id
+          ? <Button size="small" component={Link} to={`/super?tab=tareas&tarea=${p.tarea_id}`} sx={{ textTransform: 'none', fontWeight: 700 }}>Ver pendiente #{p.tarea_id}</Button>
+          : <Button size="small" variant="outlined" onClick={pasarAPendientes} sx={{ textTransform: 'none', fontWeight: 700 }}>Pasar a pendientes</Button>}
         <IconButton onClick={onCerrar}><CloseIcon /></IconButton>
       </Stack>
 
