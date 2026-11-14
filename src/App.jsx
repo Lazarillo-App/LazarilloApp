@@ -44,6 +44,7 @@ import RrhhNomina from './paginas/RrhhNomina';
 import GestionPanel from './paginas/GestionPanel';
 // Conciliación bancaria (14/11): pesada, se carga solo al entrar.
 const Conciliacion = lazy(() => import('./paginas/Conciliacion'));
+const MovimientosBancarios = lazy(() => import('./paginas/MovimientosBancarios'));
 import MercadoPagoVuelta from './paginas/MercadoPagoVuelta';
 import GestionConceptos from './paginas/GestionConceptos';
 import GestionMediosPago from './paginas/GestionMediosPago';
@@ -329,6 +330,7 @@ export default function App() {
                 <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/mercadopago/vuelta" element={<RequireAdminOrOwner><MercadoPagoVuelta /></RequireAdminOrOwner>} />
                 <Route path="/conciliacion" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Conciliacion /></Suspense></RequireAdminOrOwner>} />
+                <Route path="/movimientos-bancarios" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><MovimientosBancarios /></Suspense></RequireAdminOrOwner>} />
                 <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><RequireSeccion seccion="conceptos"><GestionConceptos /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><RequireSeccion seccion="medios"><GestionMediosPago /></RequireSeccion></RequireAdminOrOwner>} />
