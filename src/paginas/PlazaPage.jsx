@@ -2,6 +2,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import EditorPlaza from '@/componentes/plazas/EditorPlaza';
+import VincularTV from '@/componentes/plazas/VincularTV';
+import TvOutlinedIcon from '@mui/icons-material/TvOutlined';
 import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
@@ -91,6 +93,7 @@ export default function PlazaPage() {
   const [aviso, setAviso] = useState('');
   const [quitado, setQuitado] = useState(null); // { producto, idx }: el último quitado, para «Deshacer»
   const [sumando, setSumando] = useState(false); // «+ Productos»: el editor de la plaza
+  const [tv, setTv] = useState(false);           // «TV»: vincular la pantalla de la cocina
   // Negocio donde viven los insumos (el principal de la organización), igual que InsumosMain.
   const { rootBusiness, organization } = useOrganization() || {};
   const enOrg = (organization?.businesses || []).some((b) => String(b.id) === String(activeId));
@@ -214,6 +217,13 @@ export default function PlazaPage() {
             </ToggleButtonGroup>
           </Stack>
         )}
+        {/* «TV» (Diego 14/11/2026): la TV de la cocina muestra esta plaza sola, todos los días. */}
+        {data.puedeArmar && (
+          <Button size="small" variant="outlined" disableElevation startIcon={<TvOutlinedIcon />} onClick={() => setTv(true)}
+            sx={{ height: 34, whiteSpace: 'nowrap' }}>
+            TV
+          </Button>
+        )}
         {/* «+ Productos» (Diego 12/11/2026): sumar o sacar productos sin ir a Configuración. */}
         {data.puedeArmar && (
           <Button size="small" variant="outlined" disableElevation onClick={() => setSumando(true)} sx={{ height: 34, whiteSpace: 'nowrap' }}>
@@ -259,6 +269,7 @@ export default function PlazaPage() {
         sector={{ id: data.plaza.sectorId, nombre: data.plaza.sectorNombre }}
         plaza={{ id: data.plaza.id, nombre: data.plaza.nombre, productos: data.productos.map((p) => ({ articleId: p.articleId, nombre: p.nombre })) }}
         onGuardado={() => { setSumando(false); cargar(); }} />
+      <VincularTV abierto={tv} plaza={data.plaza} onCerrar={() => setTv(false)} onAviso={setAviso} />
       <Snackbar open={!!quitado} autoHideDuration={6000} onClose={(_, motivo) => { if (motivo !== 'clickaway') setQuitado(null); }}
         message={quitado ? `Quitaste ${quitado.producto.nombre} de la plaza` : ''}
         action={<Button size="small" onClick={deshacerQuitar} sx={{ color: '#5BC2EA', fontWeight: 700 }}>Deshacer</Button>}
