@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useBusiness } from '@/context/BusinessContext';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
-import { VER_GUIA, tomarGuiaPendiente } from '@/componentes/asistente/guias';
+import { VER_GUIA, tomarGuiaPendiente, seguirConGuia } from '@/componentes/asistente/guias';
 
 // Solo para negocios nuevos (pedido de la usuaria, 10/11): los creados desde que salieron los
 // recorridos, tengan datos o no (un cliente nuevo de MaxiRest trae todo pero nunca usó Lazarillo).
@@ -24,7 +24,9 @@ const omitidoEnSesion = (biz, id) => { try { return sessionStorage.getItem(clave
 
 /** pasos = cantidad de pasos; activo = si el lugar está listo para mostrarlo (ej. el modal abierto).
  *  opciones.sinDatos (Diego 14/11/2026): si se pasa, arranca solo mientras la sección no tenga datos
- *  propios del negocio (en vez de mirar si el negocio es nuevo). */
+ *  propios del negocio (en vez de mirar si el negocio es nuevo).
+ *  opciones.siguiente = { id, label } (Diego 14/11/2026): en el último paso, en vez de «Entendido»,
+ *  ofrece hacerlo ahora con la ayuda de Anthony (abre esa guía sobre el formulario real) o «Más tarde». */
 export function useRecorrido(id, pasos, activo = true, opciones = {}) {
   const { active, activeBusinessId, refetchBusinesses } = useBusiness() || {};
   const [paso, setPaso] = useState(1);
@@ -74,6 +76,10 @@ export function useRecorrido(id, pasos, activo = true, opciones = {}) {
     terminar,
     ver,
     // Sin «No mostrar más» (Diego 14/11/2026): se cierra con Omitir y se vuelve a ver desde Guías.
-    props: (n) => ({ onSkip: omitir, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' }),
+    props: (n) => {
+      const sig = n >= pasos ? opciones.siguiente : null;
+      if (sig) return { onSkip: omitir, paso: { actual: n, total: pasos }, onNext: () => { omitir(); seguirConGuia(sig.id); }, nextLabel: sig.label, skipLabel: 'Más tarde' };
+      return { onSkip: omitir, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' };
+    },
   };
 }
