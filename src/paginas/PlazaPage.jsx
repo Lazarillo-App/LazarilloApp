@@ -89,6 +89,7 @@ export default function PlazaPage() {
   const [receta, setReceta] = useState(null); // { id, nombre } del producto abierto
   const [insumoEq, setInsumoEq] = useState(null); // { id, nombre, articleId }: «+ Crear equivalencia»
   const [aviso, setAviso] = useState('');
+  const [quitado, setQuitado] = useState(null); // { producto, idx }: el último quitado, para «Deshacer»
   const [sumando, setSumando] = useState(false); // «+ Productos»: el editor de la plaza
   // Negocio donde viven los insumos (el principal de la organización), igual que InsumosMain.
   const { rootBusiness, organization } = useOrganization() || {};
@@ -134,6 +135,29 @@ export default function PlazaPage() {
     try { await PlazasAPI.guardarColor(ref, color); } catch (e) { setError(e.message); }
   };
 
+  // ✕ en la tarjeta (modo Armar): sale de la plaza al toque y se guarda atrás; «Deshacer» lo vuelve a
+  // poner en el mismo lugar. Su ficha (orden, colores, renglones extra) queda guardada en el servidor.
+  const guardarProductos = async (productos) => {
+    await PlazasAPI.editar(id, data.plaza.nombre, productos.map((x) => Number(x.articleId)));
+    try { window.dispatchEvent(new CustomEvent('plazas:changed')); } catch { /* sin evento */ }
+  };
+  const quitarProducto = async (prod) => {
+    const idx = data.productos.findIndex((x) => x.articleId === prod.articleId);
+    const resto = data.productos.filter((x) => x.articleId !== prod.articleId);
+    setData((d) => ({ ...d, productos: resto }));
+    setQuitado({ producto: prod, idx });
+    try { await guardarProductos(resto); } catch (e) { setError(e.message); setQuitado(null); cargar(); }
+  };
+  const deshacerQuitar = async () => {
+    const q = quitado;
+    setQuitado(null);
+    if (!q) return;
+    const lista = [...data.productos];
+    lista.splice(Math.min(q.idx, lista.length), 0, q.producto);
+    setData((d) => ({ ...d, productos: lista }));
+    try { await guardarProductos(lista); } catch (e) { setError(e.message); cargar(); }
+  };
+
   // Después de guardar la receta se refresca SOLO esa tarjeta (no la plaza entera).
   const refrescarProducto = async (articleId) => {
     try {
@@ -166,7 +190,7 @@ export default function PlazaPage() {
           <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.15rem', lineHeight: 1.2 }}>{data.plaza.nombre}</Typography>
           <Typography variant="caption" color="text.secondary">
             {data.plaza.sectorNombre} · {data.productos.length} producto{data.productos.length !== 1 ? 's' : ''}
-            {armando ? ' · arrastrá para ordenar, tocá un color para cambiarlo' : ''}
+            {armando ? ' · arrastrá para ordenar, tocá un color para cambiarlo, ✕ para quitar un producto' : ''}
           </Typography>
         </Box>
         {error && <Alert severity="error" onClose={() => setError(null)} sx={{ py: 0 }}>{error}</Alert>}
@@ -185,9 +209,9 @@ export default function PlazaPage() {
         )}
       </Stack>
       {!data.productos.length ? (
-        <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Se asignan en ⚙ Configuración › Sectores.</Typography>
+        <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
       ) : (
-        <VistaPlaza productos={data.productos} armando={armando} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
+        <VistaPlaza productos={data.productos} armando={armando} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
@@ -215,6 +239,10 @@ export default function PlazaPage() {
         sector={{ id: data.plaza.sectorId, nombre: data.plaza.sectorNombre }}
         plaza={{ id: data.plaza.id, nombre: data.plaza.nombre, productos: data.productos.map((p) => ({ articleId: p.articleId, nombre: p.nombre })) }}
         onGuardado={() => { setSumando(false); cargar(); }} />
+      <Snackbar open={!!quitado} autoHideDuration={6000} onClose={(_, motivo) => { if (motivo !== 'clickaway') setQuitado(null); }}
+        message={quitado ? `Quitaste ${quitado.producto.nombre} de la plaza` : ''}
+        action={<Button size="small" onClick={deshacerQuitar} sx={{ color: '#5BC2EA', fontWeight: 700 }}>Deshacer</Button>}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
       <Snackbar open={!!aviso} autoHideDuration={3500} onClose={() => setAviso('')} message={aviso}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
