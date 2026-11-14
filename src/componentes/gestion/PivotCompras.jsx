@@ -229,7 +229,7 @@ export default function PivotCompras({
     return (
     <TableRow key={rubro.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600, ...(sinRubro ? { color: '#b45309', bgcolor: '#fff8eb' } : {}) } }}>
       <TableCell sx={{ ...sxStickyNombre(sinRubro ? '#fff8eb' : MUTED), px: 2, py: 1.25 }}>
-        <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)}>{sinRubro ? <>⚠ {rubro.nombre}<ChipCorregir /></> : rubro.nombre}</Expansor>
+        <Expansor abierto={expanded.has(rubro.id)} onClick={() => toggle(rubro.id)} vacio={rubro.vacio} hoja={rubro.vacio && !rubro.children.length}>{sinRubro ? <>⚠ {rubro.nombre}<ChipCorregir /></> : rubro.nombre}</Expansor>
       </TableCell>
       {sinTotalesRubro ? (<>
       {months.map((mes) => celdaCompletitud(rubro, mes, sinRubro, habitual))}
@@ -280,7 +280,7 @@ export default function PivotCompras({
       <TableRow key={c.id} hover onContextMenu={(e) => cerrarNivel(e, porProveedor ? proveedorIds : rubroIds)}>
         <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 1 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Expansor abierto={expanded.has(c.id)} onClick={() => toggle(c.id)} indent={indent}>
+            <Expansor abierto={expanded.has(c.id)} onClick={() => toggle(c.id)} indent={indent} vacio={c.vacio} hoja={c.vacio}>
               {insumo ? normalize(c.nombre) : c.nombre}
               {porInsumo && !insumo && (
                 <Box component="span" sx={{ ml: 0.75, px: 0.75, border: 1, borderColor: 'divider', borderRadius: 4, fontSize: 10, color: 'text.secondary' }}>concepto</Box>

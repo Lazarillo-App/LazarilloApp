@@ -90,7 +90,7 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
       return (
         <TableRow key={d.id} onContextMenu={(e) => cerrarNivel(e, null)} sx={{ '& td': { fontWeight: 600 } }}>
           <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2, py: 1.25 }}>
-            <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)}>{d.nombre}</Expansor>
+            <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} vacio={d.vacio} hoja={d.vacio && !d.children.length}>{d.nombre}</Expansor>
           </TableCell>
           {months.map((mes) => (
             <TableCell key={mes} {...clic(mes, { mes, rubroCodigo: d.rubroCodigo })} sx={{ ...sxNum, px: 1.5, py: 1.25, bgcolor: (t) => alpha(t.palette.grey[100], 0.25), ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>
@@ -104,7 +104,7 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
       return (
         <TableRow key={d.id} hover onContextMenu={(e) => cerrarNivel(e, rubroIds)}>
           <TableCell sx={{ ...sxStickyNombre(), px: 2, py: 1 }}>
-            <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5}>{d.nombre}</Expansor>
+            <Expansor abierto={expanded.has(d.id)} onClick={() => toggle(d.id)} indent={2.5} vacio={d.vacio} hoja={d.vacio}>{d.nombre}</Expansor>
           </TableCell>
           {months.map((mes) => <TableCell key={mes} {...clic(mes, { mes, conceptoCodigo: d.conceptoCodigo })} sx={{ ...sxNum, px: 1.5, py: 1, color: 'text.secondary', ...sxDe(mes) }}>{fmtARS(d.values[mes])}</TableCell>)}
           <TableCell onClick={() => abrirDetalle({ conceptoCodigo: d.conceptoCodigo })} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>

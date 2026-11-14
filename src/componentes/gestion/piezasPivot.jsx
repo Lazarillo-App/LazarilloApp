@@ -35,10 +35,12 @@ export function PivotEmpty() {
 }
 
 // Botón expandir/colapsar de la 1ª columna (ExpandableButton de gestion).
-export function Expansor({ abierto, onClick, children, indent = 0 }) {
+// vacio (Diego 14/11/2026): rubro o concepto del plan de cuentas sin movimientos — se ve tenue y,
+// si no tiene nada adentro, sin flecha (no hay qué abrir).
+export function Expansor({ abierto, onClick, children, indent = 0, vacio = false, hoja = false }) {
   return (
-    <Box onClick={onClick} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', pl: indent, minWidth: 0 }}>
-      {abierto ? <ExpandMoreIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />}
+    <Box onClick={hoja ? undefined : onClick} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: hoja ? 'default' : 'pointer', pl: indent, minWidth: 0, ...(vacio ? { color: 'text.disabled', fontWeight: 400 } : {}) }}>
+      {hoja ? <Box component="span" sx={{ width: 16, flexShrink: 0 }} /> : abierto ? <ExpandMoreIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />}
       <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</Box>
     </Box>
   );
