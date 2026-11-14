@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import SpotlightTour from './SpotlightTour';
 import { useRecorrido } from '@/hooks/useRecorrido';
+import { useAbrirGuia } from '@/componentes/asistente/guias';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -299,6 +300,9 @@ function ArticuloAccionesMenu({
   const open = Boolean(anchorEl);
   const handleOpen = useCallback((e) => setAnchorEl(e.currentTarget), []);
   const handleClose = useCallback(() => setAnchorEl(null), []);
+  // Guía «Acciones de un artículo» de Anthony: abre el menú ⋮ de la primera fila (Diego 14/11/2026).
+  const btnMenuRef = useRef(null);
+  useAbrirGuia('menu_accion', () => { if (btnMenuRef.current) setAnchorEl(btnMenuRef.current); });
 
   // ── Derivados básicos del artículo ─────────────────────────────────────────
   const articuloIdNum = getNum(articulo?.id);
@@ -856,7 +860,7 @@ function ArticuloAccionesMenu({
           </Button>
         )
       )}
-      <IconButton size="small" onClick={handleOpen}>
+      <IconButton size="small" onClick={handleOpen} ref={btnMenuRef}>
         <MoreVertIcon fontSize="small" />
       </IconButton>
 
