@@ -10,8 +10,12 @@ import { fmtMillones, DIA_SEMANA_CORTO } from '@/gestion/proyeccion';
 const pct = (x) => `${Math.round(x * 100)}%`;
 const pct1 = (x) => `${(x * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`;
 const ddmm = (f) => `${f.slice(8, 10)}/${f.slice(5, 7)}`;
-const OTROS = { unico: ['semanas', 'dias_mes'], semanas: ['unico', 'dias_mes'], dias_mes: ['unico', 'semanas'] };
-const CORTO = { unico: 'Cálculo completo', semanas: '8 sem. × ritmo', dias_mes: 'Prom. del mes' };
+// «calendario» (Diego 14/11/2026) = el cálculo completo + las fechas especiales de RRHH › Cronogramas.
+const TODOS = ['unico', 'calendario', 'semanas', 'dias_mes'];
+const otrosDe = (p) => TODOS.filter((m) => m !== p.metodo && p.proyecciones?.[m] != null && (m !== 'calendario' || p.conCalendario));
+const CORTO = { unico: 'Cálculo completo', calendario: 'Con calendario', semanas: '8 sem. × ritmo', dias_mes: 'Prom. del mes' };
+const TIPO_FECHA = { feriado: 'Feriado', vispera: 'Víspera', cerrado: 'Cerrado', evento: 'Evento' };
+const veces = (f) => `×${f.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
 const CELESTE = '#5BC2EA';
 const RAYADO = `repeating-linear-gradient(45deg,${CELESTE}66 0 4px,transparent 4px 8px)`;
 
@@ -54,15 +58,15 @@ export function ProyeccionIngresos({ p, children }) {
   const mesNombre = mesLargo.charAt(0).toUpperCase() + mesLargo.slice(1);
   const pctFacturado = Math.min(100, (p.facturado / p.proyeccion) * 100);
   const signo = (f) => `${f >= 1 ? '+' : '−'}${Math.round(Math.abs(f - 1) * 100)}%`;
-  const como = p.metodo === 'unico'
-    ? <>día de semana{p.estacional != null && Math.abs(p.estacional - 1) >= 0.02 ? <> × época <b>{signo(p.estacional)}</b></> : null} × ritmo <b>{pct(p.ritmoEstacional)}</b></>
+  const como = p.metodo === 'unico' || p.metodo === 'calendario'
+    ? <>día de semana{p.estacional != null && Math.abs(p.estacional - 1) >= 0.02 ? <> × época <b>{signo(p.estacional)}</b></> : null} × ritmo <b>{pct(p.ritmoEstacional)}</b>{p.metodo === 'calendario' ? <> × fechas especiales</> : null}</>
     : p.metodo === 'semanas' ? <>día de semana (8 sem.) × ritmo <b>{pct(p.ritmo)}</b></> : <>promedio de cada día en {mesLargo}</>;
   const otros = [
-    ...OTROS[p.metodo].map((m) => [CORTO[m], p.proyecciones[m]]),
+    ...otrosDe(p).map((m) => [CORTO[m], p.proyecciones[m]]),
     ['Regla de 3', p.reglaDeTres],
     ...(p.cierreAnioAnterior != null ? [[`${mesNombre.slice(0, 3)} ${p.anio - 1} cerró`, p.cierreAnioAnterior]] : []),
   ];
-  const errOtros = p.backtest ? [...OTROS[p.metodo].map((m) => p.backtest.errores[m]), ...(p.backtest.errorReglaDeTres != null ? [p.backtest.errorReglaDeTres] : [])] : [];
+  const errOtros = p.backtest ? [...otrosDe(p).map((m) => p.backtest.errores[m]).filter((x) => x != null), ...(p.backtest.errorReglaDeTres != null ? [p.backtest.errorReglaDeTres] : [])] : [];
 
   const contenido = (
     <Box sx={{ fontSize: 12, lineHeight: 1.4 }}>
@@ -78,6 +82,22 @@ export function ProyeccionIngresos({ p, children }) {
       <Fila izq={`Facturado al ${ddmm(p.corte)}`} der={fmtMillones(p.facturado)} />
       <Fila izq={`Faltan ${p.diasRestantes} días (${p.restantesPorDia.map((d) => `${d.cantidad} ${DIA_SEMANA_CORTO[d.dow]}`).join(', ')})`} der={`+${fmtMillones(p.estimadoRestante)}`} />
       <Box sx={{ opacity: 0.7, mt: 0.5 }}>Cómo: {como}</Box>
+      {p.fechasRestantes?.length > 0 && (
+        <Box sx={{ mt: 0.75, pt: 0.75, borderTop: '1px solid rgba(255,255,255,.2)', fontSize: 11 }}>
+          <Tenue sx={{ mb: 0.25 }}>Fechas especiales que faltan</Tenue>
+          {p.fechasRestantes.map((f) => (
+            <Box key={f.fecha} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+              <span>{ddmm(f.fecha)} · {TIPO_FECHA[f.tipo] ?? f.tipo}{f.nombre && f.tipo !== 'vispera' ? ` (${f.nombre})` : ''}</span>
+              <Box component="b" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{Math.abs(f.factor - 1) < 0.05 ? 'normal' : veces(f.factor)}</Box>
+            </Box>
+          ))}
+          <Tenue sx={{ mt: 0.25 }}>
+            {p.metodo === 'calendario'
+              ? 'Aplicado: cuánto vende cada tipo de fecha contra un día normal, con la historia de este local.'
+              : 'No se aplica: en este local la proyección no mejora con el calendario.'}
+          </Tenue>
+        </Box>
+      )}
       <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 1.5, mt: 0.75, pt: 0.75, borderTop: '1px solid rgba(255,255,255,.2)', opacity: 0.6, fontSize: 11 }}>
         {otros.map(([a, b]) => (
           <Box key={a} sx={{ display: 'flex', justifyContent: 'space-between', gap: 0.5 }}><span>{a}</span><Box component="b" sx={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMillones(b)}</Box></Box>
