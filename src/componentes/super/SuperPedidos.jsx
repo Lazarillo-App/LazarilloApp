@@ -28,6 +28,22 @@ const ALCANCES = [['', 'Sin definir'], ['negocio', 'Solo este negocio'], ['usuar
 const FILTROS = [['abiertos', 'Abiertos'], ...ESTADOS.map(([k, l]) => [k, l]), ['', 'Todos']];
 const colorDe = (lista, k) => lista.find((x) => x[0] === k)?.[2] || '#64748b';
 const nombreDe = (lista, k) => lista.find((x) => x[0] === k)?.[1] || k || '—';
+// Título del pedido armado con lo que eligió en el chat (Diego 14/11/2026: el texto libre no sirve
+// de título). Motivo + la respuesta a la pregunta o, si no hubo, la pantalla desde donde escribió.
+const MOTIVOS = { armar: 'Armar mi negocio', pos: 'Conectar el POS', tecnico: 'Problema técnico', duda: 'Duda de uso',
+  cambio: 'Pedido de cambio', otra: 'Mensaje' };
+const PANTALLAS = [[/^\/rrhh\/cronogramas/, 'RRHH › Cronogramas'], [/^\/rrhh\/nomina/, 'RRHH › Nómina'], [/^\/rrhh/, 'RRHH'],
+  [/^\/(tableros|plaza)/, 'Tableros'], [/^\/menu/, 'Recetas › Menú'], [/^\/insumos/, 'Recetas › Insumos'],
+  [/^\/agrupaciones/, 'Recetas › Agrupaciones'], [/^\/gestion/, 'Resultados'], [/^\/conciliacion/, 'Conciliación'],
+  [/^\/movimientos-bancarios/, 'Movimientos bancarios'], [/^\/configuracion/, 'Configuración'], [/^\/perfil/, 'Mi perfil'],
+  [/^\/m(\/|$)/, 'Celular'], [/^\/(inicio|$)/, 'Inicio']];
+export const nombrePantalla = (ruta) => PANTALLAS.find(([re]) => re.test(String(ruta || '')))?.[1] || '';
+export const tituloPedido = (p) => {
+  const motivo = MOTIVOS[p.opcion] || nombreDe(TIPOS, p.tipo) || 'Pedido';
+  const resp = String(p.respuesta || '').trim();
+  const extra = resp && !/^(otra|nada todav[ií]a)$/i.test(resp) ? resp : nombrePantalla(p.pantalla);
+  return extra ? `${motivo} · ${extra}` : motivo;
+};
 const fecha = (iso) => (iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
 
 const ChipColor = ({ label, color, ...p }) => (
@@ -106,7 +122,10 @@ export default function SuperPedidos({ pedidoInicial = null, onPedidoAbierto, ca
                   {p.ultima_del_equipo === false && chip('Respondió el cliente', T.warn)}
                   {p.tarea_id && chip(`En pendientes #${p.tarea_id}`, T.accentTxt)}
                 </div>
-                <div style={{ fontFamily: FT, fontSize: 13.5, fontWeight: 600, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.mensaje}</div>
+                <div style={{ fontFamily: FT, fontSize: 13.5, fontWeight: 600, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tituloPedido(p)}</div>
+                <div style={{ fontSize: 12.5, color: T.text2, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.mensaje ? `«${String(p.mensaje).replace(/\s+/g, ' ')}»` : 'Sin mensaje'}
+                </div>
                 <div style={{ fontSize: 12, color: T.text3, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {p.usuario_nombre || p.usuario_email || 'Sin usuario'}{p.asignado_nombre ? ` · lo atiende ${p.asignado_nombre.split(' ')[0]}` : ''}
                 </div>
@@ -118,7 +137,7 @@ export default function SuperPedidos({ pedidoInicial = null, onPedidoAbierto, ca
                   color: p.negocio ? T.accentTxt : T.text3, background: p.negocio ? `${T.accent}1c` : T.card,
                 }}>{p.negocio || 'Sin negocio'}</span>
               </div>
-              <div style={{ width: 92, flexShrink: 0, textAlign: 'right', fontSize: 11.5, color: T.text3 }}>{fecha(p.created_at)}</div>
+              <div style={{ width: 118, flexShrink: 0, textAlign: 'right', fontSize: 11.5, color: T.text3, whiteSpace: 'nowrap' }}>{fecha(p.created_at)}</div>
             </div>
           ))}
         </div>
@@ -171,7 +190,7 @@ function DetallePedido({ id, onCerrar, catalogo }) {
       .find(([re]) => re.test(pant))?.[1] || 'general';
     try {
       const r = await SuperAPI.crearTarea({
-        titulo: String(p.mensaje || `Pedido #${p.id}`).replace(/\s+/g, ' ').slice(0, 200),
+        titulo: tituloPedido(p).slice(0, 200),
         detalle: `Pedido #${p.id} de ${p.usuario_nombre || p.usuario_email || 'un cliente'}${pant ? ` · pantalla ${pant}` : ''}.\n\n${p.mensaje || ''}`,
         modulo, business_id: p.business_id || null, pedido_id: p.id, prioridad: 'normal',
       });
@@ -204,7 +223,7 @@ function DetallePedido({ id, onCerrar, catalogo }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Typography variant="h6" fontWeight={800} sx={{ flex: 1 }}>Pedido #{p.id}</Typography>
+        <Typography variant="h6" fontWeight={800} sx={{ flex: 1, minWidth: 0 }} noWrap>#{p.id} · {tituloPedido(p)}</Typography>
         <ChipColor label={nombreDe(TIPOS, p.tipo)} color={colorDe(TIPOS, p.tipo)} />
         {p.tarea_id
           ? <Button size="small" component={Link} to={`/super?tab=tareas&tarea=${p.tarea_id}`} sx={{ textTransform: 'none', fontWeight: 700 }}>Ver pendiente #{p.tarea_id}</Button>
