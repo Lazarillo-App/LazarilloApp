@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es" translate="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="google" content="notranslate" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lazarillo · Pantalla</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&display=swap" />
+  <!--
+    Pantalla de TV de las plazas (Diego 14/11/2026). Página LIVIANA a propósito: la app completa pesa
+    ~4,6 MB de JavaScript y el navegador de una Smart TV (Samsung) se quedaba sin memoria. Esta no usa
+    React ni la app: HTML + un script chico (ES5, sin módulos) para que ande en navegadores de TV viejos.
+    Flujo (back: controllers/pantallasController.js): muestra un código de 6 dígitos → en la PC, en el
+    tablero de la plaza, «TV» con ese código → la TV guarda su token y muestra la plaza solo para ver.
+    Lo de las tarjetas replica VistaPlaza.jsx (colores, peso / observación / ambos, ocultos).
+  -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { font-family: Sora, Arial, Helvetica, sans-serif; background: #fff; color: #111827; overflow: hidden; }
+    .oculto { display: none !important; }
+    #espera { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #0f1b24; color: #fff; text-align: center;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+    #espera .marca { font-weight: 800; letter-spacing: .18em; font-size: 22px; color: #fff; margin-bottom: 28px; }
+    #espera h1 { font-size: 30px; font-weight: 700; margin: 0 0 18px; }
+    #codigo { font-weight: 800; font-size: 130px; letter-spacing: .12em; color: #5BC2EA; line-height: 1; margin: 6px 0 26px; }
+    #espera p { font-family: Arial, Helvetica, sans-serif; font-size: 20px; opacity: .85; max-width: 680px; line-height: 1.5; margin: 0 0 10px; }
+    #espera .chico { font-size: 15px; opacity: .55; }
+    #cabeza { display: flex; align-items: center; height: 56px; padding: 0 20px; border-bottom: 3px solid #5BC2EA; }
+    #nombre { font-weight: 800; font-size: 26px; text-transform: uppercase; }
+    #sector { font-family: Arial, Helvetica, sans-serif; color: #6b7280; font-size: 17px; margin-left: 16px; flex: 1; }
+    #hora { font-weight: 700; font-size: 24px; margin-right: 16px; }
+    #cabeza .marca { font-weight: 800; letter-spacing: .14em; font-size: 13px; color: #5BC2EA; }
+    #tarjetas { padding: 12px 16px 16px; display: flex; flex-wrap: wrap; align-items: flex-start; }
+    .tarjeta { width: 220px; margin: 0 12px 20px; }
+    .titulo { font-weight: 800; font-size: 21px; text-align: center; text-transform: uppercase; line-height: 1.05; margin-bottom: 8px; }
+    .renglon { border-radius: 3px; border: 1px solid rgba(0,0,0,.08); padding: 3px 6px; min-height: 30px; margin-bottom: 5px; text-align: center;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .renglon .t { font-weight: 800; font-style: italic; font-size: 14px; letter-spacing: .02em; text-transform: uppercase; line-height: 1.1; }
+    .renglon .c { margin-right: 6px; }
+    .renglon .o { font-style: italic; font-weight: 600; font-size: 12px; line-height: 1.15; margin-top: 2px; opacity: .9; }
+    .vacio { width: 100%; text-align: center; color: #6b7280; font-size: 20px; padding: 60px 0; font-family: Arial, Helvetica, sans-serif; }
+    #sinred { position: fixed; right: 12px; bottom: 10px; padding: 4px 10px; border-radius: 4px; background: rgba(0,0,0,.65); color: #fff;
+      font: 13px Arial, Helvetica, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="espera">
+    <div class="marca">LAZARILLO</div>
+    <div id="pidiendo">Conectando…</div>
+    <div id="conCodigo" class="oculto">
+      <h1>Vinculá esta pantalla</h1>
+      <div id="codigo"></div>
+      <p>En la PC, entrá a <b>Tableros</b>, abrí la plaza que va en esta TV y tocá <b>«TV»</b>. Escribí este código y listo: desde ahí se abre sola.</p>
+      <p class="chico">El código se renueva solo si vence.</p>
+    </div>
+  </div>
+  <div id="plaza" class="oculto">
+    <div id="cabeza"><span id="nombre"></span><span id="sector"></span><span id="hora"></span><span class="marca">LAZARILLO</span></div>
+    <div id="tarjetas"></div>
+  </div>
+  <div id="sinred" class="oculto">Sin conexión · reintentando</div>
+
+  <script>
+  (function () {
+    // Vite reemplaza esto al compilar (cada sitio apunta a su back: testing o producción).
+    var BASE = String('%VITE_BACKEND_URL%').replace(/\/+$/, '');
+    if (BASE.indexOf('%') >= 0 || !BASE) BASE = '/api';
+    var CLAVE = 'lz.pantalla.token';
+    var CADA_PENDIENTE = 3000, CADA_VINCULADA = 60000;
+    // Paleta de despacho: misma que VistaPlaza.PALETA (src/componentes/plazas/VistaPlaza.jsx).
+    var PALETA = [
+      ['#C0392B', '#fff'], ['#E8D9A8', '#1f2937'], ['#F2E35B', '#1f2937'], ['#A8582B', '#fff'], ['#DCE8D8', '#1f2937'],
+      ['#5FA862', '#fff'], ['#C49A6C', '#1f2937'], ['#F4D6E4', '#1f2937'], ['#2F2F2F', '#fff'], ['#6B3A1E', '#fff'],
+      ['#F6E7B0', '#1f2937'], ['#FFFFFF', '#111827', true], ['#E9A23B', '#1f2937']
+    ];
+    var $ = function (id) { return document.getElementById(id); };
+    var token = leer(), ultimo = '', timer = null, estado = '';
+
+    function leer() { try { return localStorage.getItem(CLAVE) || ''; } catch (e) { return ''; } }
+    function guardar(t) { try { if (t) localStorage.setItem(CLAVE, t); else localStorage.removeItem(CLAVE); } catch (e) { /* sin storage */ } }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function mostrar(id, si) { $(id).className = si ? '' : 'oculto'; }
+
+    function pedir(metodo, ruta, ok, mal) {
+      var x = new XMLHttpRequest();
+      x.open(metodo, BASE + '/public/pantalla' + ruta, true);
+      if (token) x.setRequestHeader('X-Pantalla-Token', token);
+      x.timeout = 20000;
+      x.onload = function () {
+        var j = null; try { j = JSON.parse(x.responseText); } catch (e) { /* nada */ }
+        if (x.status >= 200 && x.status < 300 && j) ok(j, x.responseText); else if (x.status === 401) ok({ estado: 'desvinculada' }, ''); else mal();
+      };
+      x.onerror = mal; x.ontimeout = mal;
+      x.send();
+    }
+
+    function sinRed(si) { $('sinred').className = si ? '' : 'oculto'; }
+
+    function programar(ms) { clearTimeout(timer); timer = setTimeout(consultar, ms); }
+
+    function nuevoCodigo() {
+      pedir('POST', '/codigo', function (r) {
+        token = r.token; guardar(token); sinRed(false);
+        verCodigo(r.codigo); programar(CADA_PENDIENTE);
+      }, function () { sinRed(true); programar(10000); });
+    }
+
+    function consultar() {
+      if (!token) { nuevoCodigo(); return; }
+      pedir('GET', '', function (r, texto) {
+        sinRed(false);
+        if (r.estado === 'desvinculada' || r.estado === 'vencido' || r.estado === 'sin_plaza') { token = ''; guardar(''); ultimo = ''; nuevoCodigo(); return; }
+        if (r.estado === 'pendiente') { verCodigo(r.codigo); programar(CADA_PENDIENTE); return; }
+        if (texto !== ultimo) { ultimo = texto; verPlaza(r); }
+        programar(CADA_VINCULADA);
+      }, function () { sinRed(true); programar(estado === 'plaza' ? CADA_VINCULADA : 10000); });
+    }
+
+    function verCodigo(c) {
+      estado = 'codigo';
+      c = String(c || '');
+      $('codigo').innerHTML = esc(c.slice(0, 3)) + '&nbsp;' + esc(c.slice(3));
+      mostrar('pidiendo', false); mostrar('conCodigo', true); mostrar('espera', true); mostrar('plaza', false);
+    }
+
+    function cantidad(c, u) {
+      if (c == null || !(Number(c) > 0)) return '';
+      var n = Number(c).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+      var uu = String(u || '').toLowerCase();
+      if (!uu || uu === 'u' || uu === 'un' || uu === 'unidad' || uu === 'porcion' || uu === 'media_porcion') return n;
+      return n + ' ' + (uu === 'gr' ? 'g' : uu);
+    }
+
+    function renglon(r) {
+      if (r.oculto) return '';
+      var p = PALETA[(Number(r.color) || 0) % PALETA.length];
+      var obs = String(r.obs || '').replace(/^\s+|\s+$/g, '');
+      var conObs = (r.mostrar === 'obs' || r.mostrar === 'ambos') && !!obs;
+      var cant = r.mostrar === 'obs' && conObs ? '' : cantidad(r.cantidad, r.unidad);
+      return '<div class="renglon" style="background:' + p[0] + ';color:' + p[1] + (p[2] ? ';border:1.5px solid #111827' : '') + '">' +
+        '<div class="t">' + (cant ? '<span class="c">' + esc(cant) + '</span>' : '') + esc(r.alias || r.nombre) + '</div>' +
+        (conObs ? '<div class="o">&#8627; ' + esc(obs) + '</div>' : '') + '</div>';
+    }
+
+    function verPlaza(r) {
+      estado = 'plaza';
+      $('nombre').textContent = (r.plaza && r.plaza.nombre) || '';
+      $('sector').textContent = (r.plaza && r.plaza.sectorNombre) || '';
+      var prods = r.productos || [], html = '';
+      for (var i = 0; i < prods.length; i++) {
+        var p = prods[i], filas = '';
+        for (var j = 0; j < (p.renglones || []).length; j++) filas += renglon(p.renglones[j]);
+        html += '<div class="tarjeta"><div class="titulo">' + esc(p.nombre) + '</div>' + filas + '</div>';
+      }
+      $('tarjetas').innerHTML = html || '<div class="vacio">Esta plaza todavía no tiene productos.</div>';
+      mostrar('espera', false); mostrar('plaza', true);
+      ajustar();
+    }
+
+    // Se agranda para leer de lejos (~5 tarjetas por fila en Full HD) y se achica si no entra: la TV no scrollea.
+    // Con transform (y no zoom): mide igual en navegadores de TV viejos y nuevos.
+    function escalar(el, z) {
+      el.style.width = (window.innerWidth / z) + 'px';
+      el.style.transform = 'scale(' + z + ')'; el.style.webkitTransform = 'scale(' + z + ')';
+    }
+    function ajustar() {
+      var el = $('tarjetas');
+      el.style.transformOrigin = '0 0'; el.style.webkitTransformOrigin = '0 0';
+      var base = Math.max(1, window.innerWidth / 1280), z = base;
+      var libre = window.innerHeight - $('cabeza').offsetHeight;
+      escalar(el, z);
+      for (var i = 0; i < 6; i++) {
+        var alto = el.offsetHeight * z;
+        if (alto <= libre || z <= base * 0.55) break;
+        z = Math.max(base * 0.55, z * Math.sqrt(libre / alto));
+        escalar(el, z);
+      }
+      el.setAttribute('data-zoom', z.toFixed(2));
+    }
+    window.addEventListener('resize', ajustar);
+
+    function hora() { $('hora').textContent = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); }
+    hora(); setInterval(hora, 15000);
+
+    // Pantalla siempre encendida (si el navegador lo permite).
+    function pedirLock() { try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(null, function () {}); } catch (e) { /* no soportado */ } }
+    pedirLock();
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pedirLock(); });
+
+    // Una vez por día (5 a. m.) se recarga para tomar la versión nueva.
+    var ahora = new Date(), prox = new Date(ahora.getTime()); prox.setHours(5, 0, 0, 0);
+    if (prox <= ahora) prox.setDate(prox.getDate() + 1);
+    setTimeout(function () { window.location.reload(); }, prox - ahora);
+
+    consultar();
+  })();
+  </script>
+</body>
+</html>
