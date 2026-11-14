@@ -45,6 +45,7 @@ import GestionPanel from './paginas/GestionPanel';
 // Conciliación bancaria (14/11): pesada, se carga solo al entrar.
 const Conciliacion = lazy(() => import('./paginas/Conciliacion'));
 import MercadoPagoVuelta from './paginas/MercadoPagoVuelta';
+import MercadoLibreVuelta from './paginas/MercadoLibreVuelta';
 import GestionConceptos from './paginas/GestionConceptos';
 import GestionMediosPago from './paginas/GestionMediosPago';
 import GestionMovil from './paginas/GestionMovil';
@@ -328,6 +329,7 @@ export default function App() {
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/mercadopago/vuelta" element={<RequireAdminOrOwner><MercadoPagoVuelta /></RequireAdminOrOwner>} />
+                <Route path="/mercadolibre/vuelta" element={<RequireAdminOrOwner><MercadoLibreVuelta /></RequireAdminOrOwner>} />
                 <Route path="/conciliacion" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Conciliacion /></Suspense></RequireAdminOrOwner>} />
                 <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><RequireSeccion seccion="conceptos"><GestionConceptos /></RequireSeccion></RequireAdminOrOwner>} />
