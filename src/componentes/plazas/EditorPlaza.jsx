@@ -3,6 +3,7 @@
 // el sector entre los que la persona puede gestionar: dueño/admin todos, el jefe los que conduce).
 import React from 'react';
 import { Box, Stack, Typography, Button, TextField, Chip, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { showAlert } from '@/servicios/appAlert';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 
@@ -19,6 +20,25 @@ export default function EditorPlaza({ abierto, sector, sectores = [], plaza, onC
   const [agrupFiltro, setAgrupFiltro] = React.useState('');
   const [modoGrupo, setModoGrupo] = React.useState('rubro');
   const [guardando, setGuardando] = React.useState(false);
+  // Chips de los productos elegidos: se pueden ocultar para ganar lugar en la lista (Diego 14/11/2026).
+  // Se recuerda la elección; si nunca eligió, se ocultan cuando son muchos.
+  const [verElegidos, setVerElegidos] = React.useState(() => {
+    try { const v = localStorage.getItem('plazas.editor.verElegidos'); return v == null ? null : v === '1'; } catch { return null; }
+  });
+  const chipsVisibles = verElegidos ?? elegidos.length <= 12;
+  // Selección de chips para sacar varios de una (Diego 14/11/2026): tocar un chip lo marca; «Todos» marca todos.
+  const [marcados, setMarcados] = React.useState(() => new Set());
+  React.useEffect(() => { if (abierto) setMarcados(new Set()); }, [abierto, plaza?.id]);
+  const marcar = (id) => setMarcados((prev) => { const n = new Set(prev); if (n.has(Number(id))) n.delete(Number(id)); else n.add(Number(id)); return n; });
+  const quitarMarcados = () => {
+    setElegidos((prev) => prev.filter((e) => !marcados.has(Number(e.id))));
+    setMarcados(new Set());
+  };
+  const alternarElegidos = () => {
+    const v = !chipsVisibles;
+    setVerElegidos(v);
+    try { localStorage.setItem('plazas.editor.verElegidos', v ? '1' : '0'); } catch { /* sin storage */ }
+  };
 
   React.useEffect(() => {
     if (!abierto) return;
@@ -68,27 +88,72 @@ export default function EditorPlaza({ abierto, sector, sectores = [], plaza, onC
   };
 
   return (
-    <Dialog open={abierto} onClose={onCerrar} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
-        {plaza?.id ? 'Editar plaza' : 'Nueva plaza'}{sectorElegido && <Typography component="span" color="text.secondary" sx={{ fontSize: '0.85rem' }}> · {sectorElegido.nombre}</Typography>}
-      </DialogTitle>
-      <DialogContent>
+    // Alto fijo: lo que se gana arriba (nombre en la primera fila, chips ocultables) va a la lista de productos.
+    <Dialog open={abierto} onClose={onCerrar} maxWidth="md" fullWidth PaperProps={{ sx: { height: 'calc(100% - 64px)' } }}>
+      {/* Primera fila: título · sector y el nombre de la plaza al lado (Diego 14/11/2026: ganar lugar). */}
+      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5 }}>
+        <Typography component="h2" sx={{ fontWeight: 700, fontSize: '1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {plaza?.id ? 'Editar plaza' : 'Nueva plaza'}
+          {sectorElegido && (sector || sectores.length <= 1) && <Typography component="span" color="text.secondary" sx={{ fontSize: '0.85rem' }}> · {sectorElegido.nombre}</Typography>}
+        </Typography>
         {!sector && sectores.length > 1 && (
-          <TextField select fullWidth size="small" label="Sector" value={sectorId} onChange={(e) => setSectorId(e.target.value)} sx={{ mt: 1 }}>
+          <TextField select size="small" value={sectorId} onChange={(e) => setSectorId(e.target.value)}
+            sx={{ width: 170, flexShrink: 0, '& .MuiInputBase-root': { height: 40 } }}
+            SelectProps={{ renderValue: (v) => `Sector: ${sectores.find((x) => String(x.id) === String(v))?.nombre || ''}` }}>
             {sectores.map((x) => <MenuItem key={x.id} value={x.id}>{x.nombre}</MenuItem>)}
           </TextField>
         )}
-        <TextField autoFocus fullWidth size="small" label="Nombre" placeholder="Ej. Ensaladas, Freidora, Tostados" value={nombre}
-          onChange={(e) => setNombre(e.target.value)} sx={{ mt: 1.5, mb: 2 }} />
-        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-          PRODUCTOS DE LA PLAZA ({elegidos.length})
-        </Typography>
-        <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1.5, minHeight: 24 }}>
-          {elegidos.map((e) => <Chip key={e.id} label={e.nombre} size="small" onDelete={() => toggle(e)} sx={{ height: 24, fontSize: '0.72rem' }} />)}
-          {!elegidos.length && <Typography variant="caption" color="text.secondary">Tildá abajo los productos que se arman en esta plaza.</Typography>}
+        <TextField autoFocus={!plaza?.id} fullWidth size="small" placeholder="Nombre de la plaza (ej. Ensaladas, Freidora, Tostados)" value={nombre}
+          onChange={(e) => setNombre(e.target.value)} inputProps={{ 'aria-label': 'Nombre de la plaza' }}
+          sx={{ '& .MuiInputBase-root': { height: 40 } }} />
+      </DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* Productos elegidos: el título los muestra u oculta. Ocultos, el número sigue cambiando al tildar. */}
+        <Stack direction="row" alignItems="center" sx={{ mb: 0.75, minHeight: 26 }}>
+        <Stack direction="row" alignItems="center" onClick={elegidos.length ? alternarElegidos : undefined}
+          sx={{ cursor: elegidos.length ? 'pointer' : 'default', userSelect: 'none', flex: 1 }}>
+          <Typography variant="caption" fontWeight={700} color="text.secondary">
+            PRODUCTOS DE LA PLAZA ({elegidos.length})
+          </Typography>
+          {!!elegidos.length && (
+            <>
+              <ExpandMoreIcon sx={{ fontSize: 18, color: 'text.secondary', ml: 0.25, transition: 'transform .15s', transform: chipsVisibles ? 'rotate(180deg)' : 'none' }} />
+              <Typography variant="caption" sx={{ color: '#2492C8', fontWeight: 600 }}>{chipsVisibles ? 'Ocultar' : 'Ver'}</Typography>
+            </>
+          )}
         </Stack>
+        {/* Acciones de la selección: a la derecha, del mismo alto. */}
+        {chipsVisibles && elegidos.length > 1 && (
+          <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexShrink: 0 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {marcados.size ? `${marcados.size} marcado${marcados.size !== 1 ? 's' : ''}` : 'Tocá un producto para marcarlo'}
+            </Typography>
+            <Button size="small" onClick={() => setMarcados(marcados.size === elegidos.length ? new Set() : new Set(elegidos.map((e) => Number(e.id))))}
+              sx={{ height: 26, minWidth: 0, px: 1, textTransform: 'none', fontSize: '0.75rem', fontWeight: 600 }}>
+              {marcados.size === elegidos.length ? 'Ninguno' : 'Marcar todos'}
+            </Button>
+            <Button size="small" variant="outlined" color="error" disabled={!marcados.size} onClick={quitarMarcados}
+              sx={{ height: 26, minWidth: 0, px: 1.25, textTransform: 'none', fontSize: '0.75rem', fontWeight: 700 }}>
+              Quitar{marcados.size ? ` ${marcados.size}` : ''}
+            </Button>
+          </Stack>
+        )}
+        </Stack>
+        {(chipsVisibles || !elegidos.length) && (
+          <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.5, mb: 1.5, minHeight: 24, flexShrink: 0, maxHeight: 132, overflowY: 'auto' }}>
+            {elegidos.map((e) => {
+              const m = marcados.has(Number(e.id));
+              return (
+                <Chip key={e.id} label={e.nombre} size="small" onClick={() => marcar(e.id)} onDelete={() => toggle(e)}
+                  sx={{ height: 24, fontSize: '0.72rem', border: '1px solid', borderColor: m ? '#5BC2EA' : 'transparent',
+                    bgcolor: m ? 'rgba(91,194,234,.22)' : undefined, fontWeight: m ? 700 : 400, '&:hover': { bgcolor: m ? 'rgba(91,194,234,.32)' : undefined } }} />
+              );
+            })}
+            {!elegidos.length && <Typography variant="caption" color="text.secondary">Tildá abajo los productos que se arman en esta plaza.</Typography>}
+          </Stack>
+        )}
         {/* Buscador y filtros, del mismo alto (40). La agrupación no es obligatoria. */}
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ '& .MuiInputBase-root': { height: 40 } }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0, '& .MuiInputBase-root': { height: 40 } }}>
           <TextField fullWidth size="small" placeholder="Buscar producto con receta…" value={q} onChange={(e) => setQ(e.target.value)} />
           <TextField select size="small" value={agrupFiltro} onChange={(e) => setAgrupFiltro(e.target.value)} sx={{ width: 220, flexShrink: 0 }}
             SelectProps={{ displayEmpty: true, renderValue: (v) => (v ? agrupaciones.find((g) => String(g.id) === String(v))?.nombre || '' : 'Agrupación: todas') }}>
@@ -101,7 +166,7 @@ export default function EditorPlaza({ abierto, sector, sectores = [], plaza, onC
             <ToggleButton value="subrubro">Subrubro</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
-        <Box sx={{ maxHeight: 340, overflowY: 'auto', mt: 0.75, border: '1px solid #eef0f4', borderRadius: 1.5 }}>
+        <Box sx={{ flex: 1, minHeight: 160, overflowY: 'auto', mt: 0.75, border: '1px solid #eef0f4', borderRadius: 1.5 }}>
           {grupos.map((g) => {
             const marcados = g.items.filter((a) => ids.has(Number(a.id))).length;
             return (
@@ -127,7 +192,7 @@ export default function EditorPlaza({ abierto, sector, sectores = [], plaza, onC
           {!filtrados.length && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', p: 1.5 }}>Sin resultados</Typography>}
         </Box>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ px: 2, pb: 2 }}>
         <Button onClick={onCerrar}>Cancelar</Button>
         <Button variant="contained" disableElevation disabled={guardando || !nombre.trim() || !sectorElegido} onClick={guardar}>
           {guardando ? 'Guardando…' : 'Guardar'}
