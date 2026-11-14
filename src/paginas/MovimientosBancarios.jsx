@@ -92,7 +92,14 @@ export default function MovimientosBancarios() {
         setDatos({ filas: normalizar(f.banco?.filas || [], f.egresos?.filas || []), origen: f.banco?.origen || '' });
       })
       .catch(() => { if (vivo) setError('No pude cargar los movimientos. Probá de nuevo en un rato.'); });
-    MercadoPagoAPI.estado(bid, suc).then((r) => { if (vivo) setMp(r); }).catch(() => {});
+    MercadoPagoAPI.estado(bid, suc).then((r) => {
+      if (!vivo) return;
+      setMp(r);
+      // El header muestra solo los bancos conectados (Diego 14/11/2026): le avisamos al Navbar.
+      const on = !!r?.conectado;
+      try { sessionStorage.setItem(`bancos:mp:${bid}`, on ? '1' : '0'); } catch { /* sin storage */ }
+      window.dispatchEvent(new CustomEvent('bancos:estado', { detail: { bid, mp: on } }));
+    }).catch(() => {});
     return () => { vivo = false; };
   }, [bid, suc, ver]);
 
@@ -157,7 +164,8 @@ export default function MovimientosBancarios() {
       </div>
     );
   }
-  if (vistaBancos) return <ConectaTuBanco mp={mp} sucNombre={reales.length ? sucNombre : ''} />;
+  // Sin ningún banco conectado, la pantalla es «Conectá tu banco» (no hay movimientos que mostrar).
+  if (vistaBancos || (mp && !mp.conectado)) return <ConectaTuBanco mp={mp} sucNombre={reales.length ? sucNombre : ''} />;
   if (error) return <div style={{ padding: 32, color: '#991b1b' }}>{error}</div>;
   if (!datos) return <div style={{ padding: 32, color: '#64748b' }}>Cargando los movimientos…</div>;
 
