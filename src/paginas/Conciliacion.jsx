@@ -12,6 +12,7 @@ import { ConciliacionAPI, MercadoPagoAPI, sucursalNum } from '@/servicios/apiCon
 import { Link as RouterLink } from 'react-router-dom';
 import ModuloConciliacion from '@/componentes/conciliacion/ModuloConciliacion';
 import { showConfirm } from '@/servicios/appConfirm';
+import { fuentesDesdeMaxi } from '@/componentes/conciliacion/desdeMaxi';
 
 const dm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : ''); // 2026-11-01 → 01/11
 
@@ -33,7 +34,9 @@ export default function Conciliacion() {
   const pagT = useRef(null);
   const [ver, setVer] = useState(0);             // sube cuando se recargan las fuentes (rearma el módulo)
   const [mp, setMp] = useState(null);            // estado de la conexión con Mercado Pago
+  const [maxi, setMaxi] = useState(null);        // ¿hay datos de MaxiRest (kit) para esta sucursal?
   const [verBanco, setVerBanco] = useState(false); // lista simple de lo cargado (sirve sin ventas)
+  const [verEgresos, setVerEgresos] = useState(false); // lo que salió de Mercado Pago (14/11)
 
   const avisar = useCallback((t, ms = 2500) => {
     setAviso(t);
@@ -45,6 +48,12 @@ export default function Conciliacion() {
     setMp(null);
     if (!bid || suc === null) return;
     MercadoPagoAPI.estado(bid, suc).then(setMp).catch(() => setMp(null));
+  }, [bid, suc, ver]);
+
+  useEffect(() => {
+    setMaxi(null);
+    if (!bid || suc === null) return;
+    ConciliacionAPI.maxiEstado(bid, suc).then(setMaxi).catch(() => setMaxi({ disponible: false }));
   }, [bid, suc, ver]);
 
   useEffect(() => {
@@ -63,17 +72,12 @@ export default function Conciliacion() {
             facturas_cc: f.facturas_cc?.filas || [],
           },
           pagadores: r?.pagadores || {},
+          egresos: f.egresos?.filas || [],   // lo que salió de Mercado Pago (no va al módulo de Diego)
         });
       })
       .catch(() => { if (vivo) setError('No pude cargar la conciliación. Probá de nuevo en un rato.'); });
     return () => { vivo = false; clearTimeout(pagT.current); };
   }, [bid, suc, ver]);
-
-  // qué fechas del banco ya están en Lazarillo (para la barra de Mercado Pago)
-  const cubreBanco = useMemo(() => {
-    const fs = (inicial?.fuentes?.banco || []).map((b) => String(b.fecha || '').slice(0, 10)).filter(Boolean).sort();
-    return fs.length ? { desde: fs[0], hasta: fs[fs.length - 1], n: fs.length } : null;
-  }, [inicial]);
 
   const persist = useMemo(() => (bid && suc !== null && inicial ? {
     fuentes: inicial.fuentes,
@@ -155,9 +159,17 @@ export default function Conciliacion() {
           </button>
         </div>
       )}
-      <BarraMercadoPago bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} cubre={cubreBanco} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
-      {inicial.fuentes.banco?.length > 0 && (
+      <BarraTraer bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} maxi={maxi}
+        guardadas={inicial.fuentes} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
+      {(inicial.fuentes.banco?.length > 0 || inicial.egresos.length > 0) && (
         <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {inicial.egresos.length > 0 && (
+            <button type="button" onClick={() => setVerEgresos((v) => !v)}
+              style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
+              {verEgresos ? 'Ocultar egresos de Mercado Pago' : `Ver egresos de Mercado Pago (${inicial.egresos.length})`}
+            </button>
+          )}
+          {inicial.fuentes.banco?.length > 0 && <>
           <button type="button" onClick={() => setVerBanco((v) => !v)}
             style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
             {verBanco ? 'Ocultar movimientos del banco' : `Ver movimientos del banco (${inicial.fuentes.banco.length})`}
@@ -167,8 +179,10 @@ export default function Conciliacion() {
             style={{ border: 'none', background: 'none', color: '#8a93a3', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline' }}>
             Borrar los movimientos del banco cargados ({inicial.fuentes.banco.length})
           </button>
+          </>}
         </div>
       )}
+      {verEgresos && inicial.egresos.length > 0 && <ListaEgresos filas={inicial.egresos} />}
       {verBanco && inicial.fuentes.banco?.length > 0 && <ListaBanco filas={inicial.fuentes.banco} />}
       {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
       <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
@@ -215,133 +229,162 @@ function ListaBanco({ filas }) {
   );
 }
 
-// Barra de Mercado Pago arriba del módulo (14/11): con la cuenta de la sucursal conectada, trae
-// los cobros y los deja como "Movimientos del banco" (reemplaza lo que había de esas fechas).
-// Mercado Pago se consulta de a tramos (el servidor acepta hasta 3 meses por pedido): la barra
-// parte cualquier período en meses y los trae uno por uno, con avance y sin límite para el usuario.
-// "Todo el historial" va mes a mes hacia atrás hasta encontrar 2 meses seguidos sin cobros.
-const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const hoyISO = () => isoLocal(new Date()); // fecha de Argentina (toISOString daba mañana después de las 21)
-const restarDias = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() - n); return isoLocal(d); };
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const nombreMes = (iso) => `${MESES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
-const dma = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '');
-// [desde, hasta] partido por mes calendario, del más nuevo al más viejo
-function tramosPorMes(desde, hasta) {
-  const out = [];
-  let fin = hasta;
-  while (fin >= desde) {
-    const ini = fin.slice(0, 8) + '01';
-    out.push({ desde: ini < desde ? desde : ini, hasta: fin });
-    fin = restarDias(ini, 1);
-  }
-  return out;
-}
-const MAX_MESES_HISTORIAL = 36;
-const OPCIONES = [
-  { k: 'mes', l: 'Este mes' },
-  { k: '3m', l: 'Últimos 3 meses' },
-  { k: 'todo', l: 'Todo el historial' },
-  { k: 'fechas', l: 'Elegir fechas' },
-];
-
-function BarraMercadoPago({ bid, suc, sucNombre, mp, cubre, onTraido, avisar }) {
-  const [opcion, setOpcion] = useState('mes');
-  const [desde, setDesde] = useState(() => hoyISO().slice(0, 8) + '01');
-  const [hasta, setHasta] = useState(hoyISO);
-  const [avance, setAvance] = useState(null); // { mes, n, de } mientras trae
-  const cortar = useRef(false);
-  if (!mp) return null;
-  const caja = { maxWidth: 1180, margin: '12px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
-  if (!mp.conectado) {
-    if (!mp.configurado) return null;
-    return (
-      <div style={{ ...caja, background: '#5BC2EA14', border: '1px solid #5BC2EA55', color: '#15213E' }}>
-        <span>💡 Conectá el <b>Mercado Pago</b>{sucNombre ? ` de ${sucNombre}` : ''} y los movimientos del banco llegan solos, sin subir el extracto.</span>
-        <RouterLink to="/configuracion?tab=7" style={{ marginLeft: 'auto', fontWeight: 700 }}>Conectar</RouterLink>
+// Egresos de Mercado Pago (14/11): pagos hechos desde la cuenta, retiros, impuestos, comisiones,
+// devoluciones. Arriba, el total por tipo; abajo, el detalle.
+function ListaEgresos({ filas }) {
+  const orden = [...filas].sort((a, b) => `${b.fecha} ${b.hora || ''}`.localeCompare(`${a.fecha} ${a.hora || ''}`));
+  const porTipo = new Map();
+  orden.forEach((f) => porTipo.set(f.tipo || 'Otro', (porTipo.get(f.tipo || 'Otro') || 0) + (Number(f.imp) || 0)));
+  const total = orden.reduce((a, f) => a + (Number(f.imp) || 0), 0);
+  const th = { textAlign: 'left', padding: '7px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#8a93a3', fontWeight: 700, borderBottom: '1px solid rgba(21,33,62,.12)', position: 'sticky', top: 0, background: '#F7F9FB' };
+  const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid rgba(21,33,62,.07)', color: '#15213E' };
+  return (
+    <div style={{ maxWidth: 1180, margin: '8px auto 0', padding: '0 22px' }}>
+      <div style={{ background: '#fff', border: '1px solid rgba(21,33,62,.16)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', fontSize: 13, color: '#5b6577', borderBottom: '1px solid rgba(21,33,62,.1)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <span>{orden.length} egreso{orden.length === 1 ? '' : 's'} · total <b style={{ color: '#D64545' }}>{pesos(total)}</b></span>
+          {[...porTipo.entries()].sort((a, b) => b[1] - a[1]).map(([t, v]) => <span key={t}>{t}: <b style={{ color: '#15213E' }}>{pesos(v)}</b></span>)}
+        </div>
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Archivo', system-ui, sans-serif" }}>
+            <thead><tr>
+              <th style={th}>Fecha</th><th style={th}>Hora</th><th style={th}>Tipo</th><th style={th}>Detalle</th><th style={{ ...th, textAlign: 'right' }}>Importe</th>
+            </tr></thead>
+            <tbody>
+              {orden.map((f) => (
+                <tr key={f.id}>
+                  <td style={td}>{f.fecha ? `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)}` : '—'}</td>
+                  <td style={{ ...td, color: '#8a93a3' }}>{f.hora || '—'}</td>
+                  <td style={td}>{f.tipo || 'Otro'}</td>
+                  <td style={{ ...td, color: '#5b6577', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={f.cuenta ? `Cuenta destino ${f.cuenta}` : undefined}>{f.detalle || ''}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, fontFamily: "'Sora', sans-serif", color: '#D64545' }}>−{pesos(f.imp)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+// Barra de arriba del módulo (13/11): con un solo botón trae lo del período sin subir archivos.
+//  - MaxiRest: ventas detalladas (22) y cobranzas de cuenta corriente, de lo que el kit sube a
+//    Render todos los días (llegan hasta el día anterior). Reemplaza lo guardado de esas fechas.
+//  - Mercado Pago: los cobros de la cuenta conectada de la sucursal, como movimientos del banco.
+// Lo que no esté disponible se sigue pudiendo subir con el archivo, como antes.
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const inicioMes = () => hoyISO().slice(0, 8) + '01';
+const ERROR_MP = { periodo_muy_largo: 'Elegí hasta 3 meses por vez.', mp_vencido: 'Venció la conexión con Mercado Pago: volvé a conectarla en Conexiones.' };
+function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar }) {
+  const [desde, setDesde] = useState(inicioMes);
+  const [hasta, setHasta] = useState(hoyISO);
+  const [trayendo, setTrayendo] = useState(false);
+  // Reporte de MP (nombres de pagadores y egresos) que todavía se está armando: { desde, hasta }.
+  const [esperando, setEsperando] = useState(null);
+  // Las funciones del padre cambian en cada render: por ref, así la espera no se reinicia.
+  const cb = useRef({ avisar, onTraido });
+  cb.current = { avisar, onTraido };
+
+  // MP arma el reporte en unos minutos: se vuelve a preguntar cada 40 s, hasta 10 veces.
+  useEffect(() => {
+    if (!esperando) return undefined;
+    let intentos = 0;
+    let vivo = true;
+    const t = setInterval(async () => {
+      intentos += 1;
+      try {
+        const r = await MercadoPagoAPI.reporte(bid, suc, esperando.desde, esperando.hasta);
+        if (!vivo) return;
+        if (r.reporte === 'listo') {
+          setEsperando(null);
+          cb.current.avisar(`Llegó el reporte de Mercado Pago: ${r.nombres} nombre${r.nombres === 1 ? '' : 's'} de pagadores y ${r.egresos} egreso${r.egresos === 1 ? '' : 's'}`, 6000);
+          cb.current.onTraido();
+          return;
+        }
+        if (r.reporte === 'error') { setEsperando(null); cb.current.avisar('Mercado Pago no pudo armar el reporte de movimientos. Probá Traer de nuevo más tarde.', 8000); return; }
+      } catch { /* se reintenta */ }
+      if (intentos >= 10 && vivo) { setEsperando(null); cb.current.avisar('El reporte de Mercado Pago está tardando: tocá Traer de nuevo en un rato.', 8000); }
+    }, 40000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [esperando, bid, suc]);
+
+  if (!mp && !maxi) return null;
+  const conMaxi = !!maxi?.disponible;
+  const conMp = !!mp?.conectado;
+  const caja = { maxWidth: 1180, margin: '12px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
+  const codigo = (e) => String(e?.message || '').split(':')[0].trim();
 
   const traer = async () => {
-    const hoy = hoyISO();
-    let tramos;
-    if (opcion === 'mes') tramos = tramosPorMes(hoy.slice(0, 8) + '01', hoy);
-    else if (opcion === '3m') tramos = tramosPorMes(restarDias(hoy, 89), hoy);
-    else if (opcion === 'todo') tramos = tramosPorMes(restarDias(hoy.slice(0, 8) + '01', 1).slice(0, 8) + '01', hoy); // se van sumando meses hacia atrás
-    else {
-      if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
-      tramos = tramosPorMes(desde, hasta > hoy ? hoy : hasta);
-    }
-    cortar.current = false;
-    let total = 0, vacios = 0, hechos = 0, masViejo = null, fallo = null;
-    for (let i = 0; i < tramos.length; i++) {
-      const t = tramos[i];
-      setAvance({ mes: nombreMes(t.desde), n: i + 1, de: opcion === 'todo' ? null : tramos.length });
+    if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
+    setTrayendo(true);
+    const partes = [];
+    const errores = [];
+    if (conMaxi) {
       try {
-        const r = await MercadoPagoAPI.sincronizar(bid, suc, t.desde, t.hasta);
-        const c = Number(r?.cobros) || 0;
-        total += c; hechos++; if (c) masViejo = t.desde;
-        vacios = c ? 0 : vacios + 1;
+        const r = await ConciliacionAPI.maxiTraer(bid, suc, desde, hasta);
+        const f = fuentesDesdeMaxi(r, guardadas, desde, hasta);
+        await ConciliacionAPI.guardarFuente(bid, suc, 'ventas', f.ventas, `MaxiRest ${r.pdv} ${desde} a ${hasta}`);
+        await ConciliacionAPI.guardarFuente(bid, suc, 'pagos', f.pagos, `MaxiRest ${r.pdv} ${desde} a ${hasta}`);
+        await ConciliacionAPI.guardarFuente(bid, suc, 'facturas_cc', f.facturas_cc, `MaxiRest ${r.pdv} ${desde} a ${hasta}`);
+        partes.push(`${f.cuantas.ventas} venta${f.cuantas.ventas === 1 ? '' : 's'} y ${f.cuantas.pagos} cobranza${f.cuantas.pagos === 1 ? '' : 's'} de MaxiRest`);
       } catch (e) {
-        const c = String(e?.message || '').split(':')[0].trim();
-        fallo = c === 'mp_vencido' ? 'Venció la conexión con Mercado Pago: volvé a conectarla en Conexiones.' : `Mercado Pago no respondió en ${nombreMes(t.desde)}. Lo anterior quedó guardado; probá de nuevo en un rato.`;
-        break;
-      }
-      if (cortar.current) break;
-      // todo el historial: seguir hacia atrás mientras haya cobros (corta con 2 meses seguidos vacíos)
-      if (opcion === 'todo' && i === tramos.length - 1 && vacios < 2 && tramos.length < MAX_MESES_HISTORIAL) {
-        const ini = restarDias(t.desde, 1).slice(0, 8) + '01';
-        tramos.push({ desde: ini, hasta: restarDias(t.desde, 1) });
+        errores.push(codigo(e) === 'periodo_muy_largo' ? 'Elegí hasta 3 meses por vez.' : 'MaxiRest: no pude traer las ventas.');
       }
     }
-    setAvance(null);
-    if (hechos) onTraido();
-    if (fallo) { avisar(fallo, 9000); return; }
-    const rango = masViejo ? ` (${nombreMes(masViejo)} a ${nombreMes(tramos[0].desde)})` : '';
-    avisar(`${cortar.current ? 'Cortado. ' : 'Listo: '}${total.toLocaleString('es-AR')} cobro${total === 1 ? '' : 's'} de Mercado Pago${rango}`, 6000);
+    if (conMp) {
+      try {
+        const r = await MercadoPagoAPI.sincronizar(bid, suc, desde, hasta);
+        partes.push(`${r.cobros} cobro${r.cobros === 1 ? '' : 's'} de Mercado Pago`);
+        if (r.pagos_hechos) partes.push(`${r.pagos_hechos} pago${r.pagos_hechos === 1 ? '' : 's'} hecho${r.pagos_hechos === 1 ? '' : 's'} desde la cuenta`);
+        if (r.reporte === 'listo') partes.push(`${r.egresos} egreso${r.egresos === 1 ? '' : 's'} y ${r.nombres} nombre${r.nombres === 1 ? '' : 's'} de pagadores`);
+        if (r.reporte === 'pendiente') {
+          setEsperando({ desde, hasta });
+          partes.push('el reporte con nombres y egresos lo está armando Mercado Pago: lo traigo solo en unos minutos');
+        }
+      } catch (e) {
+        errores.push(ERROR_MP[codigo(e)] || 'Mercado Pago no respondió. Probá de nuevo en un rato.');
+      }
+    }
+    setTrayendo(false);
+    if (partes.length) onTraido();
+    avisar([partes.length ? `Listo: ${partes.join(' · ')}` : '', ...errores].filter(Boolean).join(' — '), errores.length ? 9000 : 5000);
   };
 
-  const trayendo = !!avance;
-  const inp = { fontFamily: 'inherit', fontSize: 13.5, height: 34, boxSizing: 'border-box', padding: '0 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
-  const chip = (on) => ({
-    fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: 34, padding: '0 12px', borderRadius: 999, cursor: trayendo ? 'default' : 'pointer',
-    border: `1px solid ${on ? '#5BC2EA' : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: on ? '#12627F' : '#15213E', whiteSpace: 'nowrap',
-  });
-  const btn = { fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: trayendo ? 'wait' : 'pointer', whiteSpace: 'nowrap' };
+  const inp = { fontFamily: 'inherit', fontSize: 13.5, padding: '5px 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
+  const fuente = { display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6577' };
   return (
     <div style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <span><b>🏦 Mercado Pago</b> <span style={{ color: '#5b6577' }}>· {mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}</span></span>
-        <span style={{ color: '#8a93a3', fontSize: 12.5 }}>
-          {cubre?.n ? `En Lazarillo: del ${dma(cubre.desde)} al ${dma(cubre.hasta)} · ${cubre.n.toLocaleString('es-AR')} movimientos` : 'Todavía no se trajo nada'}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        <span style={fuente}>
+          <b style={{ color: '#15213E' }}>🧾 MaxiRest</b>
+          {conMaxi
+            ? <span>ventas y cuenta corriente{maxi.datos_hasta ? ` · datos hasta el ${dm(maxi.datos_hasta)}` : ''}</span>
+            : <span>{maxi ? 'esta sucursal no tiene el kit: subí los informes con el archivo' : '…'}</span>}
         </span>
-      </span>
-      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        {trayendo ? (
-          <>
-            <span style={{ color: '#5b6577' }}>Trayendo <b style={{ color: '#15213E' }}>{avance.mes}</b>{avance.de ? ` · ${avance.n} de ${avance.de}` : ` · mes ${avance.n}`}…</span>
-            <button type="button" onClick={() => { cortar.current = true; }} style={{ ...chip(false), cursor: 'pointer' }}>Cortar</button>
-          </>
-        ) : (
-          <>
-            {OPCIONES.map((o) => (
-              <button key={o.k} type="button" onClick={() => setOpcion(o.k)} style={chip(opcion === o.k)}>{o.l}</button>
-            ))}
-            {opcion === 'fechas' && (
-              <>
-                <input type="date" value={desde} max={hoyISO()} onChange={(e) => setDesde(e.target.value)} style={inp} />
-                <span>a</span>
-                <input type="date" value={hasta} max={hoyISO()} onChange={(e) => setHasta(e.target.value)} style={inp} />
-              </>
-            )}
-            <button type="button" onClick={traer} style={btn}
-              title="Trae los cobros de Mercado Pago de ese período, mes por mes, y reemplaza los movimientos del banco de esos días">
-              Traer cobros
-            </button>
-          </>
-        )}
-      </span>
+        <span style={fuente}>
+          <b style={{ color: '#15213E' }}>🏦 Mercado Pago</b>
+          {conMp
+            ? <span>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
+                {esperando ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}</span>
+            : mp?.configurado
+              ? <span>sin conectar{sucNombre ? ` en ${sucNombre}` : ''} · <RouterLink to="/configuracion?tab=7" style={{ fontWeight: 700 }}>Conectar</RouterLink></span>
+              : <span>{mp ? 'no disponible todavía' : '…'}</span>}
+        </span>
+      </div>
+      {(conMaxi || conMp) && (
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={inp} />
+          <span>a</span>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={inp} />
+          <button type="button" onClick={traer} disabled={trayendo}
+            title="Trae lo de esas fechas y reemplaza lo que había cargado de esos días"
+            style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: trayendo ? 'wait' : 'pointer' }}>
+            {trayendo ? 'Trayendo…' : 'Traer'}
+          </button>
+        </span>
+      )}
     </div>
   );
 }
