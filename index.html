@@ -3,6 +3,10 @@
 
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // TV de la cocina: /pantalla va a la página liviana (pantalla.html), sin cargar la app completa.
+    if (location.pathname.replace(/\/+$/, '') === '/pantalla') location.replace('/pantalla.html' + location.search);
+  </script>
   <meta name="google" content="notranslate" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <!-- Ícono y nombre al guardar la app en el escritorio del celular (Diego 08/11/2026, opción A) -->

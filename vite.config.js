@@ -63,6 +63,16 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
+  // Dos páginas: la app (index.html) y la pantalla de TV (pantalla.html), que va aparte y liviana
+  // porque el navegador de las Smart TV se quedaba sin memoria con la app completa (Diego 14/11/2026).
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        pantalla: path.resolve(__dirname, 'pantalla.html'),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
