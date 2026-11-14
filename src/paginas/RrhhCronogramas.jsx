@@ -829,8 +829,11 @@ export default function RrhhCronogramas() {
     { k: 'copiar', t: <><b>+ Semana</b> crea la semana siguiente copiando esta, así no la armás de cero.</> },
     { k: 'exportar', t: <>Arma la <b>imagen</b> del cronograma y de los francos y la mandás por <b>WhatsApp</b> al equipo.</> },
   ].filter((p) => !cel || ['dias', 'fila', 'agregar'].includes(p.k)); // celu: la barra es otra, solo la grilla
+  // Arranca solo mientras el negocio no cargó ningún cronograma propio (Diego 14/11/2026).
   const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
-    !cargando && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel);
+    !cargando && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel
+      && !(sinHistoria && !semanaExiste && !ejemploVisto && !cargandoSemana), // con el EJEMPLO en pantalla, después de «Armar la semana»
+    { sinDatos: sinHistoria && !semanaExiste });
   const pasoTour = pasosTour[recCrono.paso - 1];
   const primerTurno = (espacio?.turnos || []).find((t) => !minimizados[`${espacioId}:${t.id}`])?.id;
   const primeraFila = filas.find((f) => f.turnoId === primerTurno)?.key;
@@ -892,7 +895,6 @@ export default function RrhhCronogramas() {
           {menuCel && (
             <div onClick={() => setMenuCel(false)} style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, background: T.band, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: T.sombra, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
               <Boton deshabilitado={sinNomina} onClick={() => setPuestosCel(true)}>✎ Puestos</Boton>
-              <Boton deshabilitado={sinNomina} onClick={recCrono.ver}>? Paso a paso</Boton>
               <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana}>+ Semana</Boton>
               <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)}>Vaciar</Boton>
             </div>
@@ -921,7 +923,6 @@ export default function RrhhCronogramas() {
         <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginRight: 4, color: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }}>
           {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
         </span>
-        <Boton deshabilitado={sinNomina} onClick={recCrono.ver} title="Ver el paso a paso de Cronogramas">? Paso a paso</Boton>
         <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
         <Boton onClick={() => setMaximizado((v) => !v)} title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
           <span style={{ display: 'inline-flex', alignItems: 'center', verticalAlign: 'top', height: 14.5 }}>
