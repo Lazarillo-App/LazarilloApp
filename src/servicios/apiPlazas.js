@@ -17,6 +17,14 @@ export const PlazasAPI = {
   async editar(id, nombre, articleIds) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds } }), 'No se pudo guardar la plaza'); },
   // Qué muestra la plaza por defecto ('peso' | 'obs' | 'ambos'); cada ingrediente puede tener el suyo.
   async mostrar(id, mostrar) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { mostrar } }), 'No se pudo guardar'); },
+  // TVs de la plaza (Vincular TV): el código lo muestra la TV en /pantalla.
+  async pantallas(id) { return ok(await httpBiz(`/plazas/${id}/pantallas`, { method: 'GET', cache: false }), 'No se pudieron cargar las pantallas').pantallas || []; },
+  async vincularPantalla(id, codigo, nombre) {
+    const r = await httpBiz(`/plazas/${id}/pantallas`, { method: 'POST', body: { codigo, nombre } });
+    if (!r?.ok) throw new Error(r?.message || (r?.error === 'codigo_invalido' ? 'Ese código no existe o ya venció. Fijate el que muestra la TV.' : 'No se pudo vincular'));
+    return r.pantalla;
+  },
+  async desvincularPantalla(id, pid) { return ok(await httpBiz(`/plazas/${id}/pantallas/${pid}`, { method: 'DELETE' }), 'No se pudo desvincular'); },
   async borrar(id) { return ok(await httpBiz(`/plazas/${id}`, { method: 'DELETE' }), 'No se pudo borrar la plaza'); },
   async vista(id, articleId) { return ok(await httpBiz(`/plazas/${id}/vista${articleId ? `?articleId=${articleId}` : ''}`, { method: 'GET', cache: false }), 'No se pudo cargar la plaza'); },
   async guardarFicha(id, articleId, ficha) { return ok(await httpBiz(`/plazas/${id}/fichas/${articleId}`, { method: 'PUT', body: ficha }), 'No se pudo guardar'); },

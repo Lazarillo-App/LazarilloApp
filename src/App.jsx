@@ -58,6 +58,7 @@ import AdminApp from './admin/AdminApp';
 // ── NUEVAS PÁGINAS ──
 import AceptarInvitacion from './paginas/AceptarInvitacion';
 import AltaPorQR from './paginas/AltaPorQR';
+import PantallaTV from './paginas/PantallaTV';
 import SelectorNegocio from './paginas/SelectorNegocio';
 import SuperPanel from './paginas/SuperPanel';
 import AvisoAjuste from './componentes/soporte/AvisoAjuste';
@@ -240,6 +241,8 @@ export default function App() {
 
   if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
   const enAppMovil = location.pathname === '/m';
+  // TV de la cocina (/pantalla): sin barra, sin Anthony ni avisos, aunque en ese navegador haya alguien logueado.
+  if (location.pathname === '/pantalla') return <PantallaTV />;
   return (
     <ThemeProviderNegocio activeBizId={activeBusinessId}>
       <AppAlertModal />
