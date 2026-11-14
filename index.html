@@ -4,8 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <script>
-    // TV de la cocina: /pantalla va a la página liviana (pantalla.html), sin cargar la app completa.
-    if (location.pathname.replace(/\/+$/, '') === '/pantalla') location.replace('/pantalla.html' + location.search);
+    // TV de la cocina: /pantalla va a la página liviana (pantalla/index.html), sin cargar la app completa.
+    // Por si el servidor no sirve la carpeta directo: /pantalla y /pantalla.html (link viejo) → /pantalla/
+    if (location.pathname === '/pantalla' || location.pathname === '/pantalla.html') location.replace('/pantalla/' + location.search);
   </script>
   <meta name="google" content="notranslate" />
   <link rel="icon" type="image/png" href="/favicon.png" />
