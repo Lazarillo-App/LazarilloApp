@@ -13,6 +13,7 @@ import { ctxDesdeCelda } from '@/gestion/cargaUtils';
 import ModalNuevaCarga, { edeDesdeFactura } from './ModalCargaFactura';
 import CompraLineasModal from './CompraLineasModal';
 import { useReglasCarga } from './apertura/useReglasCarga';
+import { useAbrirGuia } from '@/componentes/asistente/guias';
 
 const pesos = (n) => `$ ${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 // Con "Todas las sucursales" se carga igual: arranca en la principal y el PDV se elige en cada
@@ -48,6 +49,8 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
   const [abierto, setAbierto] = useState(abrirAlMontar);
   useEffect(() => { if (abrirAlMontar) onAbiertoAlMontar?.(); }, [abrirAlMontar, onAbiertoAlMontar]);
   const [ctx, setCtx] = useState(null);
+  // Guía «Cargar una factura o gasto» de Anthony: abre la carga vacía (Diego 14/11/2026).
+  useAbrirGuia('carga_gastos', () => { setCtx(null); setAbierto(true); });
   const [aviso, setAviso] = useState(null);
   // Los maestros se piden al abrir el Panel: cuando se abre el modal ya están.
   const { data: maestros, isError } = useMaestrosFactura(true);

@@ -4,6 +4,7 @@ import { showAlert } from '../servicios/appAlert';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useAbrirGuia } from '@/componentes/asistente/guias';
 import { useOrganization } from '../context/OrganizationContext';
 import TablaArticulos from '../componentes/TablaArticulos';
 import SidebarCategorias from '../componentes/SidebarCategorias';
@@ -176,6 +177,8 @@ export default function ArticulosMain(props) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [agregarMenuAnchor, setAgregarMenuAnchor] = useState(null);
   const [agregarArticuloOpen, setAgregarArticuloOpen] = useState(false);
+  // Guía «Crear un artículo» de Anthony: abre el alta y arranca el paso a paso (Diego 14/11/2026).
+  useAbrirGuia('crear_articulo', () => setAgregarArticuloOpen(true));
   const [uploadArticulosOpen, setUploadArticulosOpen] = useState(false);
   const [uploadArticulosMode, setUploadArticulosMode] = useState('articulos'); // 'articulos' | 'rubros'
   // Botón "+ Agregar" unificado: desde Menú también se puede crear/cargar

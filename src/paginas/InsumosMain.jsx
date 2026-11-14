@@ -71,6 +71,7 @@ import { useBarraGestion, useRegistrarBarra } from '@/context/BarraGestionContex
 import ReactDOM from 'react-dom';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { useRecorrido } from '@/hooks/useRecorrido';
+import { useAbrirGuia } from '@/componentes/asistente/guias';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -300,6 +301,8 @@ export default function InsumosMain() {
   const [uploadRubrosOpen, setUploadRubrosOpen] = useState(false);
   const [recetasElaborados, setRecetasElaborados] = useState({});
   const [nuevoInsumoOpen, setNuevoInsumoOpen] = useState(false);
+  // Guía «Crear un insumo» de Anthony: abre el alta y arranca el paso a paso (Diego 14/11/2026).
+  useAbrirGuia('crear_insumo', () => setNuevoInsumoOpen(true));
   // Insumo a editar — EditarItemModal (navegación ‹ ›, buscador, selectores
   // con buscador), en reemplazo del modo edición de InsumoNuevoModal. El modo
   // alta de InsumoNuevoModal (nuevoInsumoOpen) sigue sin tocarse.

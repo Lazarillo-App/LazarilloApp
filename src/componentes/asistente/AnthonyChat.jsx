@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
-import { GUIAS, pedirGuia } from './guias';
+import { GUIAS, GRUPOS_GUIAS, pedirGuia } from './guias';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
 import { capturarPantalla, imagenADataUrl } from '@/componentes/soporte/capturaPantalla';
@@ -541,7 +541,7 @@ function MisPedidos({ onSinLeer }) {
 }
 
 // Pestaña «Guías» (Diego 14/11/2026): el lugar común para volver a ver el recorrido de cada sección.
-// Primero la de la pantalla donde estás.
+// Primero las de la pantalla donde estás; después el resto, agrupadas por módulo.
 function Guias({ ruta, onVer }) {
   const aca = GUIAS.filter((g) => ruta === g.ruta);
   const otras = GUIAS.filter((g) => ruta !== g.ruta);
@@ -557,13 +557,16 @@ function Guias({ ruta, onVer }) {
       <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2492C8', whiteSpace: 'nowrap' }}>Ver ›</span>
     </button>
   );
+  const titulo = (t) => <div key={`t-${t}`} style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>{t}</div>;
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={burbuja(true)}>Te muestro cómo se usa cada parte, paso a paso. Elegí una:</div>
-      {aca.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>En esta pantalla</div>}
+      {aca.length > 0 && titulo('En esta pantalla')}
       {aca.map((g) => item(g, true))}
-      {otras.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>{aca.length ? 'Otras secciones' : 'Secciones'}</div>}
-      {otras.map((g) => item(g, false))}
+      {GRUPOS_GUIAS.map((grupo) => {
+        const del = otras.filter((g) => g.grupo === grupo);
+        return del.length ? [titulo(grupo), ...del.map((g) => item(g, false))] : null;
+      })}
     </div>
   );
 }

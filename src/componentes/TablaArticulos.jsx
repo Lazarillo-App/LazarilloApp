@@ -37,6 +37,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
+import { useAbrirGuia } from '@/componentes/asistente/guias';
 
 /* ---------------- utils ---------------- */
 // Misma paleta de respaldo que ArticleListSelector/PriceListConfigModal,
@@ -1722,6 +1723,17 @@ export default function TablaArticulos({
     const objetivoResuelto = getObjetivoArticulo(a, String(agrupacionSeleccionada?.id || ''));
     setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
   }, [recetaArticulo, flatRows, promoIds, promoGroupIds, getObjetivoArticulo, agrupacionSeleccionada]);
+
+  // Guía «Receta de un artículo» de Anthony: abre la receta del primer artículo de la tabla
+  // (Diego 14/11/2026). Solo abre: no guarda nada.
+  const hayArticulos = flatRows.some((r) => r.kind === 'item');
+  useAbrirGuia('receta', () => {
+    const a = flatRows.find((r) => r.kind === 'item')?.art;
+    if (!a) return;
+    const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
+    const objetivoResuelto = getObjetivoArticulo(a, String(agrupacionSeleccionada?.id || ''));
+    setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
+  }, hayArticulos);
 
   // ── EditarItemModal: misma lista filtrada/ordenada que ve el usuario,
   // mismo patrón que navReceta/navegarReceta de arriba ──

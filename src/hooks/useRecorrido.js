@@ -43,12 +43,15 @@ export function useRecorrido(id, pasos, activo = true, opciones = {}) {
   const siguiente = useCallback(() => setPaso((p) => Math.min(p + 1, pasos)), [pasos]);
   const ver = useCallback(() => { setPaso(1); setForzado(true); }, []);
   // Guías de Anthony (pestaña «Guías»): arranca al llegar a la pantalla o si ya estás en ella.
+  // Se toma recién cuando el lugar está listo (activo): las guías de un modal esperan a que la
+  // pantalla lo abra (useAbrirGuia) y arrancan ahí.
   useEffect(() => {
+    if (!activo) return undefined;
     if (tomarGuiaPendiente(id)) ver();
     const f = (e) => { if (e?.detail === id && tomarGuiaPendiente(id)) ver(); };
     window.addEventListener(VER_GUIA, f);
     return () => window.removeEventListener(VER_GUIA, f);
-  }, [id, ver]);
+  }, [id, ver, activo]);
   const omitir = useCallback(() => {
     setForzado(false);
     setCerrado(true);
