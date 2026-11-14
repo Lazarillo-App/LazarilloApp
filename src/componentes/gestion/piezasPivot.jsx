@@ -90,7 +90,10 @@ export function SectionDivider({ label, icon: Icon, colSpan }) {
  * Las celdas muestran SIEMPRE lo real; la proyección del mes en curso va en el tooltip, también en
  * Resultado OP y Gastos / Ventas. "Lo que falta cargar" de los meses cerrados llega con Sin carga.
  */
-export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady, sinTotal = false }) {
+const SUB_SUAVE = 'rgba(0,0,0,.25)';
+// Diego 14/11/2026: menos filas. Con «$», Gastos / Ventas y la rentabilidad van en el tooltip de Egresos;
+// con «% ing» aparece la fila Rentabilidad. El punto de equilibrio va debajo de Egresos, como sub-fila más chica que Egresos.
+export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady, sinTotal = false, modoCelda = 'importe' }) {
   const { year, abrirVentas } = usePanelGestion();
   // Mes con ventas incompletas → tooltip con la proyección de cierre. Para el color del mapa de
   // calor ese mes cuenta con lo proyectado, no con lo facturado a medias.
@@ -131,6 +134,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
   // Columna Total oculta para el rol (sinTotal): la celda 't' no se dibuja.
   const celda = (key, contenido, sx, onClick) => (sinTotal && key === 't' ? null : <TableCell key={key} onClick={onClick} sx={{ ...sxNum, px: 1.5, py: 0.75, ...sx, ...(onClick ? { cursor: 'pointer', '&:hover': { opacity: 0.75 } } : {}) }}>{contenido}</TableCell>);
 
+  const verPct = modoCelda === 'pct';
   const resTotal = (ingresosTotal ?? 0) - egresosTotal;
   const ratioTotal = (ingresosTotal ?? 0) > 0 ? (egresosTotal / ingresosTotal) * 100 : null;
 
@@ -150,14 +154,44 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
         {celda('t', fmtARS(ingresosTotal), { fontSize: 15, fontWeight: 600, px: 2, color: RESULT_COLORS.positive }, ingresosTotal ? () => abrirVentas({}) : undefined)}
         <TableCell />
       </TableRow>
-      <TableRow>
+      {/* Sin línea entre Egresos y su sub-fila de equilibrio: se leen como un bloque. */}
+      <TableRow sx={conEquilibrio ? { '& > td': { borderBottom: 0 } } : undefined}>
         {celdaNombre('Egresos', { fontWeight: 500, color: 'text.secondary' })}
         {months.map((mes) => celda(mes, esProy(mes)
           ? <ProyeccionEgresos e={egrProy} anio={year} corte={null} ventasProy={ventasProy}>{fmtARS(egresosPorMes[mes])}</ProyeccionEgresos>
-          : fmtARS(egresosPorMes[mes]), { color: 'text.secondary' }))}
-        {celda('t', fmtARS(egresosTotal), { fontWeight: 500, px: 2, color: 'text.secondary' })}
+          : verPct || !(ingresosPorMes[mes] > 0) || egresosPorMes[mes] == null ? fmtARS(egresosPorMes[mes])
+            : <TipProyectado subrayado={SUB_SUAVE} titulo="Gastos / Ventas" grande={`${((egresosPorMes[mes] / ingresosPorMes[mes]) * 100).toFixed(1)}%`}
+                filas={[['Egresos', fmtARS(egresosPorMes[mes])], ['Ventas', fmtARS(ingresosPorMes[mes])], ['Rentabilidad', `${(((ingresosPorMes[mes] - egresosPorMes[mes]) / ingresosPorMes[mes]) * 100).toFixed(1)}%`]]}>{fmtARS(egresosPorMes[mes])}</TipProyectado>,
+          { color: 'text.secondary' }))}
+        {celda('t', !verPct && ratioTotal !== null
+          ? <TipProyectado subrayado={SUB_SUAVE} titulo="Gastos / Ventas" grande={`${ratioTotal.toFixed(1)}%`} filas={[['Rentabilidad', `${(100 - ratioTotal).toFixed(1)}%`]]}>{fmtARS(egresosTotal)}</TipProyectado>
+          : fmtARS(egresosTotal), { fontWeight: 500, px: 2, color: 'text.secondary' })}
         <TableCell />
       </TableRow>
+      {conEquilibrio && (
+        <TableRow>
+          {celdaNombre(
+            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', pl: 1.5 }}>
+              Punto de equilibrio
+              {mesRef != null && <EquilibrioConfigModal anio={year} mes={mesRef} ventasMes={ingresosPorMes[mesRef]} egresosMes={egresosPorMes[mesRef]} />}
+            </Box>,
+            { fontWeight: 400, fontSize: 12.5, color: 'text.secondary', py: 0.25, borderTop: 0 },
+          )}
+          {months.map((mes) => {
+            const p = eqProyectado && egrProy?.mes === mes ? eqProyectado : null;
+            // El mes en curso solo con la proyección (con gastos a medio cargar el equilibrio no dice nada).
+            const e = p ?? (mes === mesProy ? null : eqCerrado(mes));
+            return celda(mes, e?.equilibrio != null
+              ? <EquilibrioTip e={e} p={p} anio={year} mes={mes} detalle={eqData.porMes[mes]?.detalle ?? []} variables={nombresVariables}>{fmtARS(e.equilibrio)}</EquilibrioTip>
+              : '—', {
+              fontWeight: 400, fontSize: 12.5, py: 0.25,
+              color: e?.equilibrio == null ? 'text.disabled' : e.diferencia < 0 ? RESULT_COLORS.negative : 'text.secondary',
+            });
+          })}
+          {celda('t', '—', { px: 2, py: 0.25, fontSize: 12.5, color: 'text.disabled' })}
+          <TableCell />
+        </TableRow>
+      )}
       <TableRow>
         {celdaNombre('Resultado OP', { fontWeight: 700 })}
         {months.map((mes) => {
@@ -181,52 +215,32 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
         {celda('t', fmtARS(resTotal), { fontWeight: 700, px: 2, color: resTotal < 0 ? RESULT_COLORS.negative : RESULT_COLORS.positive })}
         <TableCell />
       </TableRow>
+      {/* Vista «% ing»: Rentabilidad (resultado / ventas) en vez de Gastos / Ventas, debajo del
+          resultado: se lee directo, positivo es bueno (Diego 14/11/2026). */}
+      {verPct && (
       <TableRow>
-        {celdaNombre('Gastos / Ventas', { fontWeight: 500, color: 'text.secondary' })}
+        {celdaNombre('Rentabilidad', { fontWeight: 500, color: 'text.secondary' })}
         {months.map((mes) => {
           const ing = ingresosPorMes[mes] ?? 0;
           const egr = egresosPorMes[mes] ?? 0;
           const comp = completo(mes);
-          const ratio = ing > 0 ? (egr / ing) * 100 : null;
-          return celda(mes, ratio === null ? '—' : comp && comp.ing > 0 ? (
+          const rent = ing > 0 ? ((ing - egr) / ing) * 100 : null;
+          return celda(mes, rent === null ? '—' : comp && comp.ing > 0 ? (
             <TipProyectado
-              titulo={comp.tipo === 'proy' ? 'Gastos / Ventas · proyección de cierre' : 'Gastos / Ventas · con lo que falta cargar'}
-              grande={`${((comp.egr / comp.ing) * 100).toFixed(1)}%`} filas={[['Hoy (real)', `${ratio.toFixed(1)}%`]]}
+              titulo={comp.tipo === 'proy' ? 'Rentabilidad · proyección de cierre' : 'Rentabilidad · con lo que falta cargar'}
+              grande={`${(((comp.ing - comp.egr) / comp.ing) * 100).toFixed(1)}%`} negativo={comp.ing - comp.egr < 0} filas={[['Hoy (real)', `${rent.toFixed(1)}%`]]}
             >
-              {ratio.toFixed(1)}%
+              {rent.toFixed(1)}%
             </TipProyectado>
-          ) : `${ratio.toFixed(1)}%`, {
-            fontWeight: 500, color: ratio === null ? 'text.disabled' : colorRatio(ratio),
+          ) : `${rent.toFixed(1)}%`, {
+            fontWeight: 500, color: rent === null ? 'text.disabled' : colorRatio(100 - rent),
           });
         })}
-        {celda('t', ratioTotal !== null ? `${ratioTotal.toFixed(1)}%` : '—', {
+        {celda('t', ratioTotal !== null ? `${(100 - ratioTotal).toFixed(1)}%` : '—', {
           fontWeight: 600, px: 2, color: ratioTotal === null ? 'text.disabled' : colorRatio(ratioTotal),
         })}
         <TableCell />
       </TableRow>
-      {conEquilibrio && (
-        <TableRow>
-          {celdaNombre(
-            <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-              Punto de equilibrio
-              {mesRef != null && <EquilibrioConfigModal anio={year} mes={mesRef} ventasMes={ingresosPorMes[mesRef]} egresosMes={egresosPorMes[mesRef]} />}
-            </Box>,
-            { fontWeight: 500, color: 'text.secondary' },
-          )}
-          {months.map((mes) => {
-            const p = eqProyectado && egrProy?.mes === mes ? eqProyectado : null;
-            // El mes en curso solo con la proyección (con gastos a medio cargar el equilibrio no dice nada).
-            const e = p ?? (mes === mesProy ? null : eqCerrado(mes));
-            return celda(mes, e?.equilibrio != null
-              ? <EquilibrioTip e={e} p={p} anio={year} mes={mes} detalle={eqData.porMes[mes]?.detalle ?? []} variables={nombresVariables}>{fmtARS(e.equilibrio)}</EquilibrioTip>
-              : '—', {
-              fontWeight: 500,
-              color: e?.equilibrio == null ? 'text.disabled' : e.diferencia < 0 ? RESULT_COLORS.negative : 'text.secondary',
-            });
-          })}
-          {celda('t', '—', { px: 2, color: 'text.disabled' })}
-          <TableCell />
-        </TableRow>
       )}
     </>
   );

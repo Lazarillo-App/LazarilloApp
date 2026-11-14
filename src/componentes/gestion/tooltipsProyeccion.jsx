@@ -160,7 +160,7 @@ function RevisarArca() {
 }
 
 // Tooltip chico para Resultado OP y Gastos / Ventas: la celda muestra lo real y acá va lo proyectado.
-export function TipProyectado({ titulo, grande, negativo, filas, children }) {
+export function TipProyectado({ titulo, grande, negativo, filas, children, subrayado }) {
   const contenido = (
     <Box>
       <Tenue>{titulo}</Tenue>
@@ -168,7 +168,7 @@ export function TipProyectado({ titulo, grande, negativo, filas, children }) {
       {filas.map(([a, b]) => <Fila key={a} izq={a} der={b} />)}
     </Box>
   );
-  return <Tip ancho={300} contenido={contenido}>{children}</Tip>;
+  return <Tip ancho={300} contenido={contenido} subrayado={subrayado}>{children}</Tip>;
 }
 
 // Punto de equilibrio de un mes: cuánto había que vender, de dónde sale y cuánto quedó de lo

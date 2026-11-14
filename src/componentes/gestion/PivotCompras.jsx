@@ -414,6 +414,7 @@ export default function PivotCompras({
             egresosTotal={data.grandTotal}
             ingresosReady={ingresosReady}
             sinTotal={sinColTotal}
+            modoCelda={modoCelda}
           />
           )}
           <SectionDivider label="Gastos por rubro" icon={LayersIcon} colSpan={colSpan} />
