@@ -398,10 +398,6 @@ function GestionPanelContenido() {
                 {!oculto('btn.sin_carga') && <BloqueSeguro nombre="Sin carga" compacto><SinCargaBoton /></BloqueSeguro>}
               </ScopeGestion>
             )}
-            {verPanel && <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
-              <SearchIcon sx={{ fontSize: 15 }} />
-              <span>Buscar</span>
-            </Box>}
           </Stack>
         )}
       </Stack>
@@ -448,6 +444,11 @@ function GestionPanelContenido() {
           {estado.tab !== 'ventas' && puedeVer('resultados', 'editar') && (estado.tab === 'resultados'
             ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
             : <RubrosConfig key="dash" />)}
+          {/* Buscar al lado de pantalla completa, así se ve también maximizado (Diego 14/11/2026). */}
+          {estado.tab !== 'ventas' && <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
+            <SearchIcon sx={{ fontSize: 15 }} />
+            <span>Buscar</span>
+          </Box>}
           <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
             <IconButton size="small" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
               sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: "divider" }}>
