@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import EditorPlaza from '@/componentes/plazas/EditorPlaza';
-import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar } from '@mui/material';
+import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import VistaPlaza from '@/componentes/plazas/VistaPlaza';
@@ -112,9 +112,17 @@ export default function PlazaPage() {
     setData((d) => ({ ...d, productos: d.productos.map((p) => (p.articleId === articleId ? { ...p, renglones } : p)) }));
     try { await PlazasAPI.guardarFicha(id, articleId, fichaDe(renglones)); } catch (e) { setError(e.message); }
   };
-  // Peso u observación: por ingrediente, en todas las tarjetas (como el color).
+  // Peso / observación / ambos: lo pone la plaza para todos (Diego 14/11/2026: «debe ser global de la plaza y
+  // después, si quiero, gestiono individualmente»). Cambia al toque los renglones que siguen a la plaza.
+  const mostrarDePlaza = async (mostrar) => {
+    setData((d) => ({ ...d, plaza: { ...d.plaza, mostrar },
+      productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.extra || r.mostrarPropio ? r : { ...r, mostrar })) })) }));
+    try { await PlazasAPI.mostrar(id, mostrar); } catch (e) { setError(e.message); cargar(); }
+  };
+  // Excepción de un ingrediente (vale en todas las tarjetas, como el color); 'plaza' se la saca.
   const mostrarIngrediente = async (ref, mostrar) => {
-    setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, mostrar } : r)) })) }));
+    const vista = mostrar === 'plaza' ? { mostrar: data.plaza.mostrar || 'peso', mostrarPropio: false } : { mostrar, mostrarPropio: true };
+    setData((d) => ({ ...d, productos: d.productos.map((p) => ({ ...p, renglones: p.renglones.map((r) => (r.ref === ref ? { ...r, ...vista } : r)) })) }));
     try { await PlazasAPI.guardarColor(ref, undefined, mostrar); } catch (e) { setError(e.message); }
   };
   // Ojito: el ingrediente queda «Oculto» en todas sus recetas (no solo en esta plaza).
@@ -194,6 +202,18 @@ export default function PlazaPage() {
           </Typography>
         </Box>
         {error && <Alert severity="error" onClose={() => setError(null)} sx={{ py: 0 }}>{error}</Alert>}
+        {/* Qué muestran los ingredientes de esta plaza; cada uno puede tener el suyo desde su panel. */}
+        {data.puedeArmar && armando && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexShrink: 0 }}>
+            <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'text.secondary', letterSpacing: '.04em' }}>MOSTRAR</Typography>
+            <ToggleButtonGroup exclusive size="small" value={data.plaza.mostrar || 'peso'} onChange={(_, v) => { if (v && v !== data.plaza.mostrar) mostrarDePlaza(v); }}
+              sx={{ height: 34, '& .MuiToggleButton-root': { px: 1.5, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' } }}>
+              <ToggleButton value="peso">Peso</ToggleButton>
+              <ToggleButton value="obs">Observación</ToggleButton>
+              <ToggleButton value="ambos">Ambos</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+        )}
         {/* «+ Productos» (Diego 12/11/2026): sumar o sacar productos sin ir a Configuración. */}
         {data.puedeArmar && (
           <Button size="small" variant="outlined" disableElevation onClick={() => setSumando(true)} sx={{ height: 34, whiteSpace: 'nowrap' }}>
@@ -211,7 +231,7 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
       ) : (
-        <VistaPlaza productos={data.productos} armando={armando} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
+        <VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
