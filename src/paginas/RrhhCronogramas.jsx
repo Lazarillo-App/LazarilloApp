@@ -818,16 +818,22 @@ export default function RrhhCronogramas() {
   };
 
   /* ── Recorrido de Anthony la primera vez (10/11): solo con nómina (si no, la grilla no está). ── */
-  const refsTour = { semana: useRef(null), grilla: useRef(null), copiar: useRef(null), exportar: useRef(null) };
+  // Paso a paso de lo más importante (Diego 14/11/2026: «primera vez por acá, te muestro»).
+  const refsTour = { semana: useRef(null), dias: useRef(null), fila: useRef(null), agregar: useRef(null), puestos: useRef(null), grilla: useRef(null), copiar: useRef(null), exportar: useRef(null) };
   const pasosTour = [
     { k: 'semana', t: <>Elegí la <b>semana</b> que querés armar o mirar.</> },
-    { k: 'grilla', t: <>Cada fila es una persona de tu nómina y cada columna un día: ahí cargás sus <b>turnos</b> y <b>francos</b>. Tocando el encabezado de un día marcás un <b>feriado</b> o un evento.</> },
+    { k: 'dias', t: <>Tocá un día para marcar un <b>feriado</b>, un <b>cierre</b> o un <b>evento</b>. Cargalos con anticipación: con ellos Lazarillo entiende por qué un día se vende distinto y <b>proyecta mejor las ventas del mes</b>.</> },
+    { k: 'fila', t: <>Cada fila es una persona. <b>Clic</b> en un día le carga el turno, <b>clic derecho</b> lo saca y con <b style={{ whiteSpace: 'nowrap' }}>⋮⋮</b> la arrastrás a otro lugar o turno. Tocando el nombre cambiás toda la fila.</> },
+    { k: 'agregar', t: <>¿Falta alguien? Sumalo acá. Si no está en la nómina, lo <b>das de alta</b> en el momento.</>, abajo: true },
+    { k: 'puestos', t: <>Tus <b>puestos</b>: tocá uno para editarlo o borrarlo, y con <b>+ Puesto</b> agregás otro.</>, abajo: true },
     { k: 'copiar', t: <><b>+ Semana</b> crea la semana siguiente copiando esta, así no la armás de cero.</> },
-    { k: 'exportar', t: <>Genera una <b>imagen</b> del cronograma y de los francos para mandar por WhatsApp al equipo.</> },
-  ];
+    { k: 'exportar', t: <>Arma la <b>imagen</b> del cronograma y de los francos y la mandás por <b>WhatsApp</b> al equipo.</> },
+  ].filter((p) => !cel || ['dias', 'fila', 'agregar'].includes(p.k)); // celu: la barra es otra, solo la grilla
   const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
     !cargando && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel);
   const pasoTour = pasosTour[recCrono.paso - 1];
+  const primerTurno = (espacio?.turnos || []).find((t) => !minimizados[`${espacioId}:${t.id}`])?.id;
+  const primeraFila = filas.find((f) => f.turnoId === primerTurno)?.key;
 
   /* ═════ render ═════ */
   if (cargando) {
@@ -861,7 +867,7 @@ export default function RrhhCronogramas() {
         </div>
       )}
       {recCrono.visible && pasoTour && (
-        <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+        <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement={pasoTour.abajo ? 'top' : 'bottom'}
           text={pasoTour.t} {...recCrono.props(recCrono.paso)} />
       )}
       {/* barra del celular: una sola fila; lo que se usa poco va en ⋯ */}
@@ -991,7 +997,7 @@ export default function RrhhCronogramas() {
                     const esp = fechasMap.get(iso);
                     const d = new Date(iso + 'T12:00:00');
                     return (
-                      <th key={iso} rowSpan={cel ? 1 : 2} onClick={() => setFechaSel(iso)}
+                      <th key={iso} ref={i === 0 ? refsTour.dias : undefined} rowSpan={cel ? 1 : 2} onClick={() => setFechaSel(iso)}
                         title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''} — clic para editar` : 'Clic para cargar un feriado o evento'}
                         style={{ ...thDia, ...(cel ? { padding: '4px 2px', fontSize: 11.5 } : {}), position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
                         <div style={{ color: TH_TXT, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
@@ -1048,7 +1054,7 @@ export default function RrhhCronogramas() {
                           <tr key={f.key}
                             ref={(el) => { if (el) nodosFila.current.set(f.key, el); else nodosFila.current.delete(f.key); }}
                             style={levantada ? { position: 'relative', zIndex: 4, outline: `2px solid ${T.accent}`, outlineOffset: -2, boxShadow: '0 8px 18px rgba(0,0,0,.18)', background: T.band } : undefined}>
-                            <td onClick={() => abrirFila(f, t)}
+                            <td ref={f.key === primeraFila ? refsTour.fila : undefined} onClick={() => abrirFila(f, t)}
                               style={{ ...colFila, position: 'sticky', left: 0, zIndex: 1, background: levantada ? T.band : T.head, borderBottom: `1px solid ${T.border}`, padding: '4px 10px 4px 2px', fontFamily: FB, fontSize: 12.5, fontWeight: dueno ? 700 : 400, color: dueno ? T.text : T.vacio, cursor: 'pointer' }}
                               title={`${dueno ? nombreDe(empleadosMap.get(dueno)) : 'Fila libre'} · clic: cambiar empleado, puesto, entrada u horas de toda la fila`}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1133,7 +1139,7 @@ export default function RrhhCronogramas() {
                       {!minim && (
                         <tr>
                           <td colSpan={cel ? 8 : 14} style={{ padding: '6px 12px', borderBottom: `1px solid ${T.border}` }}>
-                            <span onClick={() => agregarFila(t.id)} style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, color: T.accentTxt, cursor: 'pointer' }}>
+                            <span ref={t.id === primerTurno ? refsTour.agregar : undefined} onClick={() => agregarFila(t.id)} style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, color: T.accentTxt, cursor: 'pointer' }}>
                               + Agregar empleado en {t.nombre}
                             </span>
                           </td>
@@ -1158,7 +1164,7 @@ export default function RrhhCronogramas() {
             </div>
           ) : null}
           {!cel && (<>
-          <div style={{ marginTop: 8 }}>
+          <div ref={refsTour.puestos} style={{ marginTop: 8 }}>
             <EditorPuestos puestos={config?.puestos || []} onGuardar={guardarPuestos} />
           </div>
           <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 8 }}>
