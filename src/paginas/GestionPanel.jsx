@@ -8,7 +8,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Stack, Tooltip, IconButton,
 } from '@mui/material';
@@ -34,6 +34,7 @@ import RubrosConfig from '@/componentes/gestion/RubrosConfig';
 import ComprasDetalleModal from '@/componentes/gestion/ComprasDetalleModal';
 import VentasDetalleModal from '@/componentes/gestion/VentasDetalleModal';
 import CargarFactura from '@/componentes/gestion/CargarFactura';
+import PanelEjemplo, { PrimerPaso } from '@/componentes/gestion/PanelEjemplo';
 import BloqueSeguro from '@/componentes/gestion/BloqueSeguro';
 import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
 import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
@@ -228,6 +229,9 @@ function GestionPanelContenido() {
     staleTime: 10 * 60 * 1000,
   });
   const columnas = estado.meses.length ? estado.meses : MESES_IDX;
+  // Sin ninguna venta ni compra (negocio o sucursal recién creados): ejemplo + primer paso (14/11/2026).
+  const sinDatosPanel = !!rango.data && rango.data.minYear == null;
+  const navigate = useNavigate();
   // Impagas y Sin carga: en la Económica sin búsqueda están en la tarjeta "Para mirar"; si no, en la barra.
   const pdvId = lugarDe(activeBusinessId, sucursalCaja);
   // Las tarjetas se ven siempre (Diego 11/11/2026: sacamos «ocultar tarjetas», lo resuelve el maximizar).
@@ -314,8 +318,10 @@ function GestionPanelContenido() {
     ...(mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
   ];
+  // Arranca solo mientras el panel no tenga datos propios (Diego 14/11/2026); si no, desde Guías.
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
-    verPanel && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores);
+    verPanel && !!rango.data && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores,
+    { sinDatos: sinDatosPanel });
   const pasoTour = pasosTour[recPanel.paso - 1];
 
   return (
@@ -404,6 +410,12 @@ function GestionPanelContenido() {
       {busquedaActiva && <ChipBusqueda busqueda={busquedaActiva} onQuitar={() => setBusqueda(null)} />}
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
+      {/* Con gastos pero sin ninguna venta en el año: falta conectar el punto de venta (14/11/2026). */}
+      {verPanel && !sinDatosPanel && ventas.data && !(ventas.data.rows || []).length && !busquedaActiva && (
+        <Box sx={{ mb: 2 }}>
+          <PrimerPaso soloVentas onConectar={() => navigate('/configuracion?tab=7')} />
+        </Box>
+      )}
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
       {verPanel && mostrarTarjetas && <Box ref={refsTour.tarjetas}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
 
@@ -457,7 +469,14 @@ function GestionPanelContenido() {
           </Tooltip>
           </Stack>
         </Stack>
-        {estado.tab === 'compras' && (
+        {sinDatosPanel && !busquedaActiva && (
+          <PanelEjemplo
+            puedeCargar={verCarga}
+            onCargar={() => refsTour.cargar.current?.querySelector('button')?.click()}
+            onConectar={() => navigate('/configuracion?tab=7')}
+          />
+        )}
+        {!(sinDatosPanel && !busquedaActiva) && estado.tab === 'compras' && (
           <BloqueSeguro nombre="la tabla de gastos">
           <PivotCompras
             data={compras.data}
@@ -475,7 +494,7 @@ function GestionPanelContenido() {
           </BloqueSeguro>
         )}
         {estado.tab === 'ventas' && <BloqueSeguro nombre="los ingresos manuales"><BarraIngresosManuales /></BloqueSeguro>}
-        {estado.tab === 'ventas' && (
+        {!(sinDatosPanel && !busquedaActiva) && estado.tab === 'ventas' && (
           <BloqueSeguro nombre="la tabla de ventas">
           <PivotVentas
             data={ventas.data}
@@ -488,7 +507,7 @@ function GestionPanelContenido() {
           />
           </BloqueSeguro>
         )}
-        {estado.tab === 'resultados' && (
+        {!(sinDatosPanel && !busquedaActiva) && estado.tab === 'resultados' && (
           <BloqueSeguro nombre="la tabla de resultados">
           <PivotResultados
             operacion={operacion}
