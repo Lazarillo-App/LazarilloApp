@@ -69,6 +69,12 @@ export default function Conciliacion() {
     return () => { vivo = false; clearTimeout(pagT.current); };
   }, [bid, suc, ver]);
 
+  // qué fechas del banco ya están en Lazarillo (para la barra de Mercado Pago)
+  const cubreBanco = useMemo(() => {
+    const fs = (inicial?.fuentes?.banco || []).map((b) => String(b.fecha || '').slice(0, 10)).filter(Boolean).sort();
+    return fs.length ? { desde: fs[0], hasta: fs[fs.length - 1], n: fs.length } : null;
+  }, [inicial]);
+
   const persist = useMemo(() => (bid && suc !== null && inicial ? {
     fuentes: inicial.fuentes,
     onFuente: (tipo, filas, archivo) => {
@@ -149,7 +155,7 @@ export default function Conciliacion() {
           </button>
         </div>
       )}
-      <BarraMercadoPago bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
+      <BarraMercadoPago bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} cubre={cubreBanco} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
       {inicial.fuentes.banco?.length > 0 && (
         <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button type="button" onClick={() => setVerBanco((v) => !v)}
@@ -210,13 +216,41 @@ function ListaBanco({ filas }) {
 }
 
 // Barra de Mercado Pago arriba del módulo (14/11): con la cuenta de la sucursal conectada, trae
-// los cobros del período y los deja como "Movimientos del banco" (reemplaza lo que había de esas fechas).
-const hoyISO = () => new Date().toISOString().slice(0, 10);
-const inicioMes = () => hoyISO().slice(0, 8) + '01';
-function BarraMercadoPago({ bid, suc, sucNombre, mp, onTraido, avisar }) {
-  const [desde, setDesde] = useState(inicioMes);
+// los cobros y los deja como "Movimientos del banco" (reemplaza lo que había de esas fechas).
+// Mercado Pago se consulta de a tramos (el servidor acepta hasta 3 meses por pedido): la barra
+// parte cualquier período en meses y los trae uno por uno, con avance y sin límite para el usuario.
+// "Todo el historial" va mes a mes hacia atrás hasta encontrar 2 meses seguidos sin cobros.
+const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const hoyISO = () => isoLocal(new Date()); // fecha de Argentina (toISOString daba mañana después de las 21)
+const restarDias = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() - n); return isoLocal(d); };
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const nombreMes = (iso) => `${MESES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+const dma = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '');
+// [desde, hasta] partido por mes calendario, del más nuevo al más viejo
+function tramosPorMes(desde, hasta) {
+  const out = [];
+  let fin = hasta;
+  while (fin >= desde) {
+    const ini = fin.slice(0, 8) + '01';
+    out.push({ desde: ini < desde ? desde : ini, hasta: fin });
+    fin = restarDias(ini, 1);
+  }
+  return out;
+}
+const MAX_MESES_HISTORIAL = 36;
+const OPCIONES = [
+  { k: 'mes', l: 'Este mes' },
+  { k: '3m', l: 'Últimos 3 meses' },
+  { k: 'todo', l: 'Todo el historial' },
+  { k: 'fechas', l: 'Elegir fechas' },
+];
+
+function BarraMercadoPago({ bid, suc, sucNombre, mp, cubre, onTraido, avisar }) {
+  const [opcion, setOpcion] = useState('mes');
+  const [desde, setDesde] = useState(() => hoyISO().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(hoyISO);
-  const [trayendo, setTrayendo] = useState(false);
+  const [avance, setAvance] = useState(null); // { mes, n, de } mientras trae
+  const cortar = useRef(false);
   if (!mp) return null;
   const caja = { maxWidth: 1180, margin: '12px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
   if (!mp.conectado) {
@@ -228,32 +262,85 @@ function BarraMercadoPago({ bid, suc, sucNombre, mp, onTraido, avisar }) {
       </div>
     );
   }
+
   const traer = async () => {
-    if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
-    setTrayendo(true);
-    try {
-      const r = await MercadoPagoAPI.sincronizar(bid, suc, desde, hasta);
-      avisar(`Listo: ${r.cobros} cobro${r.cobros === 1 ? '' : 's'} de Mercado Pago`, 4000);
-      onTraido();
-    } catch (e) {
-      const c = String(e?.message || '').split(':')[0].trim();
-      avisar(c === 'periodo_muy_largo' ? 'Elegí hasta 3 meses por vez.' : c === 'mp_vencido' ? 'Venció la conexión con Mercado Pago: volvé a conectarla en Conexiones.' : 'Mercado Pago no respondió. Probá de nuevo en un rato.', 8000);
-    } finally { setTrayendo(false); }
+    const hoy = hoyISO();
+    let tramos;
+    if (opcion === 'mes') tramos = tramosPorMes(hoy.slice(0, 8) + '01', hoy);
+    else if (opcion === '3m') tramos = tramosPorMes(restarDias(hoy, 89), hoy);
+    else if (opcion === 'todo') tramos = tramosPorMes(restarDias(hoy.slice(0, 8) + '01', 1).slice(0, 8) + '01', hoy); // se van sumando meses hacia atrás
+    else {
+      if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
+      tramos = tramosPorMes(desde, hasta > hoy ? hoy : hasta);
+    }
+    cortar.current = false;
+    let total = 0, vacios = 0, hechos = 0, masViejo = null, fallo = null;
+    for (let i = 0; i < tramos.length; i++) {
+      const t = tramos[i];
+      setAvance({ mes: nombreMes(t.desde), n: i + 1, de: opcion === 'todo' ? null : tramos.length });
+      try {
+        const r = await MercadoPagoAPI.sincronizar(bid, suc, t.desde, t.hasta);
+        const c = Number(r?.cobros) || 0;
+        total += c; hechos++; if (c) masViejo = t.desde;
+        vacios = c ? 0 : vacios + 1;
+      } catch (e) {
+        const c = String(e?.message || '').split(':')[0].trim();
+        fallo = c === 'mp_vencido' ? 'Venció la conexión con Mercado Pago: volvé a conectarla en Conexiones.' : `Mercado Pago no respondió en ${nombreMes(t.desde)}. Lo anterior quedó guardado; probá de nuevo en un rato.`;
+        break;
+      }
+      if (cortar.current) break;
+      // todo el historial: seguir hacia atrás mientras haya cobros (corta con 2 meses seguidos vacíos)
+      if (opcion === 'todo' && i === tramos.length - 1 && vacios < 2 && tramos.length < MAX_MESES_HISTORIAL) {
+        const ini = restarDias(t.desde, 1).slice(0, 8) + '01';
+        tramos.push({ desde: ini, hasta: restarDias(t.desde, 1) });
+      }
+    }
+    setAvance(null);
+    if (hechos) onTraido();
+    if (fallo) { avisar(fallo, 9000); return; }
+    const rango = masViejo ? ` (${nombreMes(masViejo)} a ${nombreMes(tramos[0].desde)})` : '';
+    avisar(`${cortar.current ? 'Cortado. ' : 'Listo: '}${total.toLocaleString('es-AR')} cobro${total === 1 ? '' : 's'} de Mercado Pago${rango}`, 6000);
   };
-  const inp = { fontFamily: 'inherit', fontSize: 13.5, padding: '5px 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
+
+  const trayendo = !!avance;
+  const inp = { fontFamily: 'inherit', fontSize: 13.5, height: 34, boxSizing: 'border-box', padding: '0 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
+  const chip = (on) => ({
+    fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: 34, padding: '0 12px', borderRadius: 999, cursor: trayendo ? 'default' : 'pointer',
+    border: `1px solid ${on ? '#5BC2EA' : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: on ? '#12627F' : '#15213E', whiteSpace: 'nowrap',
+  });
+  const btn = { fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: trayendo ? 'wait' : 'pointer', whiteSpace: 'nowrap' };
   return (
     <div style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
-      <span style={{ fontWeight: 700 }}>🏦 Mercado Pago</span>
-      <span style={{ color: '#5b6577' }}>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}</span>
-      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={inp} />
-        <span>a</span>
-        <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={inp} />
-        <button type="button" onClick={traer} disabled={trayendo}
-          title="Trae los cobros de esas fechas y reemplaza los movimientos del banco de esos días"
-          style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: trayendo ? 'wait' : 'pointer' }}>
-          {trayendo ? 'Trayendo…' : 'Traer cobros'}
-        </button>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <span><b>🏦 Mercado Pago</b> <span style={{ color: '#5b6577' }}>· {mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}</span></span>
+        <span style={{ color: '#8a93a3', fontSize: 12.5 }}>
+          {cubre?.n ? `En Lazarillo: del ${dma(cubre.desde)} al ${dma(cubre.hasta)} · ${cubre.n.toLocaleString('es-AR')} movimientos` : 'Todavía no se trajo nada'}
+        </span>
+      </span>
+      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {trayendo ? (
+          <>
+            <span style={{ color: '#5b6577' }}>Trayendo <b style={{ color: '#15213E' }}>{avance.mes}</b>{avance.de ? ` · ${avance.n} de ${avance.de}` : ` · mes ${avance.n}`}…</span>
+            <button type="button" onClick={() => { cortar.current = true; }} style={{ ...chip(false), cursor: 'pointer' }}>Cortar</button>
+          </>
+        ) : (
+          <>
+            {OPCIONES.map((o) => (
+              <button key={o.k} type="button" onClick={() => setOpcion(o.k)} style={chip(opcion === o.k)}>{o.l}</button>
+            ))}
+            {opcion === 'fechas' && (
+              <>
+                <input type="date" value={desde} max={hoyISO()} onChange={(e) => setDesde(e.target.value)} style={inp} />
+                <span>a</span>
+                <input type="date" value={hasta} max={hoyISO()} onChange={(e) => setHasta(e.target.value)} style={inp} />
+              </>
+            )}
+            <button type="button" onClick={traer} style={btn}
+              title="Trae los cobros de Mercado Pago de ese período, mes por mes, y reemplaza los movimientos del banco de esos días">
+              Traer cobros
+            </button>
+          </>
+        )}
       </span>
     </div>
   );
