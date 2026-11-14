@@ -167,6 +167,7 @@ export default function Navbar() {
     if (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) return 'Recetas';
     if (p.startsWith('/rrhh')) return 'RRHH';
     if (p.startsWith('/tableros')) return 'Tableros';
+    if (p.startsWith('/movimientos-bancarios')) return 'Movimientos bancarios';
     return null;
   })();
 
@@ -354,19 +355,23 @@ export default function Navbar() {
                     puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
                     puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
                   ] : null}
-                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
+                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/movimientos-bancarios') ? [
+                    <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
+                    <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
+                  ] : null}
+                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/movimientos-bancarios') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
+                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && (
+                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -412,6 +417,25 @@ export default function Navbar() {
                 }
                 // Operación › Tableros (Diego 12/11/2026): una pestaña por plaza y «+» para agregar.
                 if (path.startsWith('/tableros')) return <TablerosBotonera activeSx={activeSx} />;
+                // Administración › Movimientos bancarios (Diego 14/11/2026): los bancos conectados (hoy Mercado
+                // Pago) | CONECTÁ TU BANCO (las tarjetas de bancos: listos y próximamente).
+                if (path.startsWith('/movimientos-bancarios')) {
+                  const enBancos = new URLSearchParams(location.search).get('vista') === 'bancos';
+                  return (
+                    <>
+                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(!enBancos) }}
+                        onClick={() => navigate('/movimientos-bancarios')}>
+                        Mercado Pago
+                      </Button>
+                      <Box component="span" aria-hidden
+                        sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
+                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(enBancos) }}
+                        onClick={() => navigate('/movimientos-bancarios?vista=bancos')}>
+                        Conectá tu banco
+                      </Button>
+                    </>
+                  );
+                }
                 if (path.startsWith('/rrhh')) {
                   const proxSx = { color: 'inherit', opacity: 0.45, cursor: 'default' };
                   return (
