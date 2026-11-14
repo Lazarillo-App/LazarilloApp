@@ -1,5 +1,5 @@
 // src/componentes/conciliacion/desdeMaxi.js
-// Ventas (22) y cobranzas de cuenta corriente (71/72) traídas de Render (usuaria 13/11/2026: "que
+// Ventas (22) y cobranzas de cuenta corriente (informe 72) traídas de Render (usuaria 13/11/2026: "que
 // no haya que subir nada manual"). El back las devuelve iguales a las filas del Excel; acá pasan
 // por los MISMOS lectores del módulo de Diego y se mezclan con lo que ya había guardado.
 import { parseVentas, parsePagos, parseFacturasCC } from './ModuloConciliacion';
