@@ -26,14 +26,20 @@ export function useRecorrido(id, pasos, activo = true) {
   const { active, activeBusinessId, refetchBusinesses } = useBusiness() || {};
   const [paso, setPaso] = useState(1);
   const [cerrado, setCerrado] = useState(() => omitidoEnSesion(activeBusinessId, id));
+  // «Ver el paso a paso» (Diego 14/11/2026): cualquiera lo puede repetir a mano, también en
+  // negocios viejos o después de «No mostrar más».
+  const [forzado, setForzado] = useState(false);
 
   const apagado = !!active?.props?.onboarding?.[`recorrido_${id}_off`];
   // "Omitir" se relee cada vez: hay recorridos que viven en muchas copias (el menú de cada fila de la
   // tabla) y omitirlo en una tiene que valer para todas.
-  const visible = !!activo && negocioConRecorridos(active) && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado && !!activeBusinessId;
+  const visible = !!activo && !!activeBusinessId && (forzado
+    || (negocioConRecorridos(active) && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado));
 
   const siguiente = useCallback(() => setPaso((p) => Math.min(p + 1, pasos)), [pasos]);
+  const ver = useCallback(() => { setPaso(1); setForzado(true); }, []);
   const omitir = useCallback(() => {
+    setForzado(false);
     setCerrado(true);
     try { sessionStorage.setItem(claveSesion(activeBusinessId, id), '1'); } catch { /* sin storage */ }
   }, [activeBusinessId, id]);
@@ -52,6 +58,7 @@ export function useRecorrido(id, pasos, activo = true) {
     omitir,
     noMostrarMas,
     terminar,
+    ver,
     props: (n) => ({ onSkip: omitir, onNever: noMostrarMas, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' }),
   };
 }

@@ -892,6 +892,7 @@ export default function RrhhCronogramas() {
           {menuCel && (
             <div onClick={() => setMenuCel(false)} style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, background: T.band, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: T.sombra, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
               <Boton deshabilitado={sinNomina} onClick={() => setPuestosCel(true)}>✎ Puestos</Boton>
+              <Boton deshabilitado={sinNomina} onClick={recCrono.ver}>? Paso a paso</Boton>
               <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana}>+ Semana</Boton>
               <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)}>Vaciar</Boton>
             </div>
@@ -920,6 +921,7 @@ export default function RrhhCronogramas() {
         <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginRight: 4, color: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }}>
           {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
         </span>
+        <Boton deshabilitado={sinNomina} onClick={recCrono.ver} title="Ver el paso a paso de Cronogramas">? Paso a paso</Boton>
         <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
         <Boton onClick={() => setMaximizado((v) => !v)} title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
           <span style={{ display: 'inline-flex', alignItems: 'center', verticalAlign: 'top', height: 14.5 }}>
