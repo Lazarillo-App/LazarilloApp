@@ -19,7 +19,7 @@ import logoComafi from '@/assets/bancos/comafi.svg';
 
 const T = {
   txt: '#15213E', txt2: '#5b6577', txt3: '#8a93a3', line: 'rgba(21,33,62,.12)', line2: 'rgba(21,33,62,.07)',
-  celeste: '#5BC2EA', celesteDeep: '#2492C8', verde: '#1a9c6e', rojo: '#c2410c', fondo: '#F7F9FB',
+  celeste: '#5BC2EA', celesteDeep: '#2492C8', verde: '#1a9c6e', rojo: '#c2410c', ambar: '#B7791F', fondo: '#F7F9FB',
 };
 const pesos = (n) => {
   const v = Math.round(Number(n) || 0);
@@ -28,27 +28,56 @@ const pesos = (n) => {
 const dma = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '—');
 const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// Un renglón para las dos fuentes: entrada (cobro) o salida (egreso).
-function normalizar(banco = [], egresos = []) {
+// Un renglón para las tres fuentes: entrada (cobro), salida (egreso) o devolución.
+// 14/11 (Diego): columnas extra que trae MP — acreditación, comisión / cuotas / retenciones por
+// separado, referencia (el código que se carga en el POS), CUIT/DNI, caja, cuotas y tarjeta. Los
+// cobros traídos antes de eso no tienen el desglose: ahí «comisión» es todo lo descontado.
+const fmtDoc = (d, t) => {
+  const n = String(d || '').replace(/\D/g, '');
+  if (!n) return '';
+  if (n.length === 11) return `${t && !/dni/i.test(t) ? t : 'CUIT'} ${n.slice(0, 2)}-${n.slice(2, 10)}-${n.slice(10)}`;
+  return `${t || 'DNI'} ${Number(n).toLocaleString('es-AR')}`;
+};
+function normalizar(banco = [], egresos = [], devoluciones = []) {
   const ent = banco.map((b) => {
     const bruto = Number(b.imp) || 0;
     const neto = b.neto != null && b.neto !== '' ? Number(b.neto) : null;
+    const desglose = b.comisionMp != null;
+    const ret = desglose && b.retenciones != null ? Number(b.retenciones) || 0 : null;
+    const comision = desglose ? (Number(b.comisionMp) || 0) + (Number(b.costoCuotas) || 0) : (neto != null ? Math.max(0, bruto - neto) : 0);
     return {
       id: String(b.id), lado: 'entrada', fecha: String(b.fecha || '').slice(0, 10), hora: b.hora || '',
       tipo: 'Cobro', medio: b.tipoMedio || b.medio || '—', quien: b.cliente || '', detalle: b.descripcion || '',
-      bruto, comision: neto != null ? Math.max(0, bruto - neto) : 0, neto: neto != null ? neto : bruto,
+      bruto, comision, cuotasCosto: desglose ? Number(b.costoCuotas) || 0 : 0, retenciones: ret,
+      neto: neto != null ? neto : bruto,
+      ref: b.ref || '', doc: fmtDoc(b.doc, b.docTipo), acredita: b.acredita || '', cuotas: b.cuotas || null,
+      caja: b.caja || '', tarjeta: b.tarjeta || '',
     };
   });
+  const dev = devoluciones.map((d) => ({
+    id: String(d.id), lado: 'devolucion', fecha: String(d.fecha || '').slice(0, 10), hora: d.hora || '',
+    tipo: d.tipo || 'Devolución', medio: d.medio || '—', quien: d.cliente || '',
+    detalle: `${d.parcial ? 'parcial · ' : ''}cobro del ${dma(d.cobroFecha)} por ${pesos(d.cobro)}`,
+    bruto: Number(d.imp) || 0, comision: 0, retenciones: null, neto: -(Number(d.imp) || 0), parcial: !!d.parcial,
+    ref: d.ref || '', doc: '', acredita: '', cuotas: null, caja: '', tarjeta: '',
+  }));
   const sal = egresos.map((e) => {
     const imp = Math.abs(Number(e.imp) || 0);
     return {
       id: String(e.id), lado: 'salida', fecha: String(e.fecha || '').slice(0, 10), hora: e.hora || '',
       tipo: e.tipo || 'Egreso', medio: e.medio || '—', quien: '', detalle: e.detalle || '',
-      bruto: imp, comision: 0, neto: -imp,
+      bruto: imp, comision: 0, retenciones: null, neto: -imp,
+      ref: e.ref || '', doc: '', acredita: '', cuotas: null, caja: '', tarjeta: '',
     };
   });
-  return [...ent, ...sal].sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`));
+  return [...ent, ...sal, ...dev].sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`));
 }
+
+const PILL = {
+  entrada: { background: '#1a9c6e1a', color: '#1a9c6e' },
+  salida: { background: '#c2410c14', color: '#c2410c' },
+  devolucion: { background: '#B7791F1f', color: '#8a5a12' },
+};
 
 const PERIODOS = [
   { k: 'todo', l: 'Todo lo traído' },
@@ -56,7 +85,31 @@ const PERIODOS = [
   { k: 'ant', l: 'Mes anterior' },
   { k: 'fechas', l: 'Elegir fechas' },
 ];
-const LADOS = [{ k: 'todos', l: 'Todos' }, { k: 'entrada', l: 'Entradas' }, { k: 'salida', l: 'Salidas' }];
+const LADOS = [{ k: 'todos', l: 'Todos' }, { k: 'entrada', l: 'Entradas' }, { k: 'salida', l: 'Salidas' }, { k: 'devolucion', l: 'Devoluciones' }];
+
+// Columnas de la lista (Diego 14/11): las fijas y las que se suman desde «Columnas».
+const COLUMNAS = [
+  { k: 'fecha', l: 'Fecha', fija: true },
+  { k: 'hora', l: 'Hora' },
+  { k: 'tipo', l: 'Tipo', fija: true },
+  { k: 'pagador', l: 'Pagador / detalle', fija: true },
+  { k: 'medio', l: 'Medio' },
+  { k: 'ref', l: 'Referencia' },
+  { k: 'acredita', l: 'Acreditación' },
+  { k: 'cuotas', l: 'Cuotas' },
+  { k: 'tarjeta', l: 'Tarjeta' },
+  { k: 'caja', l: 'Caja / QR' },
+  { k: 'importe', l: 'Importe', fija: true },
+  { k: 'comision', l: 'Comisión' },
+  { k: 'retenciones', l: 'Retenciones' },
+  { k: 'neto', l: 'Neto', fija: true },
+];
+const COLS_DEFAULT = ['fecha', 'hora', 'tipo', 'pagador', 'medio', 'ref', 'importe', 'comision', 'retenciones', 'neto'];
+const COLS_KEY = 'movimientos-bancarios:columnas';
+const leerCols = () => {
+  try { const v = JSON.parse(localStorage.getItem(COLS_KEY) || 'null'); if (Array.isArray(v) && v.length) return v; } catch { /* sin storage */ }
+  return COLS_DEFAULT;
+};
 
 export default function MovimientosBancarios() {
   const { activeBusinessId } = useBusiness() || {};
@@ -75,6 +128,15 @@ export default function MovimientosBancarios() {
   const [lado, setLado] = useState('todos');
   const [medio, setMedio] = useState('');
   const [buscar, setBuscar] = useState('');
+  const [caja, setCaja] = useState('');
+  const [cols, setCols] = useState(leerCols);
+  const [verCols, setVerCols] = useState(false);
+  const alternarCol = (k) => setCols((c) => {
+    const n = c.includes(k) ? c.filter((x) => x !== k) : [...c, k];
+    try { localStorage.setItem(COLS_KEY, JSON.stringify(n)); } catch { /* sin storage */ }
+    return n;
+  });
+  const ve = (k) => cols.includes(k) || COLUMNAS.find((c) => c.k === k)?.fija;
   const [ver, setVer] = useState(0);            // sube al traer de Mercado Pago (relee lo guardado)
   const [aviso, setAviso] = useState('');
   const avisoT = useRef(null);
@@ -89,7 +151,7 @@ export default function MovimientosBancarios() {
       .then((r) => {
         if (!vivo) return;
         const f = r?.fuentes || {};
-        setDatos({ filas: normalizar(f.banco?.filas || [], f.egresos?.filas || []), origen: f.banco?.origen || '' });
+        setDatos({ filas: normalizar(f.banco?.filas || [], f.egresos?.filas || [], f.devoluciones?.filas || []), origen: f.banco?.origen || '' });
       })
       .catch(() => { if (vivo) setError('No pude cargar los movimientos. Probá de nuevo en un rato.'); });
     MercadoPagoAPI.estado(bid, suc).then((r) => {
@@ -116,16 +178,19 @@ export default function MovimientosBancarios() {
     [datos, rango],
   );
   const medios = useMemo(() => [...new Set(delPeriodo.map((f) => f.medio))].sort(), [delPeriodo]);
+  const cajas = useMemo(() => [...new Set(delPeriodo.map((f) => f.caja).filter(Boolean))].sort(), [delPeriodo]);
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return delPeriodo.filter((f) => (lado === 'todos' || f.lado === lado)
       && (!medio || f.medio === medio)
-      && (!q || `${f.quien} ${f.detalle} ${f.tipo}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
-  }, [delPeriodo, lado, medio, buscar]);
+      && (!caja || f.caja === caja)
+      && (!q || `${f.quien} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
+  }, [delPeriodo, lado, medio, caja, buscar]);
 
   const tot = useMemo(() => {
     const ent = delPeriodo.filter((f) => f.lado === 'entrada');
     const sal = delPeriodo.filter((f) => f.lado === 'salida');
+    const dev = delPeriodo.filter((f) => f.lado === 'devolucion');
     const s = (a, k) => a.reduce((x, f) => x + f[k], 0);
     const porMedio = {};
     ent.forEach((f) => { const m = porMedio[f.medio] || (porMedio[f.medio] = { n: 0, bruto: 0, comision: 0 }); m.n++; m.bruto += f.bruto; m.comision += f.comision; });
@@ -133,6 +198,9 @@ export default function MovimientosBancarios() {
     sal.forEach((f) => { const m = porTipo[f.tipo] || (porTipo[f.tipo] = { n: 0, total: 0 }); m.n++; m.total += f.bruto; });
     return {
       nEnt: ent.length, nSal: sal.length, entro: s(ent, 'bruto'), comision: s(ent, 'comision'), netoEnt: s(ent, 'neto'), salio: s(sal, 'bruto'),
+      cuotas: s(ent, 'cuotasCosto'), retenciones: ent.reduce((x, f) => x + (f.retenciones || 0), 0),
+      // Las devoluciones totales ya no figuran como cobro (MP las saca); las parciales sí: esas restan.
+      nDev: dev.length, devuelto: s(dev, 'bruto'), devParcial: dev.filter((f) => f.parcial).reduce((x, f) => x + f.bruto, 0),
       porMedio: Object.entries(porMedio).sort((a, b) => b[1].bruto - a[1].bruto),
       porTipo: Object.entries(porTipo).sort((a, b) => b[1].total - a[1].total),
       desde: delPeriodo.length ? delPeriodo[delPeriodo.length - 1].fecha : null, hasta: delPeriodo.length ? delPeriodo[0].fecha : null,
@@ -216,11 +284,14 @@ export default function MovimientosBancarios() {
     );
   }
 
+  const pct = (n) => (tot.entro ? `${((n / tot.entro) * 100).toFixed(2).replace('.', ',')}%` : '—');
   const kpis = [
     { l: 'Entró', v: tot.entro, s: `${tot.nEnt.toLocaleString('es-AR')} cobros`, c: T.verde },
-    { l: 'Comisiones Mercado Pago', v: -tot.comision, s: tot.entro ? `${((tot.comision / tot.entro) * 100).toFixed(2).replace('.', ',')}% de lo cobrado` : '—', c: T.rojo },
+    { l: 'Comisiones MP', v: -tot.comision, s: tot.cuotas ? `${pct(tot.comision)} · cuotas ${pesos(tot.cuotas)}` : `${pct(tot.comision)} de lo cobrado`, c: T.rojo },
+    { l: 'Retenciones', v: -tot.retenciones, s: 'a cuenta de impuestos', c: T.ambar, t: 'IIBB, IVA, Ganancias y otras que retiene MP: no son gasto, se descuentan en las declaraciones juradas. Solo de los cobros traídos desde el 14/11/26.' },
     { l: 'Salió', v: -tot.salio, s: `${tot.nSal.toLocaleString('es-AR')} movimientos`, c: T.rojo },
-    { l: 'Neto del período', v: tot.netoEnt - tot.salio, s: 'entró − comisiones − salió', c: T.txt },
+    { l: 'Devoluciones', v: -tot.devuelto, s: `${tot.nDev.toLocaleString('es-AR')} · ${tot.devParcial ? `${pesos(tot.devParcial)} parciales` : 'no suman en Entró'}`, c: T.ambar, t: 'Devoluciones, contracargos y disputas. Un cobro devuelto entero ya no figura en Entró; las devoluciones parciales sí se restan del neto.' },
+    { l: 'Neto del período', v: tot.netoEnt - tot.salio - tot.devParcial, s: 'entró − descuentos − salió', c: T.txt },
   ];
   // encabezado con el color de la app (las tablas toman el color del negocio): texto blanco
   const th = { padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#fff', fontWeight: 700, position: 'sticky', top: 0, zIndex: 1, background: 'var(--color-primary, #2492C8)', textAlign: 'center', whiteSpace: 'nowrap' };
@@ -250,12 +321,12 @@ export default function MovimientosBancarios() {
       </div>
 
       {/* Totales */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 10, marginBottom: 12 }}>
         {kpis.map((k) => (
-          <div key={k.l} style={{ ...tarjeta, padding: '12px 14px' }}>
+          <div key={k.l} title={k.t || ''} style={{ ...tarjeta, padding: '12px 14px', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: T.txt3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.l}</div>
-            <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 22, color: k.c, marginTop: 4, whiteSpace: 'nowrap' }}>{pesos(k.v)}</div>
-            <div style={{ fontSize: 12.5, color: T.txt2, marginTop: 2 }}>{k.s}</div>
+            <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 20, color: k.c, marginTop: 4, whiteSpace: 'nowrap' }}>{pesos(k.v)}</div>
+            <div style={{ fontSize: 12, color: T.txt2, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.s}</div>
           </div>
         ))}
       </div>
@@ -293,33 +364,63 @@ export default function MovimientosBancarios() {
             <option value="">Todos los medios</option>
             {medios.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+          {ve('caja') && cajas.length > 0 && (
+            <select value={caja} onChange={(e) => setCaja(e.target.value)} style={{ ...campo, minWidth: 140 }}>
+              <option value="">Todas las cajas</option>
+              {cajas.map((m) => <option key={m} value={m}>Caja {m}</option>)}
+            </select>
+          )}
           <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, detalle o importe"
             style={{ ...campo, flex: '1 1 220px', minWidth: 180 }} />
           <span style={{ color: T.txt2, fontSize: 13, whiteSpace: 'nowrap' }}>{visibles.length.toLocaleString('es-AR')} movimientos</span>
+          <span style={{ position: 'relative' }}>
+            <button type="button" onClick={() => setVerCols((v) => !v)} style={chip(verCols)} aria-expanded={verCols}>Columnas ▾</button>
+            {verCols && (
+              <>
+                <div onClick={() => setVerCols(false)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+                <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 21, background: '#fff', border: `1px solid ${T.line}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(21,33,62,.16)', padding: '8px 4px', minWidth: 210 }}>
+                  <div style={{ fontSize: 11.5, color: T.txt3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', padding: '2px 10px 6px' }}>Qué columnas ver</div>
+                  {COLUMNAS.filter((c) => !c.fija).map((c) => (
+                    <label key={c.k} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', fontSize: 13.5, cursor: 'pointer', borderRadius: 6 }}>
+                      <input type="checkbox" checked={cols.includes(c.k)} onChange={() => alternarCol(c.k)} />
+                      {c.l}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </span>
         </div>
         <div style={{ maxHeight: 520, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              <th style={th}>Fecha</th><th style={th}>Hora</th><th style={th}>Tipo</th>
-              <th style={{ ...th, textAlign: 'left' }}>Pagador / detalle</th><th style={th}>Medio</th>
-              <th style={th}>Importe</th><th style={th}>Comisión</th><th style={th}>Neto</th>
+              {COLUMNAS.filter((c) => ve(c.k)).map((c) => (
+                <th key={c.k} style={c.k === 'pagador' ? { ...th, textAlign: 'left' } : th}>{c.l}</th>
+              ))}
             </tr></thead>
             <tbody>
               {visibles.slice(0, 1500).map((f) => (
                 <tr key={f.id}>
-                  <td style={td}>{dma(f.fecha)}</td>
-                  <td style={{ ...td, color: T.txt3 }}>{f.hora || '—'}</td>
-                  <td style={td}>
-                    <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: f.lado === 'entrada' ? '#1a9c6e1a' : '#c2410c14', color: f.lado === 'entrada' ? T.verde : T.rojo }}>{f.tipo}</span>
-                  </td>
-                  <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal', maxWidth: 380 }}>
+                  {ve('fecha') && <td style={td}>{dma(f.fecha)}</td>}
+                  {ve('hora') && <td style={{ ...td, color: T.txt3 }}>{f.hora || '—'}</td>}
+                  {ve('tipo') && <td style={td}>
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, ...PILL[f.lado] }}>{f.tipo}</span>
+                  </td>}
+                  {ve('pagador') && <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal', maxWidth: 380 }}>
                     {f.quien ? <span>{f.quien}</span> : (f.lado === 'entrada' ? <span style={{ color: T.txt3 }}>sin nombre</span> : null)}
-                    {f.detalle && f.detalle !== 'Varios' ? <span style={{ color: T.txt3 }}>{f.quien || f.lado === 'entrada' ? ' · ' : ''}{f.detalle}</span> : null}
-                  </td>
-                  <td style={{ ...td, color: T.txt2 }}>{f.medio}</td>
-                  <td style={num}>{pesos(f.bruto)}</td>
-                  <td style={{ ...num, color: f.comision ? T.rojo : T.txt3, fontWeight: 500 }}>{f.comision ? pesos(-f.comision) : '—'}</td>
-                  <td style={{ ...num, color: f.neto >= 0 ? T.verde : T.rojo, fontWeight: 700 }}>{pesos(f.neto)}</td>
+                    {f.doc ? <span style={{ color: T.txt3, whiteSpace: 'nowrap' }}> · {f.doc}</span> : null}
+                    {f.detalle && f.detalle !== 'Varios' ? <span style={{ color: T.txt3 }}>{f.quien || f.doc || f.lado === 'entrada' ? ' · ' : ''}{f.detalle}</span> : null}
+                  </td>}
+                  {ve('medio') && <td style={{ ...td, color: T.txt2 }}>{f.medio}</td>}
+                  {ve('ref') && <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12.5, color: f.ref ? T.txt : T.txt3 }}>{f.ref || '—'}</td>}
+                  {ve('acredita') && <td style={{ ...td, color: f.acredita && f.acredita > hoyLocal() ? '#C8912B' : T.txt2 }}>{f.acredita ? dma(f.acredita) : '—'}</td>}
+                  {ve('cuotas') && <td style={{ ...td, color: T.txt2 }}>{f.cuotas ? `${f.cuotas} cuotas` : '—'}</td>}
+                  {ve('tarjeta') && <td style={{ ...td, color: T.txt2 }}>{f.tarjeta ? `•••• ${f.tarjeta}` : '—'}</td>}
+                  {ve('caja') && <td style={{ ...td, color: T.txt2 }}>{f.caja || '—'}</td>}
+                  {ve('importe') && <td style={num}>{pesos(f.bruto)}</td>}
+                  {ve('comision') && <td style={{ ...num, color: f.comision ? T.rojo : T.txt3, fontWeight: 500 }}>{f.comision ? pesos(-f.comision) : '—'}</td>}
+                  {ve('retenciones') && <td style={{ ...num, color: f.retenciones ? T.ambar : T.txt3, fontWeight: 500 }}>{f.retenciones ? pesos(-f.retenciones) : '—'}</td>}
+                  {ve('neto') && <td style={{ ...num, color: f.neto >= 0 ? T.verde : T.rojo, fontWeight: 700 }}>{pesos(f.neto)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -451,6 +552,7 @@ function BarraTraerMP({ bid, suc, mp, cubre, onTraido, avisar }) {
         <b>Traer de Mercado Pago</b>
         <span style={{ color: T.txt3, fontSize: 12.5 }}>
           {cubre?.n ? `En Lazarillo: del ${dma(cubre.desde)} al ${dma(cubre.hasta)} · ${cubre.n.toLocaleString('es-AR')} movimientos` : 'Todavía no se trajo nada'}
+          {' · se trae sola todos los días'}
           {esperando.length ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}
         </span>
       </span>
