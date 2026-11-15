@@ -29,6 +29,8 @@ export const ConciliacionAPI = {
 const mpBase = (bid) => `/businesses/${bid}/mercadopago`;
 export const MercadoPagoAPI = {
   estado: (bid, suc) => http(`${mpBase(bid)}/estado${q(suc)}`, { cache: false }),
+  // Clientes (14/11): los que pagaron por MP, de todas las sucursales del negocio.
+  clientes: (bid) => http(`${mpBase(bid)}/clientes`, { cache: false, timeoutMs: 60000 }),
   autorizar: (bid, suc) => http(`${mpBase(bid)}/autorizar${q(suc)}`, { cache: false }),
   conectar: (bid, code, state) => http(`${mpBase(bid)}/conectar`, { method: 'POST', timeoutMs: 60000, body: { code, state } }),
   desconectar: (bid, suc) => http(`${mpBase(bid)}${q(suc)}`, { method: 'DELETE' }),
