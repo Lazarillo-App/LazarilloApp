@@ -1437,6 +1437,7 @@ export default function RecetaModal({
     }[unidadCanonicaRend] || 'porción';
     return `Costo / ${unidadStr} (÷${fmt(divisorRendCanonico)})`;
   }, [divisorRendCanonico, unidadCanonicaRend]);
+
   // El bloque "Rendimiento del lote" confunde si siempre está a la vista — se muestra
   // minimizado salvo que la receta ya tenga un rendimiento distinto del default (1
   // porción, sin equivalente) o el usuario lo haya abierto a mano. Es solo una cuestión
