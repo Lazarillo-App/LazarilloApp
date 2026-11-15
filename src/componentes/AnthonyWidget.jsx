@@ -77,7 +77,8 @@ export default function AnthonyWidget() {
         –
       </button>
       <button
-        onClick={() => abrirChatAnthony(sinLeer > 0 ? { vista: 'pedidos' } : {})}
+        // Abre en «Guías» (Diego 14/11/2026); si hay respuestas sin leer, en «Mis pedidos».
+        onClick={() => abrirChatAnthony({ vista: sinLeer > 0 ? 'pedidos' : 'guias' })}
         aria-label="Abrir el chat con Anthony"
         title="Hablar con Anthony"
         style={{
