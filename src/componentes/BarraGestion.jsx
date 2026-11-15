@@ -68,6 +68,7 @@ export default function BarraGestion() {
 
   return (
     <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span data-tour="barra-periodo" style={{ display: 'inline-flex' }}>
       <SalesPickerIcon
         value={rango}
         onChange={setRango}
@@ -79,11 +80,12 @@ export default function BarraGestion() {
           minWidth: 160, '&:hover': { borderColor: '#2492C8', bgcolor: 'rgba(36,146,200,0.06)' },
         }}
       />
+      </span>
 
       {/* Botones propios de cada página (selección, listas, referencias). */}
       <span ref={setSlotEl} style={{ display: 'contents' }} />
 
-      <div style={{ minWidth: 260, maxWidth: 360, flex: '0 1 360px' }}>
+      <div data-tour="barra-buscador" style={{ minWidth: 260, maxWidth: 360, flex: '0 1 360px' }}>
         <Buscador
           placeholder={datos.placeholder || 'Buscar artículos, insumos…'}
           opciones={datos.opciones || []}
@@ -97,6 +99,7 @@ export default function BarraGestion() {
       </div>
 
       {!isStaff && (
+        <span data-tour="barra-foodcost" style={{ display: 'inline-flex' }}>
         <KpiFoodCost
           ventas={fc.ventas}
           compras={fc.compras}
@@ -105,6 +108,7 @@ export default function BarraGestion() {
           periodoLabel={fc.periodoLabel}
           porMes={fc.porMes}
         />
+        </span>
       )}
 
       {/* "Ventas / Compras ▾" (importar/exportar CSV) pasó a ⚙ Configuración (Diego, 06/11/2026). */}
