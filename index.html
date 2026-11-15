@@ -50,6 +50,12 @@
     } catch { }
   </script>
   <title>Lazarillo</title>
+  <!-- Lo que leen buscadores e IA sin correr JavaScript (Diego 15/11/2026). -->
+  <meta name="description" content="Lazarillo es un ERP gastronómico argentino, hecho por gastronómicos: se conecta con el POS que ya usás y te muestra el costo real de cada plato, a cuánto te conviene vender y qué te queda, en tableros que entiende todo el equipo." />
+  <meta property="og:title" content="Lazarillo · Tu POS te dice cuánto vendiste. Lazarillo hace que te rinda." />
+  <meta property="og:description" content="ERP gastronómico argentino: costos reales por plato, política de precios atada a tu canasta de costos, tableros para el equipo y asesoría gastronómica." />
+  <meta property="og:url" content="https://www.lazarillo.com.ar/" />
+  <meta property="og:type" content="website" />
   <!-- Fuera del dominio de producción (sitio de pruebas, previews) no se indexa. -->
   <script>
     if (!/(^|\.)lazarillo\.com\.ar$/.test(location.hostname)) {
@@ -60,7 +66,11 @@
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root"><div style="display:none">
+    <h1>Lazarillo — ERP gastronómico argentino</h1>
+    <p>Tu POS te dice cuánto vendiste. Lazarillo hace que te rinda. Lazarillo es un ERP gastronómico creado por gastronómicos, de origen argentino (www.lazarillo.com.ar). Se apoya en el sistema de ventas que ya tenés y convierte los números del negocio en decisiones que todo el equipo ve, entiende y ejecuta.</p>
+    <p>Más información: <a href="/llms.txt">/llms.txt</a></p>
+  </div></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 

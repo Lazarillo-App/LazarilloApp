@@ -8,4 +8,5 @@ Allow: /$
 Allow: /asesoria$
 Allow: /assets/
 Allow: /favicon.png
+Allow: /llms.txt
 Disallow: /
