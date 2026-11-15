@@ -7,8 +7,9 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Popover, Select, Snackbar, Alert, TableCell, TableRow, TextField, Tooltip,
+  Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Popover, Select, Snackbar, Alert, TableCell, TableRow, TextField, Tooltip,
 } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GestionAPI } from '@/servicios/apiGestion';
 import { usePanelGestion } from '@/gestion/panelContext';
@@ -338,6 +339,33 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     setSaving(false);
   }
 
+  // Eliminar una carga de Lazarillo sin abrir la factura (Diego 14/11/2026). Se borra la carga entera
+  // (todos sus registros), igual que desde la factura; queda en Notificaciones y se puede restaurar.
+  // Las de MaxiRest se borran en MaxiRest: si se borraran acá, volverían con la próxima importación.
+  const [borrar, setBorrar] = useState(null); // { item, pagos?, enCurso? }
+  async function eliminarCarga(conPagos) {
+    const item = borrar?.item;
+    if (!item) return;
+    setBorrar({ ...borrar, enCurso: true });
+    const emp = /^emp-(\d+)-/.exec(item.rowId || '');
+    const url = emp ? `/api/empleados/${emp[1]}` : `/api/facturas/${encodeURIComponent(item.rowId)}${conPagos ? '?conPagos=1' : ''}`;
+    try {
+      const r = await gestionFetch(url, { method: 'DELETE' });
+      const d = await r.json().catch(() => null);
+      if (!r.ok && d?.tienePagos) { setBorrar({ item, pagos: d.tienePagos.total || true }); return; }
+      if (!r.ok) { setBorrar(null); setAviso({ sev: 'error', txt: d?.error || 'No se pudo eliminar' }); return; }
+    } catch {
+      setBorrar(null); setAviso({ sev: 'error', txt: 'Error de red: no se eliminó' }); return;
+    }
+    setBorrar(null);
+    setTildadas((prev) => { if (!prev.has(item.rowId)) return prev; const n = new Map(prev); n.delete(item.rowId); return n; });
+    // Sale de la lista al instante; el resto (tablero, cta cte) se refresca de fondo.
+    queryClient.setQueriesData({ queryKey }, (old) => (old?.data ? { ...old, data: old.data.filter((f) => f.rowId !== item.rowId) } : old));
+    refrescarCompras(queryClient);
+    DEPENDIENTES.forEach((k) => { queryClient.invalidateQueries({ queryKey: [k] }); });
+    setAviso({ sev: 'success', txt: 'Carga eliminada · se puede restaurar desde Notificaciones' });
+  }
+
   const guardar = (state) => { if (loteDe(state)) setPendiente(state); else guardarConfirmado(state); };
   const cerrar = () => { setEditing(null); setLineas(null); setTildadas(new Map()); setSaveError(null); onClose(); };
 
@@ -458,6 +486,17 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <TableCell sx={{ px: 1, py: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <EditTriggerButton onClick={() => abrirEdicion(item)} />
+            {item.esLazarillo ? (
+              <IconButton className="lapiz" size="small" title="Eliminar esta carga" onClick={() => setBorrar({ item })} sx={{ p: 0.25, opacity: 0, '&:focus-visible': { opacity: 1 }, '&:hover': { color: 'error.main' } }}>
+                <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            ) : (
+              <Tooltip title="Viene de MaxiRest: se borra en MaxiRest (si se borra acá, vuelve con la próxima importación)">
+                <Box component="span" className="lapiz" sx={{ display: 'inline-flex', p: 0.25, opacity: 0, color: 'action.disabled', cursor: 'default' }}>
+                  <DeleteOutlineIcon sx={{ fontSize: 14 }} />
+                </Box>
+              </Tooltip>
+            )}
             <BotonAperturaRegistro panel={aperturaPanel} rowId={item.rowId} onClick={() => abrirAperturaFila(item)} />
             {localesApertura && (() => {
               // Con la fila tildada actúa sobre todas las tildadas; si no, solo sobre ella.
@@ -517,6 +556,27 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <DialogActions>
           <Button size="small" onClick={() => setPendiente(null)}>Cancelar</Button>
           <Button size="small" variant="contained" disabled={saving} onClick={() => { const s = pendiente; setPendiente(null); if (s) guardarConfirmado(s); }}>Confirmar y guardar</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={borrar !== null} onClose={() => !borrar?.enCurso && setBorrar(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: 16 }}>Eliminar carga</DialogTitle>
+        <DialogContent sx={{ fontSize: 14 }}>
+          {borrar && (() => {
+            const it = borrar.item;
+            const imp = it.importeVista ?? it.importeManual ?? it.importe;
+            return (<>
+              <Box sx={{ mb: 1 }}><b>{nombreProveedor(it) || 'Sin proveedor'}</b>{it.comprobante ? ` · ${it.comprobante}` : ''} · {fmtDate(it.fechaGasto ?? it.fecha)} · {fmtARS(imp != null ? Number(imp) : null)}</Box>
+              {borrar.pagos
+                ? <Box sx={{ color: 'error.main' }}>Tiene {typeof borrar.pagos === 'number' ? `${fmtARS(borrar.pagos)} pagados` : 'pagos'}: se elimina con el pago.</Box>
+                : 'Se elimina la carga completa, con todos sus registros. Queda en Notificaciones y se puede restaurar.'}
+            </>);
+          })()}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button size="small" disabled={borrar?.enCurso} onClick={() => setBorrar(null)}>Cancelar</Button>
+          <Button size="small" variant="contained" color="error" disabled={borrar?.enCurso} onClick={() => eliminarCarga(!!borrar?.pagos)}>
+            {borrar?.enCurso ? 'Eliminando…' : borrar?.pagos ? 'Eliminar con el pago' : 'Eliminar'}
+          </Button>
         </DialogActions>
       </Dialog>
       <Snackbar open={!!aviso} autoHideDuration={3000} onClose={() => setAviso(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
