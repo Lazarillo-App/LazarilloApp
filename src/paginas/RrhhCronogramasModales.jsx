@@ -465,13 +465,56 @@ function ModalVaciar({ semanaId, espacioNombre, onElegir, onCerrar }) {
 }
 
 /* ───────── modal: calendario de semanas ───────── */
-function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onCerrar }) {
+function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onFecha, onCerrar }) {
   const [mes, setMes] = useState(() => mesDeSemana(startDeId(semanaId)));
+  const [vista, setVista] = useState('semanas'); // 'semanas' | 'fechas' (Diego 15/11/2026: todas las fechas del año)
+  const [anio, setAnio] = useState(() => mesDeSemana(startDeId(semanaId)).y);
+  const [nueva, setNueva] = useState('');
   const hoyIso = isoDe(new Date());
   const filas = semanasDelMes(mes);
   const mover = (n) => setMes((m) => { const d = new Date(m.y, m.m + n, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
   return (
-    <Marco onCerrar={onCerrar} ancho={340}>
+    <Marco onCerrar={onCerrar} ancho={vista === 'fechas' ? 420 : 340}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <Boton activo={vista === 'semanas'} onClick={() => setVista('semanas')}>📅 Semanas</Boton>
+        {onFecha && <Boton activo={vista === 'fechas'} onClick={() => setVista('fechas')}>★ Fechas especiales</Boton>}
+        <div style={{ flex: 1 }} />
+        <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18, alignSelf: 'center' }}>✕</span>
+      </div>
+      {vista === 'fechas' ? (() => {
+        const lista = [...fechasMap.values()].filter((f) => Number(String(f.fecha).slice(0, 4)) === anio)
+          .sort((x, y) => String(x.fecha).localeCompare(String(y.fecha)));
+        return (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Boton onClick={() => setAnio((y) => y - 1)} title="Año anterior">‹</Boton>
+              <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>{anio}</div>
+              <Boton onClick={() => setAnio((y) => y + 1)} title="Año siguiente">›</Boton>
+            </div>
+            <div style={{ maxHeight: 340, overflowY: 'auto', border: `1px solid ${T.border}`, borderRadius: 10 }}>
+              {!lista.length && <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text3, padding: 12 }}>Sin fechas especiales en {anio}.</div>}
+              {lista.map((f) => {
+                const d = new Date(f.fecha + 'T12:00:00');
+                return (
+                  <div key={f.fecha + (f.compartida === false ? 's' : 'c')} onClick={() => onFecha(f.fecha)} title="Editar o quitar"
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', fontFamily: FB, fontSize: 12.5, color: T.text }}>
+                    <span style={{ width: 40, fontWeight: 700 }}>{dd2(d.getDate())}/{dd2(d.getMonth() + 1)}</span>
+                    <span style={{ width: 70, color: T.text2 }}>{DIAS[d.getDay()]}</span>
+                    <span style={{ width: 82, flexShrink: 0 }}><Chip color={colorCat(f.tipo)}>{etiquetaTipo(f.tipo)}</Chip></span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre || ''}</span>
+                    {f.fijo && <span title="Inamovible: se repite todos los años">📌</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <input type="date" value={nueva} onChange={(e) => setNueva(e.target.value)}
+                style={{ height: 34, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '4px 8px', borderRadius: 10, border: `1px solid ${T.border2}`, color: T.text, background: T.head }} />
+              <Boton activo deshabilitado={!nueva} onClick={() => onFecha(nueva)}>+ Nueva fecha</Boton>
+            </div>
+          </>
+        );
+      })() : (<>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <Boton onClick={() => mover(-1)} title="Mes anterior">‹</Boton>
         <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>{MESES_C[mes.m]} {mes.y}</div>
@@ -509,6 +552,7 @@ function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onCerrar }) {
         <span style={{ fontFamily: FB, fontSize: 11, color: T.text3 }}>Sombreadas: con cronograma</span>
         <Boton onClick={() => onElegir(idDeSemana(domingoDeHoy()))}>HOY</Boton>
       </div>
+      </>)}
     </Marco>
   );
 }
@@ -551,33 +595,66 @@ function CampoHora({ value, onChange, style, title, placeholder = '--:--' }) {
   );
 }
 
-function ModalTurno({ turno, espacioNombre, onGuardar, onCerrar }) {
+function ModalTurno({ turno, nuevo = false, espacioNombre, onGuardar, onQuitar, onNuevo, onCerrar }) {
   const [nombre, setNombre] = useState(turno.nombre || '');
   const [entrada, setEntrada] = useState(turno.entrada || '');
   const [guardando, setGuardando] = useState(false);
-  const input = { width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head };
+  const input = { width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, height: 40, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head };
   const rotulo = { fontFamily: FB, fontSize: 12, color: T.text2, margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 };
-  const guardar = async () => {
-    if (!nombre.trim()) return;
-    setGuardando(true);
-    try { await onGuardar({ nombre: nombre.trim(), entrada: entrada || null }); } finally { setGuardando(false); }
-  };
+  const correr = async (fn) => { setGuardando(true); try { await fn(); } finally { setGuardando(false); } };
+  const guardar = () => { if (nombre.trim()) correr(() => onGuardar({ nombre: nombre.trim(), entrada: entrada || null })); };
   return (
-    <Marco onCerrar={onCerrar} ancho={360}>
-      <TituloModal onCerrar={onCerrar} sub={`${espacioNombre} · vale para todas las semanas.`}>Editar turno</TituloModal>
+    <Marco onCerrar={onCerrar} ancho={380}>
+      <TituloModal onCerrar={onCerrar} sub={`${espacioNombre} · vale para todas las semanas.`}>{nuevo ? 'Nuevo turno' : 'Editar turno'}</TituloModal>
       <div style={{ display: 'flex', gap: 10 }}>
         <div style={{ flex: 1 }}>
           <div style={{ ...rotulo, marginTop: 0 }}>Nombre</div>
-          <input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Día, Noche, Mediodía" style={input} />
+          <input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') guardar(); }} placeholder="Ej.: Día, Noche, Mediodía" style={input} />
         </div>
         <div style={{ width: 120 }}>
-          <div style={{ ...rotulo, marginTop: 0 }}>Entra</div>
+          <div style={{ ...rotulo, marginTop: 0, textAlign: 'center' }}>Entra</div>
           <CampoHora value={entrada} onChange={setEntrada} style={{ ...input, textAlign: 'center' }} />
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-        <Boton onClick={onCerrar}>Cancelar</Boton>
-        <Boton activo deshabilitado={guardando || !nombre.trim()} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Boton>
+      {!nuevo && onNuevo && (
+        <div onClick={onNuevo} style={{ marginTop: 12, fontFamily: FB, fontSize: 13, fontWeight: 700, color: T.accentTxt || T.accent, cursor: 'pointer' }}>
+          + Agregar otro turno en {espacioNombre}
+        </div>
+      )}
+      {!nuevo && <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 6 }}>Un turno se puede quitar si no tiene días cargados en ningún cronograma.</div>}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+        {!nuevo && onQuitar ? <Boton peligro deshabilitado={guardando} onClick={() => correr(onQuitar)}>Quitar turno</Boton> : <span />}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Boton onClick={onCerrar}>Cancelar</Boton>
+          <Boton activo deshabilitado={guardando || !nombre.trim()} onClick={guardar}>{guardando ? 'Guardando…' : nuevo ? 'Agregar' : 'Guardar'}</Boton>
+        </div>
+      </div>
+    </Marco>
+  );
+}
+
+/* ───────── modal: espacio (pestañas Salón / Cocina…): agregar, renombrar, quitar ───────── */
+function ModalEspacio({ espacio, onGuardar, onQuitar, onCerrar }) {
+  const nuevo = !espacio;
+  const [nombre, setNombre] = useState(espacio?.nombre || '');
+  const [guardando, setGuardando] = useState(false);
+  const input = { width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, height: 40, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head };
+  const correr = async (fn) => { setGuardando(true); try { await fn(); } finally { setGuardando(false); } };
+  const guardar = () => { if (nombre.trim()) correr(() => onGuardar(nombre.trim())); };
+  return (
+    <Marco onCerrar={onCerrar} ancho={380}>
+      <TituloModal onCerrar={onCerrar} sub="Cada espacio tiene sus turnos y sus cronogramas.">{nuevo ? 'Nuevo espacio' : `Editar ${espacio.nombre}`}</TituloModal>
+      <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>Nombre</div>
+      <input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') guardar(); }} placeholder="Ej.: Canchas, Barra, Delivery" style={input} />
+      <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 6 }}>
+        {nuevo ? 'Nace con los turnos Día (10:00) y Noche (19:00): los cambiás tocando cada turno.' : 'Un espacio se puede quitar si no tiene días cargados en ningún cronograma.'}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+        {!nuevo ? <Boton peligro deshabilitado={guardando} onClick={() => correr(onQuitar)}>Quitar espacio</Boton> : <span />}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Boton onClick={onCerrar}>Cancelar</Boton>
+          <Boton activo deshabilitado={guardando || !nombre.trim()} onClick={guardar}>{guardando ? 'Guardando…' : nuevo ? 'Agregar' : 'Guardar'}</Boton>
+        </div>
       </div>
     </Marco>
   );
@@ -878,5 +955,6 @@ export {
   ModalVaciar,
   ModalCalendario,
   ModalTurno,
+  ModalEspacio,
   ModalAsignar,
 };
