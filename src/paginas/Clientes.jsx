@@ -77,6 +77,8 @@ function pasaFiltro(c, k, f) {
 const filtroActivo = (f) => !!f && ((f.texto != null && f.texto !== '') || !!f.valores || (f.min !== '' && f.min != null)
   || (f.max !== '' && f.max != null) || !!f.desde || !!f.hasta);
 
+const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
 export default function Clientes() {
   const { activeBusinessId } = useBusiness() || {};
   const { branches = [] } = useBranch() || {};
@@ -97,11 +99,20 @@ export default function Clientes() {
     if (!bid) return undefined;
     let vivo = true;
     setError('');
-    MercadoPagoAPI.clientes(bid)
-      .then((r) => { if (vivo) setDatos(r); })
+    let t = null;
+    // Mientras una cuenta de MP recién vinculada trae su historial, se vuelve a mirar cada 30 s
+    // (solo esta consulta, que tarda ~20 ms) y la lista se completa sola.
+    const traer = () => MercadoPagoAPI.clientes(bid)
+      .then((r) => {
+        if (!vivo) return;
+        setDatos(r);
+        if ((r?.cuentas || []).some((c) => !c.completo)) t = setTimeout(traer, 30000);
+      })
       .catch(() => { if (vivo) setError('No pude traer los clientes. Probá de nuevo en un rato.'); });
-    return () => { vivo = false; };
+    traer();
+    return () => { vivo = false; clearTimeout(t); };
   }, [bid]);
+  const trayendo = (datos?.cuentas || []).filter((c) => !c.completo);
 
   const hoy = hoyIso();
   const nombreSuc = (s) => (Number(s) === 0 ? (branches.find((b) => b.id === 'main')?.name || 'Principal') : (branches.find((b) => sucursalNum(b.id) === Number(s))?.name || `Sucursal ${s}`));
@@ -185,15 +196,22 @@ export default function Clientes() {
       <div style={pagina}>
         <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Clientes</h1>
         <div style={{ ...tarjeta, padding: '22px 24px', maxWidth: 560, marginTop: 14 }}>
-          <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Todavía no hay clientes</div>
-          <div style={{ color: T.txt2, fontSize: 14, marginBottom: 14 }}>
-            Se arman solos con los cobros de Mercado Pago: cada persona que te paga queda con su email, documento y cuántas veces vino.
-            Con Mercado Pago conectado, el historial se trae solo.
+          <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
+            {trayendo.length ? 'Estamos trayendo tu historial de Mercado Pago' : 'Todavía no hay clientes'}
           </div>
-          <RouterLink to="/movimientos-bancarios?vista=bancos"
+          <div style={{ color: T.txt2, fontSize: 14, marginBottom: trayendo.length || datos.cuentas?.length ? 0 : 14 }}>
+            {trayendo.length
+              ? <>Va mes por mes hacia atrás y tarda unos minutos. La lista aparece sola acá, y te avisamos en la campana cuando termine.
+                {trayendo[0].hasta ? <> Ya va por {MESES_LARGO[Number(trayendo[0].hasta.slice(5, 7)) - 1]} {trayendo[0].hasta.slice(0, 4)}.</> : null}</>
+              : datos.cuentas?.length
+                ? 'Mercado Pago está conectado, pero todavía no hay cobros con datos del que pagó (email o documento).'
+                : <>Se arman solos con los cobros de Mercado Pago: cada persona que te paga queda con su email, documento y cuántas veces vino.
+                  Con Mercado Pago conectado, el historial se trae solo.</>}
+          </div>
+          {!datos.cuentas?.length && <RouterLink to="/movimientos-bancarios?vista=bancos"
             style={{ display: 'inline-flex', alignItems: 'center', height: 36, padding: '0 16px', borderRadius: 8, background: T.celeste, color: '#12111F', fontWeight: 700, textDecoration: 'none', fontSize: 14 }}>
             Conectá tu banco
-          </RouterLink>
+          </RouterLink>}
         </div>
       </div>
     );
@@ -226,6 +244,7 @@ export default function Clientes() {
         bajada={<>
           Los que te pagaron por Mercado Pago, en todas las sucursales · del {dma(datos.desde)} al {dma(datos.hasta)}
           {datos.propios?.length ? ' · sin contar tus propias cuentas' : ''}
+          {trayendo.length ? <> · <b style={{ fontWeight: 600 }}>trayendo el historial de {trayendo.map((c) => nombreSuc(c.sucursal)).join(', ')}…</b></> : null}
         </>}
         acciones={<>
         <input type="search" value={buscar} onChange={(e) => { setBuscar(e.target.value); setMostrar(300); }} placeholder="Buscar cliente, email o CUIT"
