@@ -95,10 +95,12 @@ export default function ModulosDrawer({ open, onClose }) {
           </Tooltip>
         </Box>
 
+        {/* Los gap van en px: en sx un número es theme.spacing (gap: 12 eran 96px y separaba todo,
+            Diego 15/11/2026). */}
         {/* Buscador de funciones — por ahora solo visual, sin filtrar nada.
             Más adelante: tipear "pagos de mercado pago" y redirigir directo
             a Conciliación con eso a la vista. */}
-        <Box sx={{ margin: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: 8, background: C.hover, border: `1px solid ${C.line}`, borderRadius: 10, padding: '9px 12px' }}>
+        <Box sx={{ margin: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: C.hover, border: `1px solid ${C.line}`, borderRadius: 10, padding: '9px 12px' }}>
           <span style={{ fontSize: 15, opacity: 0.7 }}>🔍</span>
           <input
             value={query}
@@ -114,7 +116,7 @@ export default function ModulosDrawer({ open, onClose }) {
         <Box
           onClick={() => irA('/inicio')}
           sx={{
-            display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', margin: '0 10px 10px',
+            display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 14px', margin: '0 10px 12px',
             borderRadius: 10, cursor: 'pointer', color: C.sidebarText,
             fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 15,
             border: `1px solid ${C.line}`,
@@ -130,7 +132,7 @@ export default function ModulosDrawer({ open, onClose }) {
           '&::-webkit-scrollbar': { display: 'none' },
         }}>
           {GROUPS.map((g) => (
-            <Box key={g.id} sx={{ marginBottom: '15px' }}>
+            <Box key={g.id} sx={{ marginBottom: '12px' }}>
               <Box sx={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: C.sidebarDim, padding: '0 4px 7px' }}>
                 {g.label}
               </Box>
@@ -141,8 +143,8 @@ export default function ModulosDrawer({ open, onClose }) {
                     key={m.id}
                     onClick={() => { if (disabled) return; irA(m.to); }}
                     sx={{
-                      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10,
-                      cursor: disabled ? 'default' : 'pointer', marginBottom: 3,
+                      display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', borderRadius: 10,
+                      cursor: disabled ? 'default' : 'pointer', marginBottom: '2px',
                       fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 14.5,
                       color: disabled ? C.sidebarDim : C.sidebarText,
                       opacity: disabled ? 0.5 : 1,
