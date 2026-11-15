@@ -177,10 +177,11 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .navtabs a.on{color:#fff;box-shadow:inset 0 -2px 0 var(--sky);}
 .btn-link{background:none;border:0;color:#c8d2e0;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;padding:10px 6px;cursor:pointer;}
 .btn-link:hover{color:#fff;}
-.ases-top{padding-top:80px;}
+.ases-top{padding:72px 0 56px;}
+.ases-top .pasos{margin-bottom:0;}
 .equipo{padding-top:70px;border-top:1px solid rgba(255,255,255,.06);}
 .equipo h2{margin-bottom:30px!important;}
-.servicios{padding:80px 0;background:var(--paper);}
+.servicios{padding:60px 0 72px;background:var(--paper);}
 .servicios h2,.faq h2{font-size:38px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 36px;}
 .sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
 .scard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;}
@@ -200,6 +201,14 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .puente h3{font-family:'Sora',system-ui,sans-serif;font-size:30px;margin:8px 0 6px;}
 .puente p{color:rgba(255,255,255,.7);font-size:17px;max-width:620px;}
 .puente .btn{white-space:nowrap;text-decoration:none;}
+.principios{padding:64px 0 72px;background:#fff;}
+.principios h2{font-size:34px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 30px;max-width:820px;}
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.pcard{border-left:3px solid var(--sky);padding:6px 0 6px 18px;}
+.pcard h3{font-family:'Sora',system-ui,sans-serif;font-size:17px;color:var(--ink);margin-bottom:6px;}
+.pcard p{font-size:15px;}
+.pcita{margin:36px 0 0;font-family:'Sora',system-ui,sans-serif;font-size:22px;font-weight:600;color:var(--ink);line-height:1.4;max-width:820px;}
+.pcita span{display:block;margin-top:8px;font-size:14px;font-weight:600;color:var(--skydeep);}
 .vlbl{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:600;}
 .vchip{display:inline-flex;align-items:center;gap:6px;border-radius:50px;padding:7px 13px;font-size:13.5px;font-weight:700;}
 .vrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:13.5px;}
@@ -213,8 +222,8 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm img{height:56px;width:auto;display:block;opacity:.7;transition:opacity .2s;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
-@media(max-width:1000px){.sgrid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:820px){.brd{display:none;}nav .wrap{flex-wrap:wrap;height:auto;padding-top:12px;padding-bottom:12px;gap:10px;}.navtabs{order:3;width:100%;margin:0;justify-content:center;gap:36px;}.sgrid{grid-template-columns:1fr;}.servicios h2,.faq h2{font-size:30px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:1000px){.sgrid,.pgrid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:820px){.brd{display:none;}nav .wrap{flex-wrap:wrap;height:auto;padding-top:12px;padding-bottom:12px;gap:10px;}.navtabs{order:3;width:100%;margin:0;justify-content:center;gap:36px;}.sgrid,.pgrid{grid-template-columns:1fr;}.servicios h2,.faq h2,.principios h2{font-size:28px;}.pcita{font-size:18px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
   .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
@@ -271,11 +280,21 @@ const servicios = [
 ];
 // Preguntas frecuentes de la asesoría (borrador para que Diego ajuste).
 const preguntas = [
-  ['¿Qué es el diagnóstico?', 'Una primera charla y una mirada a tus números para encontrar dónde se te va la rentabilidad. De ahí sale el plan de trabajo.'],
+  ['¿Qué es el diagnóstico?', 'Una primera charla para entender tu dolor y definir un método de trabajo orientado a resultados: lo más importante es identificar el problema. Con un Lazarillo de respaldo miramos tus números y encontramos dónde se te va la rentabilidad. De ahí sale el plan de trabajo.'],
   ['¿Tengo que cambiar mi sistema de ventas?', 'No. Lazarillo se apoya en el sistema que ya tenés y trabajamos sobre tus datos reales.'],
   ['¿Cuánto dura el acompañamiento?', 'Depende de lo que haya que resolver: lo definimos juntos en el diagnóstico, con objetivos claros.'],
   ['¿Qué pasa cuando termina?', 'Seguís solo: el proceso queda funcionando con tu equipo y con tu Lazarillo.'],
   ['¿Con qué negocios trabajan?', 'Restaurantes, bares, cafeterías y buffets: cualquier negocio gastronómico que quiera saber dónde está parado.'],
+];
+
+// Cómo pensamos: del documento de valores que Diego usa con sus equipos.
+const principios = [
+  ['Tu cliente marca el rumbo', 'Hay dos formas de vender más: buscar clientes para tu producto o crear productos para tus clientes. Con Lazarillo ves cuál te conviene.'],
+  ['Lo más importante es identificar el problema', 'Con Lazarillo miramos tus números reales: sin el diagnóstico correcto no hay solución adecuada.'],
+  ['Lo primero que falla es la comunicación', 'Si quienes forman tu negocio, del equipo o no, no están conectados a cada decisión, el resultado no va a ser el esperado. Lazarillo los conecta.'],
+  ['Prevenir antes que curar', 'Ayudamos a que tu equipo esté preparado para lo peor, siempre.'],
+  ['No afirmamos nada sin comprobarlo', 'Escuchamos todas las voces, validamos y recién ahí decidimos.'],
+  ['Lo que no se mueve, se muere', 'Muchas propuestas se instalan y después nadie las supervisa ni las mantiene. Sin retroalimentación y sin gente involucrada en el objetivo, se apagan.'],
 ];
 
 // Asesores (Florencia se suma cuando confirme).
@@ -615,7 +634,7 @@ export default function LazarilloLanding() {
           <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br className="brd" /> quién te acompaña.</span></h2>
           <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
           <div className="pasos">
-            {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
+            {[['1', 'Diagnóstico', 'Identificamos el problema: bien descripto, ya tenés la mitad resuelto.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
               <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
             ))}
           </div>
@@ -632,6 +651,20 @@ export default function LazarilloLanding() {
               <div className="scard" key={x.t}><div className="sic">{x.ic}</div><h3>{x.t}</h3><p>{x.d}</p></div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* CÓMO PENSAMOS */}
+      <section className="principios">
+        <div className="wrap">
+          <div className="kick">Nuestros principios</div>
+          <h2>Así tomamos decisiones.</h2>
+          <div className="pgrid">
+            {principios.map(([t, d]) => (
+              <div className="pcard" key={t}><h3>{t}</h3><p>{d}</p></div>
+            ))}
+          </div>
+          <blockquote className="pcita">«Hay que dejar de luchar solos como dueños de negocio y crear equipos interdependientes. Para eso hace falta una herramienta y un sistema que los conecte.»<span>Diego Sebastián Albo</span></blockquote>
         </div>
       </section>
 
