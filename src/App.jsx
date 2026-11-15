@@ -258,6 +258,8 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
+        {/* Pestaña Asesoría de la página pública: se ve con o sin sesión. */}
+        <Route path="/asesoria" element={<LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/activar" element={<Activar />} />
