@@ -59,7 +59,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
       neto: neto != null ? neto : bruto,
       ref: b.ref || '', doc: fmtDoc(b.doc, b.docTipo), acredita: b.acredita || '', cuotas: b.cuotas || null,
       op: String(b.op || b.mpId || ''), claveMx: b.claveMx || claveMx(b.mpId),
-      caja: b.caja || '', tarjeta: b.tarjeta || '',
+      caja: b.caja || '', tarjeta: b.tarjeta || '', cuenta: b.cuenta ? String(b.cuenta) : '',
     };
   });
   const dev = devoluciones.map((d) => ({
@@ -68,7 +68,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
     detalle: `${d.parcial ? 'parcial · ' : ''}cobro del ${dma(d.cobroFecha)} por ${pesos(d.cobro)}`,
     bruto: Number(d.imp) || 0, comision: 0, retenciones: null, neto: -(Number(d.imp) || 0), parcial: !!d.parcial,
     ref: d.ref || '', doc: '', acredita: '', cuotas: null, caja: '', tarjeta: '',
-    op: String(d.mpId || ''), claveMx: claveMx(d.mpId),
+    op: String(d.mpId || ''), claveMx: claveMx(d.mpId), cuenta: d.cuenta ? String(d.cuenta) : '',
   }));
   const sal = egresos.map((e) => {
     const imp = Math.abs(Number(e.imp) || 0);
@@ -77,7 +77,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
       tipo: e.tipo || 'Egreso', medio: e.medio || '—', quien: '', detalle: e.detalle || '',
       bruto: imp, comision: 0, retenciones: null, neto: -imp,
       ref: e.ref || '', doc: '', acredita: '', cuotas: null, caja: '', tarjeta: '',
-      op: /^\d+$/.test(String(e.mpId || '')) ? String(e.mpId) : '', claveMx: claveMx(e.mpId),
+      op: /^\d+$/.test(String(e.mpId || '')) ? String(e.mpId) : '', claveMx: claveMx(e.mpId), cuenta: e.cuenta ? String(e.cuenta) : '',
     };
   });
   return [...ent, ...sal, ...dev].sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`));
@@ -111,6 +111,7 @@ const COLUMNAS = [
   { k: 'cuotas', l: 'Cuotas' },
   { k: 'tarjeta', l: 'Tarjeta' },
   { k: 'caja', l: 'Caja / QR' },
+  { k: 'cuenta', l: 'Cuenta' },
   { k: 'importe', l: 'Importe', fija: true },
   { k: 'comision', l: 'Comisión' },
   { k: 'retenciones', l: 'Impuestos' },
@@ -141,6 +142,8 @@ export default function MovimientosBancarios() {
   const [medio, setMedio] = useState('');
   const [buscar, setBuscar] = useState('');
   const [caja, setCaja] = useState('');
+  // Varias cuentas de MP en la sucursal (Diego 15/11/2026, San Justo tiene 2): filtro y columna «Cuenta».
+  const [cuentaSel, setCuentaSel] = useState('');
   const [cols, setCols] = useState(leerCols);
   const [verCols, setVerCols] = useState(false);
   const [verComisiones, setVerComisiones] = useState(false);
@@ -149,7 +152,7 @@ export default function MovimientosBancarios() {
     try { localStorage.setItem(COLS_KEY, JSON.stringify(n)); } catch { /* sin storage */ }
     return n;
   });
-  const ve = (k) => cols.includes(k) || COLUMNAS.find((c) => c.k === k)?.fija;
+  const ve = (k) => cols.includes(k) || COLUMNAS.find((c) => c.k === k)?.fija || (k === 'cuenta' && (mp?.cuentas || []).length > 1);
   const [ver, setVer] = useState(0);            // sube al traer de Mercado Pago (relee lo guardado)
   const [aviso, setAviso] = useState('');
   const avisoT = useRef(null);
@@ -192,13 +195,17 @@ export default function MovimientosBancarios() {
   );
   const medios = useMemo(() => [...new Set(delPeriodo.map((f) => f.medio))].sort(), [delPeriodo]);
   const cajas = useMemo(() => [...new Set(delPeriodo.map((f) => f.caja).filter(Boolean))].sort(), [delPeriodo]);
+  const cuentasMp = mp?.cuentas || [];
+  const variasCuentas = cuentasMp.length > 1;
+  const nombreCuenta = (id) => cuentasMp.find((c) => String(c.user_id) === String(id))?.nickname || (id ? `#${id}` : '—');
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return delPeriodo.filter((f) => (lado === 'todos' || f.lado === lado)
       && (!medio || f.medio === medio)
       && (!caja || f.caja === caja)
+      && (!cuentaSel || f.cuenta === cuentaSel)
       && (!q || `${f.quien} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
-  }, [delPeriodo, lado, medio, caja, buscar]);
+  }, [delPeriodo, lado, medio, caja, cuentaSel, buscar]);
 
   // Exportar (Diego 15/11/2026: «exportar los movimientos bancarios del período seleccionado»): lo que se ve
   // con el período y los filtros elegidos, TODOS (no solo los 1.500 de la lista) y con todas las columnas,
@@ -214,6 +221,7 @@ export default function MovimientosBancarios() {
         Fecha: f.fecha, Hora: f.hora || '', Tipo: f.tipo, 'Pagador / detalle': f.lado === 'salida' ? (f.detalle || '') : (f.quien || ''),
         'CUIT / DNI': f.doc || '', Descripción: f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '') : '', Medio: f.medio || '',
         'Nº operación': f.op ? String(f.op) : '', 'Cupón (POS)': f.claveMx || '', 'Referencia externa': f.ref || '',
+        ...(variasCuentas ? { Cuenta: nombreCuenta(f.cuenta) } : {}),
         Acreditación: f.acredita || '', Cuotas: f.cuotas || '', Tarjeta: f.tarjeta ? `•••• ${f.tarjeta}` : '', 'Caja / QR': f.caja || '',
         Importe: n(f.bruto), Comisión: -n(f.comision), Impuestos: -n(f.retenciones),
         // Igual que el KPI «Neto del período»: una devolución total no resta (MP ya sacó ese cobro de la
@@ -226,7 +234,7 @@ export default function MovimientosBancarios() {
       const libro = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
       const fechas = visibles.map((f) => f.fecha).sort();
-      const cuenta = String(mp?.cuenta?.nickname || 'mercadopago').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const cuenta = String((cuentaSel ? nombreCuenta(cuentaSel) : variasCuentas ? (sucNombre || 'mercadopago') : mp?.cuenta?.nickname) || 'mercadopago').toLowerCase().replace(/[^a-z0-9]+/g, '-');
       XLSX.writeFile(libro, `movimientos-${cuenta}-${fechas[0]}_${fechas[fechas.length - 1]}.xlsx`);
     } catch {
       avisar('No pude armar el Excel. Probá de nuevo.');
@@ -293,7 +301,7 @@ export default function MovimientosBancarios() {
       <div style={{ minWidth: 0 }}>
         <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Movimientos bancarios</h1>
         <div style={{ color: T.txt2, fontSize: 13.5, marginTop: 4 }}>
-          🏦 Mercado Pago{mp?.cuenta?.nickname ? ` · ${mp.cuenta.nickname}` : ''}{sucNombre && reales.length ? ` · ${sucNombre}` : ''}
+          🏦 Mercado Pago{cuentasMp.length ? ` · ${cuentasMp.map((c) => c.nickname || c.email || `#${c.user_id}`).join(' + ')}` : ''}{sucNombre && reales.length ? ` · ${sucNombre}` : ''}
         </div>
       </div>
     </div>
@@ -317,7 +325,7 @@ export default function MovimientosBancarios() {
           </div>
           <div style={{ color: T.txt2, fontSize: 14, marginBottom: 14 }}>
             {mp?.conectado
-              ? `La cuenta ${mp.cuenta?.nickname || ''} está conectada. Elegí el período arriba y tocá «Traer».`
+              ? `${variasCuentas ? `Las cuentas ${cuentasMp.map((c) => c.nickname).join(' y ')} están conectadas` : `La cuenta ${mp.cuenta?.nickname || ''} está conectada`}. Elegí el período arriba y tocá «Traer».`
               : 'Con la cuenta conectada, los cobros y lo que sale de Mercado Pago aparecen acá solos.'}
           </div>
           {!mp?.conectado && <RouterLink to="/configuracion?tab=7"
@@ -451,10 +459,16 @@ export default function MovimientosBancarios() {
       <div style={{ ...tarjeta, overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '10px 12px', borderBottom: `1px solid ${T.line}` }}>
           {LADOS.map((x) => <button key={x.k} type="button" onClick={() => setLado(x.k)} style={chip(lado === x.k)}>{x.l}</button>)}
-          <select value={medio} onChange={(e) => setMedio(e.target.value)} style={{ ...campo, minWidth: 170 }}>
+          <select value={medio} onChange={(e) => setMedio(e.target.value)} style={{ ...campo, minWidth: variasCuentas ? 0 : 170 }}>
             <option value="">Todos los medios</option>
             {medios.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+          {variasCuentas && (
+            <select value={cuentaSel} onChange={(e) => setCuentaSel(e.target.value)} style={{ ...campo, minWidth: variasCuentas ? 0 : 170 }}>
+              <option value="">Todas las cuentas</option>
+              {cuentasMp.map((c) => <option key={c.user_id} value={String(c.user_id)}>{c.nickname || c.email || `#${c.user_id}`}</option>)}
+            </select>
+          )}
           {ve('caja') && cajas.length > 0 && (
             <select value={caja} onChange={(e) => setCaja(e.target.value)} style={{ ...campo, minWidth: 140 }}>
               <option value="">Todas las cajas</option>
@@ -462,11 +476,11 @@ export default function MovimientosBancarios() {
             </select>
           )}
           <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, importe, Nº de operación o cupón de MaxiRest"
-            style={{ ...campo, flex: '1 1 220px', minWidth: 180 }} />
-          <span style={{ color: T.txt2, fontSize: 13, whiteSpace: 'nowrap' }}>{visibles.length.toLocaleString('es-AR')} movimientos</span>
-          <button type="button" onClick={exportar} disabled={!visibles.length || exportando}
+            style={{ ...campo, flex: '1 1 0', minWidth: 120 }} />
+          <button type="button" onClick={exportar} disabled={!visibles.length || exportando} title="Bajar a Excel lo que se ve: período y filtros elegidos"
             style={{ ...chip(false), fontWeight: 700, background: T.celeste, border: 'none', color: '#12111F', opacity: !visibles.length || exportando ? 0.5 : 1 }}>
-            {exportando ? 'Armando…' : 'Exportar a Excel'}
+            {/* La cantidad va en el botón, como en Clientes: así entra la barra con varias cuentas. */}
+            {exportando ? 'Armando…' : `${variasCuentas ? 'Exportar' : 'Exportar a Excel'} (${visibles.length.toLocaleString('es-AR')})`}
           </button>
           <span style={{ position: 'relative' }}>
             <button type="button" onClick={() => setVerCols((v) => !v)} style={chip(verCols)} aria-expanded={verCols}>Columnas ▾</button>
@@ -519,6 +533,7 @@ export default function MovimientosBancarios() {
                   {ve('cuotas') && <td style={{ ...td, color: T.txt2 }}>{f.cuotas ? `${f.cuotas} cuotas` : '—'}</td>}
                   {ve('tarjeta') && <td style={{ ...td, color: T.txt2 }}>{f.tarjeta ? `•••• ${f.tarjeta}` : '—'}</td>}
                   {ve('caja') && <td style={{ ...td, color: T.txt2 }}>{f.caja || '—'}</td>}
+                  {ve('cuenta') && <td style={{ ...td, color: T.txt2, fontSize: 12.5 }}>{f.cuenta ? nombreCuenta(f.cuenta) : '—'}</td>}
                   {ve('importe') && <td style={num}>{pesos(f.bruto)}</td>}
                   {ve('comision') && <td style={{ ...num, color: f.comision ? T.rojo : T.txt3, fontWeight: 500 }}>{f.comision ? pesos(-f.comision) : '—'}</td>}
                   {ve('retenciones') && <td style={{ ...num, color: f.retenciones ? T.ambar : T.txt3, fontWeight: 500 }}>{f.retenciones ? pesos(-f.retenciones) : '—'}</td>}
@@ -712,7 +727,12 @@ function ConectaTuBanco({ mp, sucNombre }) {
           <div style={logoBox}><img src={logoMercadoPago} alt="" style={{ height: 40 }} /></div>
           <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16 }}>Mercado Pago</div>
           <div style={{ color: T.txt2, fontSize: 13, flex: 1 }}>
-            {conectado ? `Conectado con ${mp.cuenta?.nickname || mp.cuenta?.email || 'tu cuenta'}.` : 'Cobros, pagos, retiros, impuestos y comisiones de la cuenta.'}
+            {conectado
+              ? `Conectado con ${(mp.cuentas?.length ? mp.cuentas : [mp.cuenta]).map((c) => c?.nickname || c?.email || 'tu cuenta').join(' y ')}.`
+              : 'Cobros, pagos, retiros, impuestos y comisiones de la cuenta.'}
+            {conectado && <span style={{ display: 'block', marginTop: 6 }}>
+              <RouterLink to="/configuracion?tab=7" style={{ color: T.celesteDeep, fontWeight: 600 }}>+ Conectar otra cuenta de esta sucursal</RouterLink>
+            </span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={conectado ? pill('#1a9c6e1a', T.verde) : pill('#5BC2EA1F', '#12627F')}>{conectado ? '✓ Conectado' : 'Disponible'}</span>
