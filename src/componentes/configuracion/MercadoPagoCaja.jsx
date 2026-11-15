@@ -9,6 +9,8 @@ import { Link as RouterLink } from 'react-router-dom';
 import { useBranch } from '@/hooks/useBranch';
 import { MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
 import { showConfirm } from '@/servicios/appConfirm';
+import { GestionAPI } from '@/servicios/apiGestion';
+import SelectorBuscable from '@/componentes/SelectorBuscable';
 
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
 
@@ -80,6 +82,18 @@ function FilaSucursal({ businessId, suc, nombre, themeColor, onConfigurado }) {
   const cuentas = est?.cuentas?.length ? est.cuentas : (est?.conectado ? [{ ...est.cuenta, conectado_at: est.conectado_at }] : []);
   const fmtCuit = (d) => { const x = String(d || '').replace(/\D/g, ''); return x.length === 11 ? `${x.slice(0, 2)}-${x.slice(2, 10)}-${x.slice(10)}` : (x || ''); };
   const cs = est?.cuit_sucursal;
+  // Proveedor de cada cuenta (Diego 15/11/2026: «al asociar un banco lo tenemos que vincular con un proveedor»):
+  // a él van las comisiones (pagos de su cuenta corriente) y los impuestos que descuenta.
+  const [provs, setProvs] = useState(null);
+  const [eligiendo, setEligiendo] = useState(null); // user_id de la cuenta que está eligiendo proveedor
+  useEffect(() => {
+    if (!cuentas.length || provs) return;
+    GestionAPI.maestrosFactura().then((m) => setProvs(m?.proveedores || [])).catch(() => setProvs([]));
+  }, [cuentas.length, provs]);
+  const vincular = async (c, codPro) => {
+    try { await MercadoPagoAPI.proveedor(businessId, suc, c.user_id, codPro); setEligiendo(null); cargar(); }
+    catch { setError('No se pudo vincular el proveedor.'); }
+  };
   const manda = (c) => cs?.cuenta != null && String(cs.cuenta) === String(c.user_id);
   const usarCuit = async (c) => {
     if (!(await showConfirm(`¿Usar el CUIT ${fmtCuit(c.doc)} (${c.titular || c.nickname}) como CUIT de ${cs?.sucursal || 'la sucursal'}?`))) return;
@@ -122,6 +136,31 @@ function FilaSucursal({ businessId, suc, nombre, themeColor, onConfigurado }) {
               Titular: <b>{c.titular || '—'}</b> · CUIT <b>{c.doc ? fmtCuit(c.doc) : '—'}</b>
             </Typography>
             {c.ultimo_sync_error ? <Typography variant="body2" sx={{ color: '#b45309' }}>Último error: {c.ultimo_sync_error}</Typography> : null}
+            {eligiendo === c.user_id ? (
+              <Box sx={{ mt: 0.75, maxWidth: 320 }}>
+                <SelectorBuscable label="Proveedor" placeholder="Buscá el proveedor…" value={c.proveedor?.nombre || null}
+                  opciones={(provs || []).map((p) => ({ id: p.codigo, nombre: p.nombre }))}
+                  onChange={(nombre) => { const p = (provs || []).find((x) => x.nombre === nombre); if (p) vincular(c, p.codigo); }} />
+                <Button size="small" onClick={() => setEligiendo(null)} sx={{ textTransform: 'none', color: 'text.secondary', mt: 0.5 }}>Cancelar</Button>
+              </Box>
+            ) : c.proveedor ? (
+              <Typography variant="body2" sx={{ color: '#475569', lineHeight: 1.35 }}>
+                Proveedor: <b>{c.proveedor.nombre}</b>
+                <Button size="small" onClick={() => setEligiendo(c.user_id)} sx={{ textTransform: 'none', minWidth: 0, ml: 0.5, py: 0 }}>Cambiar</Button>
+              </Typography>
+            ) : (
+              <Typography variant="body2" sx={{ color: '#b45309', lineHeight: 1.35 }}>
+                Sin proveedor vinculado{c.proveedor_sugerido ? <> · ¿es <b>{c.proveedor_sugerido.nombre}</b>?</> : null}
+                {c.proveedor_sugerido && (
+                  <Button size="small" onClick={() => vincular(c, c.proveedor_sugerido.codigo)} sx={{ textTransform: 'none', fontWeight: 700, minWidth: 0, ml: 0.5, py: 0 }}>
+                    Usar {c.proveedor_sugerido.nombre}
+                  </Button>
+                )}
+                <Button size="small" onClick={() => setEligiendo(c.user_id)} sx={{ textTransform: 'none', minWidth: 0, ml: 0.5, py: 0 }}>
+                  {c.proveedor_sugerido ? 'Elegir otro' : 'Elegir proveedor'}
+                </Button>
+              </Typography>
+            )}
           </Box>
           {manda(c)
             ? <Chip size="small" label="✓ Define el CUIT de la sucursal" sx={{ height: 24, fontWeight: 700, bgcolor: `${themeColor}1f`, color: '#12627F' }} />
