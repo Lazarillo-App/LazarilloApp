@@ -38,6 +38,9 @@ import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
 import { useAbrirGuia } from '@/componentes/asistente/guias';
+import { useRecorrido } from '@/hooks/useRecorrido';
+import SpotlightTour from './SpotlightTour';
+import { usePasosHeader, refTour, seVe } from '@/componentes/asistente/pasosHeader';
 
 /* ---------------- utils ---------------- */
 // Misma paleta de respaldo que ArticleListSelector/PriceListConfigModal,
@@ -294,7 +297,6 @@ const staffColsDe = (puede) => [
   ...(puede('ver_costo_pct') ? [{ id: 'rentabilidad', label: 'Costo %', width: puede('ver_objetivo') ? '250px' : '.35fr', visible: true }] : []),
   STAFF_COLS[1],
 ];
-
 /* ---------------- componente principal ---------------- */
 /* Tooltip del ⚠ de la fila: qué insumos de la receta no se compran hace rato y desde cuándo.
    Solo las filas con advertencia llevan tooltip (el nombre del artículo no lo necesita). */
@@ -1494,7 +1496,6 @@ export default function TablaArticulos({
     const idx = items.findIndex(a => Number(getId(a)) === curId);
     return { prev: idx > 0, next: idx >= 0 && idx < items.length - 1 };
   }, [recetaArticulo, flatRows]);
-
   const handleScroll = useCallback((e) => {
     const scrollTop = e.currentTarget.scrollTop;
     const firstVisibleIdx = Math.floor(scrollTop / ITEM_H);
@@ -1735,6 +1736,51 @@ export default function TablaArticulos({
     setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
     return true;
   }, hayArticulos, 900);
+
+  // ── Guía «Artículos» (Diego 15/11/2026: «recetas no habla de listas, pendientes, food cost… hay muchas
+  // funciones sin explicar»). Solo los pasos cuyo botón se ve, más la barra y el header; al final
+  // ofrece crear un artículo con la ayuda de Anthony. ──
+  const TEXTOS_ART = {
+    'art-encabezado': <>Estos son tus <b>artículos</b>: lo que vendés. En cada fila ves cuánto vendiste, cuánto te cuesta hacerlo según su receta, a cuánto lo vendés y qué parte del precio se va en costo.</>,
+    'art-agrupacion': <>Elegís qué mirar: <b>Todos</b>, <b>Top 20</b> (lo que más facturó), <b>Venden poco</b>, <b>Promociones</b>, <b>Discontinuados</b> y las agrupaciones que armes. Debajo, cada rubro con lo que vendió.</>,
+    'art-rubro': <>La lista de la izquierda la ordenás por <b>Rubro</b> o por <b>SubRubro</b>.</>,
+    'art-tab-listas': <>En <b>Listas</b> quedan los grupos de artículos que guardaste, para volver a encontrarlos con un clic.</>,
+    'art-tab-pendientes': <>En <b>Pendientes</b> ves los cambios que propone tu equipo y esperan tu OK.</>,
+    'art-marcar': <>Con esta casilla <b>marcás</b> artículos y elegís: guardarlos en una <b>lista</b> o <b>vincularlos</b> (los vinculados tienen siempre el mismo precio).</>,
+    'art-col-ventas': <><b>Ventas</b> del período que elegís arriba. El <b>👁</b> deja solo los que vendieron y <b>U / $</b> cambia entre unidades y pesos.</>,
+    'art-col-costo': <><b>Costo</b>: cuánto te sale hacerlo según su receta. Debajo, <b>sug.</b> es el precio que necesitás para llegar a tu costo objetivo.</>,
+    'art-col-precio': <><b>Precio</b> de venta en la lista elegida. Debajo, <b>gan.</b> es lo que te queda por cada uno.</>,
+    'art-col-rentabilidad': <><b>Costo %</b>: qué parte del precio se va en costo, contra tu objetivo (la rayita). Fila <b>roja</b>: te pasaste del objetivo; <b>ámbar</b>: el costo no es confiable. Tocando <b>obj</b> fijás el objetivo en el costo actual.</>,
+    'art-col-manual': <><b>Nuevo precio</b>: escribís el precio nuevo (también una cuenta, como 9600*1,1). Si el sugerido supera tu precio aparece <b>USAR $…</b> para tomarlo de un toque. En el título elegís a qué lista de precios va.</>,
+    'art-ajustar': <><b>Ajustar</b>: subís de una vez un % a todos los precios de la agrupación. Cada rubro tiene el suyo.</>,
+    'art-columnas': <>Elegís y ordenás las <b>columnas</b> que ves.</>,
+    'art-codigo': <>Tocando el <b>código</b> editás los datos del artículo: nombre, precio, rubro.</>,
+    'art-nombre': <>Tocando el <b>nombre</b> abrís su <b>receta</b>: ingredientes, costo, foto y paso a paso.</>,
+    'art-acciones': <>En los <b>⋮</b> de cada fila: editar, mover, armar una promo, discontinuar… (tiene su propia guía en Anthony › Guías).</>,
+  };
+  const [clavesArt, setClavesArt] = useState([]);
+  useEffect(() => {
+    const medir = () => {
+      // Solo lo que se ve de verdad (a 1100 px la tabla corta la última columna y el ⋮ no se ve).
+      const ok = Object.keys(TEXTOS_ART).filter((k) => seVe(document.querySelector(`[data-tour="${k}"]`)));
+      setClavesArt((prev) => (prev.join() === ok.join() ? prev : ok));
+    };
+    medir();
+    const t1 = setTimeout(medir, 800);
+    const t2 = setTimeout(medir, 2500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hayArticulos, isTop20View, agrupacionSeleccionada?.id]);
+  const pasosHeaderArt = usePasosHeader({ conBarra: true });
+  const pasosArt = [
+    ...clavesArt.map((k) => ({ k, ref: refTour(k), t: TEXTOS_ART[k] })),
+    ...pasosHeaderArt,
+    { k: 'barra-agregar', ref: refTour('barra-agregar'), t: <>Con <b>+ Agregar</b> sumás un artículo a mano o importás muchos juntos. ¿Creamos uno ahora? <b>Te acompaño paso a paso.</b></> },
+  ];
+  const recArt = useRecorrido('tabla_articulos', pasosArt.length,
+    !isStaff && hayArticulos && clavesArt.length > 0 && !recetaArticulo && !editandoArticuloId && !colDlgOpen && !bulkPctDlg,
+    { siguiente: { id: 'crear_articulo', label: 'Crear un artículo ahora' } });
+  const pasoArt = pasosArt[recArt.paso - 1];
 
   // ── EditarItemModal: misma lista filtrada/ordenada que ve el usuario,
   // mismo patrón que navReceta/navegarReceta de arriba ──
@@ -2155,7 +2201,7 @@ export default function TablaArticulos({
                 <div style={{ gridColumn: `span ${spanEtiquetaAjuste}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 4 }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '.03em', color: TABLE_MUTED, whiteSpace: 'nowrap' }}>AJUSTAR AGRUPACIÓN</span>
                 </div>
-                <div style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div data-tour="art-ajustar" style={{ ...cellNum, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', width: ANCHO_CAJA_PRECIO }}>
                     <input
                       type="number"
@@ -2503,6 +2549,7 @@ export default function TablaArticulos({
           </span>
           <span
             onClick={(e) => { e.stopPropagation(); setEditandoArticuloId(id); }}
+            data-tour="art-codigo"
             title="Editar artículo"
             style={{
               cursor: 'pointer',
@@ -2515,7 +2562,7 @@ export default function TablaArticulos({
           </span>
         </div>
 
-        <div onClick={() => {
+        <div data-tour="art-nombre" onClick={() => {
           const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
           const objetivoResuelto = getObjetivoArticulo(a, agrupId);
           setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
@@ -3167,8 +3214,8 @@ export default function TablaArticulos({
                 return zonas;
               })()}
             </div>
-            <div className="table-col-header-inner" style={{ gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="table-col-header-inner" data-tour="art-encabezado" style={{ gridTemplateColumns: gridTemplate, columnGap: GRID_COL_GAP }}>
+              <div data-tour="art-marcar" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {!isStaff && (
                   <input type="checkbox"
                     checked={selectionMode ? isAllSelected : false}
@@ -3189,7 +3236,7 @@ export default function TablaArticulos({
               <div onClick={() => toggleSort("nombre")} className="col-sortable">
                 Nombre {sortBy === "nombre" ? (sortDir === "asc" ? "▲" : "▼") : ""}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+              <div data-tour="art-col-ventas" style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
                 <span onClick={() => toggleSort("ventas")} className="col-sortable" style={{ cursor: 'pointer', userSelect: 'none' }}>
                   Ventas {ventasLoading ? "…" : ""}
                   {sortBy === "ventas" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
@@ -3248,7 +3295,7 @@ export default function TablaArticulos({
                     // Debajo, chico, de qué lista es el precio (como "costo actual |
                     // objetivo" en Costo %). El selector de lista vive en Nuevo
                     // precio (pedido de Diego, 02/11).
-                    <div key="precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
+                    <div key="precio" data-tour="art-col-precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
                       <span>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
                       {currentPriceList?.name && (
                         <span style={{ fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -3257,10 +3304,10 @@ export default function TablaArticulos({
                       )}
                     </div>
                   );
-                  case 'costo': return <div key="costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
+                  case 'costo': return <div key="costo" data-tour="art-col-costo" {...dragProps} onClick={() => toggleSort('costo')} className="col-sortable" style={{ ...dragIndicatorStyle, justifyContent: 'center', background: 'rgba(148,163,184,0.06)' }}>Costo{sortBy === 'costo' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</div>;
                   case 'sinPromo': return <div key="sinPromo" style={{ textAlign: 'center', fontWeight: 700 }}>$ Sin Promo</div>;
                   case 'rentabilidad': return (
-                    <div key="rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
+                    <div key="rentabilidad" data-tour="art-col-rentabilidad" {...dragProps} onClick={() => toggleSort('costoPct')} className="col-sortable"
                       style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
                       {/* Referencias de colores de las filas: tooltip sobre el título
                           (antes era un ⓘ suelto en la barra). */}
@@ -3298,7 +3345,7 @@ export default function TablaArticulos({
                     // El título de la columna es el selector de lista (antes estaba
                     // en Precio); arriba la franja dice NUEVO PRECIO.
                     return (
-                      <div key="manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
+                      <div key="manual" data-tour="art-col-manual" {...dragProps} onClick={() => toggleSort('manual')} className="col-sortable"
                         style={{ ...dragIndicatorStyle, justifyContent: 'center', textAlign: 'center', color: headerColor, fontWeight: !isPriceListFavorite ? 700 : undefined, background: 'rgba(87,187,127,0.07)' }}>
                         {precioHeaderExtra ? (
                           <span draggable={false} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}>
@@ -3320,6 +3367,7 @@ export default function TablaArticulos({
                         <IconButton
                           size="small"
                           onClick={() => setColDlgOpen(true)}
+                          data-tour="art-columnas"
                           title="Configurar columnas"
                           sx={{ p: 0.25, opacity: 0.55, '&:hover': { opacity: 1 } }}
                         >
@@ -3508,6 +3556,10 @@ export default function TablaArticulos({
         </Dialog>
       )}
 
+      {recArt.visible && pasoArt && (
+        <SpotlightTour key={pasoArt.k} targetRef={pasoArt.ref} pose={recArt.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+          {...recArt.props(recArt.paso)} text={pasoArt.t} />
+      )}
       <ColOrderModal open={colDlgOpen} cols={colConfig} onSave={saveColConfig} onClose={() => setColDlgOpen(false)} />
 
       {rubroEditModal && (
