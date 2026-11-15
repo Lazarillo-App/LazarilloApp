@@ -37,7 +37,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { qk } from '@/lib/reactQueryClient';
 import "../css/TablaArticulos.css";
-import { useAbrirGuia } from '@/componentes/asistente/guias';
+import { useAbrirGuia, useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
 import { useRecorrido } from '@/hooks/useRecorrido';
 import SpotlightTour from './SpotlightTour';
 import { usePasosHeader, refTour, seVe } from '@/componentes/asistente/pasosHeader';
@@ -1774,14 +1774,16 @@ export default function TablaArticulos({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hayArticulos, isTop20View, agrupacionSeleccionada?.id]);
   const pasosHeaderArt = usePasosHeader({ conBarra: true });
-  const pasosArt = [
-    ...clavesArt.map((k) => ({ k, ref: refTour(k), t: TEXTOS_ART[k] })),
+  const sectorArt = useSectorGuia('tabla_articulos');
+  const LATERAL_ART = ['art-agrupacion', 'art-rubro', 'art-tab-listas', 'art-tab-pendientes'];
+  const pasosArt = pasosDelSector([
+    ...clavesArt.map((k) => ({ k, s: LATERAL_ART.includes(k) ? 'lateral' : 'tabla', ref: refTour(k), t: TEXTOS_ART[k] })),
     ...pasosHeaderArt,
-    { k: 'barra-agregar', ref: refTour('barra-agregar'), t: <>Con <b>+ Agregar</b> sumás un artículo a mano o importás muchos juntos. ¿Creamos uno ahora? <b>Te acompaño paso a paso.</b></> },
-  ];
+    { k: 'barra-agregar', s: 'barra', ref: refTour('barra-agregar'), t: <>Con <b>+ Agregar</b> sumás un artículo a mano o importás muchos juntos. ¿Creamos uno ahora? <b>Te acompaño paso a paso.</b></> },
+  ], sectorArt);
   const recArt = useRecorrido('tabla_articulos', pasosArt.length,
     !isStaff && hayArticulos && clavesArt.length > 0 && !recetaArticulo && !editandoArticuloId && !colDlgOpen && !bulkPctDlg,
-    { siguiente: { id: 'crear_articulo', label: 'Crear un artículo ahora' } });
+    { siguiente: pasosArt[pasosArt.length - 1]?.k === 'barra-agregar' ? { id: 'crear_articulo', label: 'Crear un artículo ahora' } : undefined });
   const pasoArt = pasosArt[recArt.paso - 1];
 
   // ── EditarItemModal: misma lista filtrada/ordenada que ve el usuario,

@@ -81,6 +81,6 @@ export function usePasosHeader({ conBarra = false } = {}) {
   }, [pathname, conBarra]);
   return claves.map((k) => {
     const p = [...BARRA, ...HEADER].find((x) => x.k === k);
-    return { k, ref: refTour(k), t: p.t(pathname) };
+    return { k, ref: refTour(k), t: p.t(pathname), s: BARRA.some((b) => b.k === k) ? 'barra' : 'header' };
   });
 }
