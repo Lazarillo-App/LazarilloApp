@@ -231,6 +231,10 @@ function GestionPanelContenido() {
   const columnas = estado.meses.length ? estado.meses : MESES_IDX;
   // Sin ninguna venta ni compra (negocio o sucursal recién creados): ejemplo + primer paso (14/11/2026).
   const sinDatosPanel = !!rango.data && rango.data.minYear == null;
+  // Panel vacío (Diego 15/11/2026): sin datos no se muestran los controles que no hacen nada todavía
+  // (período, Económica/Financiera, pestañas, ver por, $/%, rubros, Buscar, pantalla completa).
+  // Quedan Notas, Cargar Gastos y la tarjeta del primer paso con el ejemplo.
+  const panelVacio = sinDatosPanel && !busquedaActiva;
   const navigate = useNavigate();
   // Impagas y Sin carga: en la Económica sin búsqueda están en la tarjeta "Para mirar"; si no, en la barra.
   const pdvId = lugarDe(activeBusinessId, sucursalCaja);
@@ -312,9 +316,9 @@ function GestionPanelContenido() {
     return () => ro.disconnect();
   }, [mostrarTarjetas, verPanel]); // eslint-disable-line react-hooks/exhaustive-deps
   const pasosTour = [
-    { k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> },
-    ...(!sinEcoFin ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
-    { k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> },
+    ...(panelVacio ? [] : [{ k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> }]),
+    ...(!sinEcoFin && !panelVacio ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
+    ...(panelVacio ? [] : [{ k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> }]),
     ...(mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
   ];
@@ -351,7 +355,7 @@ function GestionPanelContenido() {
       {/* Barra de filtros (dashboard-filters.tsx): período a la izquierda; ⚙ rubros y Buscar a la
           derecha. La sucursal se elige en el selector global de la app, no acá. */}
       <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center" sx={{ pt: { xs: 3, md: 0.5 }, pb: 2 }}>
-        <Box ref={refsTour.periodo} sx={{ display: 'inline-flex' }}>
+        {!panelVacio && <Box ref={refsTour.periodo} sx={{ display: 'inline-flex' }}>
         <FiltroPeriodo
           year={estado.year}
           meses={estado.meses}
@@ -361,7 +365,7 @@ function GestionPanelContenido() {
           onToggleMes={toggleMes}
           onTodoElAnio={() => cambiar({ meses: [] })}
         />
-        </Box>
+        </Box>}
         <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
           <Tooltip title={tareasPendientes ? `Notas · ${tareasPendientes} tarea${tareasPendientes === 1 ? '' : 's'} pendiente${tareasPendientes === 1 ? '' : 's'}` : 'Notas y tareas'}>
             <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
@@ -387,7 +391,7 @@ function GestionPanelContenido() {
             </Box>
           </Drawer>
           {/* Switch Económica / Financiera, arriba, a la altura del título. */}
-          {verPanel && !sinEcoFin && (
+          {verPanel && !sinEcoFin && !panelVacio && (
           <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
             <ToggleButtonGroup ref={refsTour.ecofin} size="small" exclusive value={estado.modo} onChange={(_, v) => v && cambiar({ modo: v })} sx={sxGrupo}>
               <ToggleButton value="economica">Económica</ToggleButton>
@@ -423,7 +427,7 @@ function GestionPanelContenido() {
       {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3,
         // Maximizada: ocupa toda la ventana, debajo de los modales (zIndex 1300) para que el detalle se abra encima.
         ...(maximizado ? { position: 'fixed', inset: 0, zIndex: 1250, borderRadius: 0, m: 0 } : {}) }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+        {!panelVacio && <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
           <ToggleButtonGroup
             ref={refsTour.tabs}
             exclusive
@@ -469,8 +473,8 @@ function GestionPanelContenido() {
             </IconButton>
           </Tooltip>
           </Stack>
-        </Stack>
-        {sinDatosPanel && !busquedaActiva && (
+        </Stack>}
+        {panelVacio && (
           <PanelEjemplo
             puedeCargar={verCarga}
             onCargar={() => refsTour.cargar.current?.querySelector('button')?.click()}
