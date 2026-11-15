@@ -27,15 +27,6 @@ export default function SuperPanel() {
 
   // El catálogo de claves lo necesitan tanto Ajustes como el detalle de un pedido.
   React.useEffect(() => { cargarFuentes(); }, []);
-  // La raya de la pestaña se mide antes de que cargue la fuente (Sora) y queda corrida: re-medir.
-  const tabsAccion = React.useRef(null);
-  React.useEffect(() => {
-    const medir = () => tabsAccion.current?.updateIndicator();
-    document.fonts?.ready?.then(medir);
-    document.fonts?.addEventListener?.('loadingdone', medir);
-    const t = setTimeout(medir, 600);
-    return () => { clearTimeout(t); document.fonts?.removeEventListener?.('loadingdone', medir); };
-  }, [tab]);
   React.useEffect(() => { SuperAPI.ajustes().then((r) => setCatalogo(r?.catalogo || [])).catch(() => {}); }, []);
 
   const cambiarTab = (t) => setParams(t === 'pedidos' ? {} : { tab: t }, { replace: true });
@@ -54,9 +45,13 @@ export default function SuperPanel() {
       <Typography sx={{ fontFamily: FB, fontSize: 13.5, color: T.text2, mb: 2 }}>
         Lo que piden los clientes, lo que falta desarrollar por módulo y lo que se configura a medida para cada uno.
       </Typography>
-      <Tabs action={tabsAccion} value={tab} onChange={(_e, v) => cambiarTab(v)} variant="scrollable" allowScrollButtonsMobile
+      <Tabs value={tab} onChange={(_e, v) => cambiarTab(v)} variant="scrollable" allowScrollButtonsMobile
         sx={{ mb: 2.5, borderBottom: `1px solid ${T.border}`, minHeight: 40,
-          '& .MuiTabs-indicator': { backgroundColor: T.accent, height: 3, borderRadius: 3 } }}>
+          // La raya de MUI se calcula mal con el zoom 0.9 de #root (queda corrida a la izquierda):
+          // se oculta y la dibuja cada pestaña debajo de sí misma.
+          '& .MuiTabs-indicator': { display: 'none' },
+          '& .MuiTab-root': { position: 'relative' },
+          '& .MuiTab-root.Mui-selected::after': { content: '""', position: 'absolute', left: 8, right: 8, bottom: 0, height: 3, borderRadius: 3, backgroundColor: T.accent } }}>
         {PESTANAS.map(([k, l]) => <Tab key={k} value={k} label={l} sx={{ textTransform: 'none', fontFamily: FT, fontWeight: 600, fontSize: 13.5,
           minHeight: 40, color: T.text2, '&.Mui-selected': { color: T.text } }} />)}
       </Tabs>
