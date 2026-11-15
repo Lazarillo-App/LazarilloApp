@@ -865,7 +865,7 @@ function ArticuloAccionesMenu({
           </Button>
         )
       )}
-      <IconButton size="small" onClick={handleOpen} ref={btnMenuRef}>
+      <IconButton size="small" onClick={handleOpen} ref={btnMenuRef} data-tour="art-acciones">
         <MoreVertIcon fontSize="small" />
       </IconButton>
 
