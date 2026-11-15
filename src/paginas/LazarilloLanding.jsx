@@ -3,7 +3,7 @@
 // Botones de contacto abren un modal funcional
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
 import { BASE } from '@/servicios/apiBase';
@@ -171,6 +171,35 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .arol{font-size:15px;color:rgba(255,255,255,.8);}
 .aexp{font-size:14px;color:rgba(255,255,255,.55);margin-bottom:16px;}
 .aesp{margin-top:auto;font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:700;color:var(--sky);border:1px solid rgba(91,194,234,.45);border-radius:50px;padding:6px 14px;}
+.navtabs{display:flex;gap:30px;margin-left:44px;margin-right:auto;}
+.navtabs a{font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15.5px;color:#c8d2e0;text-decoration:none;padding:8px 0;transition:color .15s,box-shadow .15s;}
+.navtabs a:hover{color:#fff;}
+.navtabs a.on{color:#fff;box-shadow:inset 0 -2px 0 var(--sky);}
+.btn-link{background:none;border:0;color:#c8d2e0;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;padding:10px 6px;cursor:pointer;}
+.btn-link:hover{color:#fff;}
+.ases-top{padding-top:80px;}
+.equipo{padding-top:70px;border-top:1px solid rgba(255,255,255,.06);}
+.equipo h2{margin-bottom:30px!important;}
+.servicios{padding:80px 0;background:var(--paper);}
+.servicios h2,.faq h2{font-size:38px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 36px;}
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.scard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;}
+.sic{font-size:28px;width:52px;height:52px;border-radius:14px;background:rgba(91,194,234,.15);display:flex;align-items:center;justify-content:center;}
+.scard h3{font-family:'Sora',system-ui,sans-serif;font-size:19px;color:var(--ink);margin:16px 0 6px;}
+.scard p{font-size:15.5px;}
+.faq{padding:80px 0;background:#fff;}
+.faq-l{max-width:820px;}
+.faq details{border-bottom:1px solid var(--line);padding:18px 0;}
+.faq summary{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:18px;color:var(--ink);cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;}
+.faq summary::-webkit-details-marker{display:none;}
+.faq summary::after{content:'+';color:var(--skydeep);font-size:24px;line-height:1;}
+.faq details[open] summary::after{content:'–';}
+.faq details p{margin-top:10px;font-size:16px;max-width:720px;}
+.puente{background:var(--navy2);color:#fff;padding:56px 0;}
+.puente .wrap{display:flex;align-items:center;justify-content:space-between;gap:30px;}
+.puente h3{font-family:'Sora',system-ui,sans-serif;font-size:30px;margin:8px 0 6px;}
+.puente p{color:rgba(255,255,255,.7);font-size:17px;max-width:620px;}
+.puente .btn{white-space:nowrap;text-decoration:none;}
 .vlbl{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:600;}
 .vchip{display:inline-flex;align-items:center;gap:6px;border-radius:50px;padding:7px 13px;font-size:13.5px;font-weight:700;}
 .vrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:13.5px;}
@@ -184,7 +213,8 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm img{height:56px;width:auto;display:block;opacity:.7;transition:opacity .2s;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
-@media(max-width:820px){.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:1000px){.sgrid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:820px){.brd{display:none;}nav .wrap{flex-wrap:wrap;height:auto;padding-top:12px;padding-bottom:12px;gap:10px;}.navtabs{order:3;width:100%;margin:0;justify-content:center;gap:36px;}.sgrid{grid-template-columns:1fr;}.servicios h2,.faq h2{font-size:30px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
   .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
@@ -229,6 +259,24 @@ const integraciones = [
   { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
 ]
+
+// Asesoría: qué hacemos (propuesta inspirada en Plus Asesoría, sin hotelería; Diego la ajusta).
+const servicios = [
+  { ic: '📊', t: 'Rentabilidad y costos', d: 'Ordenamos costos fijos y variables, punto de equilibrio y food cost, para que sepas qué te queda.' },
+  { ic: '🏷️', t: 'Precios y menú', d: 'Una política de precios atada a tu canasta de costos e ingeniería de menú: qué empujar y qué revisar.' },
+  { ic: '🚀', t: 'Aperturas y productos nuevos', d: 'Abrís un local o sumás una línea: recetas, costos y precio antes de vender el primer plato.' },
+  { ic: '👨‍🍳', t: 'Equipos y capacitación', d: 'Recetas estándar, tableros para cocina y barra, y un equipo que sabe qué hacer y por qué.' },
+  { ic: '📅', t: 'Personal y turnos', d: 'Cronogramas según la demanda y cuánto te cuesta abrir cada jornada.' },
+  { ic: '🔎', t: 'Auditoría de la operación', d: 'Recorremos tu negocio como un cliente más y te devolvemos qué mejorar, con prioridades.' },
+];
+// Preguntas frecuentes de la asesoría (borrador para que Diego ajuste).
+const preguntas = [
+  ['¿Qué es el diagnóstico?', 'Una primera charla y una mirada a tus números para encontrar dónde se te va la rentabilidad. De ahí sale el plan de trabajo.'],
+  ['¿Tengo que cambiar mi sistema de ventas?', 'No. Lazarillo se apoya en el sistema que ya tenés y trabajamos sobre tus datos reales.'],
+  ['¿Cuánto dura el acompañamiento?', 'Depende de lo que haya que resolver: lo definimos juntos en el diagnóstico, con objetivos claros.'],
+  ['¿Qué pasa cuando termina?', 'Seguís solo: el proceso queda funcionando con tu equipo y con tu Lazarillo.'],
+  ['¿Con qué negocios trabajan?', 'Restaurantes, bares, cafeterías y buffets: cualquier negocio gastronómico que quiera saber dónde está parado.'],
+];
 
 // Asesores (Florencia se suma cuando confirme).
 const asesores = [
@@ -330,7 +378,11 @@ function ContactModal({ onClose }) {
 
 export default function LazarilloLanding() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  // Dos pestañas: El sistema (/) y Asesoría (/asesoria).
+  const enAsesoria = pathname.startsWith('/asesoria');
   const [showModal, setShowModal] = useState(false);
+  React.useEffect(() => { window.scrollTo(0, 0); }, [enAsesoria]);
 
   const openModal = (e) => { e.preventDefault(); setShowModal(true); };
 
@@ -343,14 +395,20 @@ export default function LazarilloLanding() {
       {/* NAV */}
       <nav>
         <div className="wrap">
-          <img src={LOGO} alt="Lazarillo" />
+          <Link to="/" aria-label="Lazarillo"><img src={LOGO} alt="Lazarillo" /></Link>
+          <div className="navtabs">
+            <Link to="/" className={enAsesoria ? '' : 'on'}>El sistema</Link>
+            <Link to="/asesoria" className={enAsesoria ? 'on' : ''}>Asesoría</Link>
+          </div>
           <div className="navactions">
-            <button className="btn btn-ghost" onClick={() => navigate('/login')}>Ingresar</button>
+            <button className="btn-link" onClick={() => navigate('/login')}>Ingresar</button>
             <button className="btn btn-sky" onClick={openModal}>Pedí una demo</button>
           </div>
         </div>
       </nav>
 
+      {!enAsesoria && (
+        <>
       {/* HERO */}
       <header className="hero">
         <div className="wrap">
@@ -494,31 +552,6 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
-      {/* ASESORES: el valor humano */}
-      <section className="asesores" id="asesores">
-        <div className="wrap">
-          <div className="kick" style={{ color: 'var(--sky)' }}>Asesoría · de gastronómicos para gastronómicos</div>
-          <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br />quién te acompaña.</span></h2>
-          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
-          <div className="pasos">
-            {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
-              <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
-            ))}
-          </div>
-          <div className="agrid">
-            {asesores.map((a) => (
-              <div className="acard" key={a.nm}>
-                <div className="aini">{a.ini}</div>
-                <div className="anm">{a.nm}</div>
-                <div className="arol">{a.rol}</div>
-                <div className="aexp">{a.exp}</div>
-                <div className="aesp">{a.esp}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* INTEGRACIONES */}
       <section className="integra" id="integraciones">
         <div className="wrap">
@@ -548,6 +581,16 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+      {/* PUENTE a la asesoría */}
+      <section className="puente">
+        <div className="wrap">
+          <div><div className="kick" style={{ color: 'var(--sky)' }}>Asesoría</div>
+            <h3>¿Querés que te acompañemos en el proceso?</h3>
+            <p>Gastronómicos con oficio te ayudan a encontrar dónde está tu dolor y a resolverlo con tu Lazarillo.</p></div>
+          <Link className="btn btn-sky" to="/asesoria">Conocé la asesoría →</Link>
+        </div>
+      </section>
+
       {/* VISION */}
       <section className="vision">
         <div className="wrap">
@@ -560,13 +603,80 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+        </>
+      )}
+
+      {enAsesoria && (
+        <>
+      {/* ASESORES: el valor humano */}
+      <section className="asesores ases-top" id="asesores">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Asesoría · de gastronómicos para gastronómicos</div>
+          <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br className="brd" /> quién te acompaña.</span></h2>
+          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
+          <div className="pasos">
+            {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
+              <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* SERVICIOS */}
+      <section className="servicios">
+        <div className="wrap">
+          <div className="kick">Qué hacemos</div>
+          <h2>Vamos a donde más se mueve tu resultado.</h2>
+          <div className="sgrid">
+            {servicios.map((x) => (
+              <div className="scard" key={x.t}><div className="sic">{x.ic}</div><h3>{x.t}</h3><p>{x.d}</p></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* EQUIPO */}
+      <section className="asesores equipo">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Quiénes te acompañan</div>
+          <h2 style={{ fontSize: 34 }}>El equipo</h2>
+          <div className="agrid">
+            {asesores.map((a) => (
+              <div className="acard" key={a.nm}>
+                <div className="aini">{a.ini}</div>
+                <div className="anm">{a.nm}</div>
+                <div className="arol">{a.rol}</div>
+                <div className="aexp">{a.exp}</div>
+                <div className="aesp">{a.esp}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* PREGUNTAS FRECUENTES */}
+      <section className="faq">
+        <div className="wrap">
+          <div className="kick">Preguntas frecuentes</div>
+          <h2>Lo que nos preguntan antes de empezar.</h2>
+          <div className="faq-l">
+            {preguntas.map(([q, r]) => (
+              <details key={q}><summary>{q}</summary><p>{r}</p></details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+        </>
+      )}
+
       {/* CTA */}
       <section className="cta" id="contacto">
         <div className="wrap">
-          <h2>Empezá a ver lo que tu negocio te esconde.</h2>
-          <p style={{ color: "rgba(255,255,255,.7)", fontSize: "18px" }}>Escribinos y te mostramos Lazarillo funcionando sobre tu carta.</p>
+          <h2>{enAsesoria ? 'Empecemos por el diagnóstico.' : 'Empezá a ver lo que tu negocio te esconde.'}</h2>
+          <p style={{ color: "rgba(255,255,255,.7)", fontSize: "18px" }}>{enAsesoria ? 'Contanos tu prioridad y te contactamos para la primera charla.' : 'Escribinos y te mostramos Lazarillo funcionando sobre tu carta.'}</p>
           <div className="actions">
-            <button className="btn btn-sky" onClick={openModal}>Pedí tu demo gratuita</button>
+            <button className="btn btn-sky" onClick={openModal}>{enAsesoria ? 'Pedí tu diagnóstico' : 'Pedí tu demo gratuita'}</button>
             <a className="btn btn-ghost" href={WA} target="_blank" rel="noopener">WhatsApp directo</a>
           </div>
           <div className="tag">Conectamos con lo que no ves</div>
