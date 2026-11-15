@@ -53,6 +53,7 @@ import { PanelGestionContext } from '@/gestion/panelContext';
 import { MESES_IDX } from '@/gestion/formato';
 import { useAccess } from '@/context/AccessContext';
 import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosHeader, refTour } from '@/componentes/asistente/pasosHeader';
 import { useRecorrido } from '@/hooks/useRecorrido';
 
 const ANIO_ACTUAL = new Date().getFullYear();
@@ -315,11 +316,37 @@ function GestionPanelContenido() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [mostrarTarjetas, verPanel]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pasosHeaderPanel = usePasosHeader();
+  const [barraPanel, setBarraPanel] = useState([]);
+  useEffect(() => {
+    const medir = () => {
+      const ok = ['panel-notas', 'panel-verpor', 'panel-rubros', 'panel-buscar', 'panel-completa'].filter((k) => {
+        const r = document.querySelector(`[data-tour="${k}"]`)?.getBoundingClientRect();
+        return r && r.width > 0;
+      });
+      setBarraPanel((prev) => (prev.join() === ok.join() ? prev : ok));
+    };
+    medir();
+    const t = setTimeout(medir, 800);
+    return () => clearTimeout(t);
+  }, [estado.tab, panelVacio, verPanel]);
+  const TEXTOS_BARRA_PANEL = {
+    'panel-notas': <><b>Notas y tareas</b>: anotaciones rápidas y tus tareas. El número son las que tenés pendientes.</>,
+    'panel-verpor': <>Ves los gastos por <b>concepto</b>, por <b>proveedor</b> o por <b>insumo</b>. Con <b>$ / % ing</b> cada celda pasa a ser el % de lo que vendiste ese mes.</>,
+    'panel-rubros': <>Elegís qué <b>rubros</b> se ven en la tabla (y en Resultados, cuáles suman a la ganancia).</>,
+    'panel-buscar': <><b>Buscar</b> por rubro, concepto, proveedor, observación o importe: la tabla queda filtrada en lo que elegiste.</>,
+    'panel-completa': <><b>Pantalla completa</b> para ver la tabla grande (Esc para salir).</>,
+  };
+  const pasosBarraPanel = barraPanel.map((k) => ({ k, ref: refTour(k), t: TEXTOS_BARRA_PANEL[k] }));
   const pasosTour = [
     ...(panelVacio ? [] : [{ k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> }]),
     ...(!sinEcoFin && !panelVacio ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
     ...(panelVacio ? [] : [{ k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> }]),
     ...(mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
+    // Botones de la barra del panel y del header (Diego 14/11/2026: «la guía debe considerar los
+    // botones del header; el Panel de gestión no lo hace»). Solo los que se ven.
+    ...pasosBarraPanel,
+    ...pasosHeaderPanel,
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
   ];
   // Arranca solo mientras el panel no tenga datos propios (Diego 14/11/2026); si no, desde Guías.
@@ -368,7 +395,7 @@ function GestionPanelContenido() {
         </Box>}
         <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
           <Tooltip title={tareasPendientes ? `Notas · ${tareasPendientes} tarea${tareasPendientes === 1 ? '' : 's'} pendiente${tareasPendientes === 1 ? '' : 's'}` : 'Notas y tareas'}>
-            <IconButton size="small" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
+            <IconButton size="small" data-tour="panel-notas" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
               <Badge badgeContent={tareasPendientes} color="error" max={99}
                 sx={{ '& .MuiBadge-badge': { top: -5, right: -7, height: 16, minWidth: 16, px: 0.5, fontSize: 10, fontWeight: 700 } }}>
                 <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
@@ -441,7 +468,7 @@ function GestionPanelContenido() {
           </ToggleButtonGroup>
           <Stack direction="row" alignItems="center" gap={1.5} flexWrap="wrap" sx={{ ml: 'auto' }}>
           {estado.tab === 'compras' && (
-            <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+            <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap" data-tour="panel-verpor">
               <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'inline' } }}>ver por</Typography>
               <ToggleButtonGroup exclusive value={estado.agrupacion} onChange={(_, v) => v && cambiar({ agrupacion: v })} sx={sxGrupo}>
                 <ToggleButton value="concepto">Concepto</ToggleButton>
@@ -458,16 +485,16 @@ function GestionPanelContenido() {
             </Stack>
           )}
           {/* Filtro de rubros a la izquierda de pantalla completa (Diego 11/11/2026). */}
-          {estado.tab !== 'ventas' && puedeVer('resultados', 'editar') && (estado.tab === 'resultados'
+          {estado.tab !== 'ventas' && puedeVer('resultados', 'editar') && <Box component="span" data-tour="panel-rubros" sx={{ display: 'inline-flex' }}>{estado.tab === 'resultados'
             ? <RubrosConfig key="res" field="visibleEnResultados" title="Rubros visibles en Resultados" />
-            : <RubrosConfig key="dash" />)}
+            : <RubrosConfig key="dash" />}</Box>}
           {/* Buscar al lado de pantalla completa, así se ve también maximizado (Diego 14/11/2026). */}
-          {estado.tab !== 'ventas' && <Box component="button" type="button" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
+          {estado.tab !== 'ventas' && <Box component="button" type="button" data-tour="panel-buscar" onClick={() => setBuscadorAbierto(true)} sx={{ ...sxBotonBarra, color: 'text.secondary', '&:hover': { color: 'text.primary', borderColor: 'grey.400' } }}>
             <SearchIcon sx={{ fontSize: 15 }} />
             <span>Buscar</span>
           </Box>}
           <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
-            <IconButton size="small" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
+            <IconButton size="small" data-tour="panel-completa" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
               sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: "divider" }}>
               {maximizado ? <CloseFullscreenIcon sx={{ fontSize: 16 }} /> : <OpenInFullIcon sx={{ fontSize: 16 }} />}
             </IconButton>
@@ -528,7 +555,7 @@ function GestionPanelContenido() {
       <BloqueSeguro nombre="el detalle de compras"><ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} /></BloqueSeguro>
       <BloqueSeguro nombre="el detalle de ventas"><VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} /></BloqueSeguro>
       {recPanel.visible && pasoTour && (
-        <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recPanel.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+        <SpotlightTour key={pasoTour.k} targetRef={pasoTour.ref || refsTour[pasoTour.k]} pose={recPanel.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
           text={pasoTour.t} {...recPanel.props(recPanel.paso)} />
       )}
       {verProveedores && (
