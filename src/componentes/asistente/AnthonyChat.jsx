@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
-import { GUIAS, GRUPOS_GUIAS, pedirGuia } from './guias';
+import { GUIAS, GRUPOS_GUIAS, NOMBRE_SECTOR, pedirGuia } from './guias';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
 import { capturarPantalla, imagenADataUrl } from '@/componentes/soporte/capturaPantalla';
@@ -266,7 +266,7 @@ export default function AnthonyChat() {
         </div>
 
         {vista === 'guias' ? (
-          <Guias ruta={location.pathname} onVer={(g) => { setAbierto(false); pedirGuia(g, navigate); }} />
+          <Guias ruta={location.pathname} onVer={(g, sector) => { setAbierto(false); pedirGuia(g, navigate, sector); }} />
         ) : vista === 'pedidos' ? (
           <MisPedidos onSinLeer={actualizarSinLeer} />
         ) : (
@@ -546,17 +546,35 @@ function MisPedidos({ onSinLeer }) {
 function Guias({ ruta, onVer }) {
   const aca = GUIAS.filter((g) => ruta === g.ruta);
   const otras = GUIAS.filter((g) => ruta !== g.ruta);
+  // Cada guía de pantalla se puede ver entera («Ver») o por sector (Diego 15/11/2026).
   const item = (g, destacada) => (
-    <button key={g.id} type="button" onClick={() => onVer(g)} style={{
-      ...opcionBtn, display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+    <div key={g.id} style={{
+      ...opcionBtn, cursor: 'default', padding: 0, overflow: 'hidden', flexShrink: 0,
       borderColor: destacada ? '#5BC2EA' : '#bfdcef', background: destacada ? '#eef8fd' : '#fff',
     }}>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontWeight: 700 }}>{g.titulo}</span>
-        <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 1 }}>{g.detalle}</span>
-      </span>
-      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2492C8', whiteSpace: 'nowrap' }}>Ver ›</span>
-    </button>
+      <button type="button" onClick={() => onVer(g, null)} style={{
+        all: 'unset', boxSizing: 'border-box', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px',
+      }}>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontWeight: 700 }}>{g.titulo}</span>
+          <span style={{ display: 'block', fontSize: 12, color: '#64748b', marginTop: 1 }}>{g.detalle}</span>
+        </span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2492C8', whiteSpace: 'nowrap' }}>Ver ›</span>
+      </button>
+      {g.sectores?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 12px 9px' }}>
+          {g.sectores.map((sec) => (
+            <button key={sec} type="button" onClick={() => onVer(g, sec)} title={`Ver solo: ${NOMBRE_SECTOR[sec] || sec}`} style={{
+              all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 24, padding: '0 10px', borderRadius: 12,
+              display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 600,
+              color: '#2492C8', background: '#fff', border: '1px solid #bfdcef',
+            }}>
+              {NOMBRE_SECTOR[sec] || sec}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
   const titulo = (t) => <div key={`t-${t}`} style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>{t}</div>;
   return (
