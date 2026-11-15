@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
+import { useAccess } from '@/context/AccessContext';
 import { GUIAS, GRUPOS_GUIAS, NOMBRE_SECTOR, pedirGuia } from './guias';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
@@ -544,8 +545,13 @@ function MisPedidos({ onSinLeer }) {
 // Pestaña «Guías» (Diego 14/11/2026): el lugar común para volver a ver el recorrido de cada sección.
 // Primero las de la pantalla donde estás; después el resto, agrupadas por módulo.
 function Guias({ ruta, onVer }) {
-  const aca = GUIAS.filter((g) => ruta === g.ruta);
-  const otras = GUIAS.filter((g) => ruta !== g.ruta);
+  // Las de pantallas solo de dueño y admin (Nómina, Conciliación) no se le muestran al staff.
+  const { isStaff } = useAccess() || {};
+  const todas = GUIAS.filter((g) => !(g.soloGestion && isStaff));
+  // Tableros vive en /tableros/:id: «En esta pantalla» mira el comienzo de la ruta.
+  const esAca = (g) => ruta === g.ruta || (g.ruta === '/tableros' && ruta.startsWith('/tableros/'));
+  const aca = todas.filter(esAca);
+  const otras = todas.filter((g) => !esAca(g));
   // Cada guía de pantalla se puede ver entera («Ver») o por sector (Diego 15/11/2026).
   const item = (g, destacada) => (
     <div key={g.id} style={{
