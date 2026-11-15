@@ -33,6 +33,9 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
   const [instagram, setInstagram] = useState(branch?.props?.social?.instagram || '');
   const [website,   setWebsite]   = useState(branch?.props?.social?.website   || '');
   const [logoUrl,   setLogoUrl]   = useState(branch?.logo_url || '');
+  // CUIT de la sucursal (Diego 14/11/2026): puede ser el de la organización u otro. Lo usan Clientes
+  // y Movimientos bancarios para reconocer las cuentas propias.
+  const [cuit,      setCuit]      = useState(branch?.props?.cuit || '');
   const [busy,      setBusy]      = useState(false);
   const [err,       setErr]       = useState('');
 
@@ -47,11 +50,14 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
     setInstagram(branch?.props?.social?.instagram || '');
     setWebsite(branch?.props?.social?.website     || '');
     setLogoUrl(branch?.logo_url || '');
+    setCuit(branch?.props?.cuit || '');
     setErr('');
   }, [open, branch]);
 
   const handleSave = async () => {
     if (!name.trim()) { setErr('El nombre es requerido'); return; }
+    const cuitNum = cuit.replace(/\D/g, '');
+    if (cuitNum && cuitNum.length !== 11) { setErr('El CUIT tiene 11 números (ej. 30-71570734-5)'); return; }
     setBusy(true);
     setErr('');
     try {
@@ -61,7 +67,10 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
         logo_url: logoUrl.trim() || null,
         address:  { city: city.trim() || null, line1: line1.trim() || null },
         contacts: { phone: phone.trim() || null },
-        props:    { social: { instagram: instagram.trim() || null, website: website.trim() || null } },
+        props:    {
+          social: { instagram: instagram.trim() || null, website: website.trim() || null },
+          cuit: cuitNum ? `${cuitNum.slice(0, 2)}-${cuitNum.slice(2, 10)}-${cuitNum.slice(10)}` : null,
+        },
       };
 
       if (isMain) {
@@ -128,6 +137,12 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
               </Box>
             )}
           </Box>
+
+          {field('CUIT de la sucursal', cuit, setCuit, {
+            placeholder: '30-12345678-9',
+            helperText: 'Puede ser el de la organización o uno propio. Sirve para no contar tus propias cuentas como clientes.',
+            inputProps: { inputMode: 'numeric' },
+          })}
 
           {/* Logo — solo para sucursales no-principales */}
           {!isMain && field('URL del logo (opcional)', logoUrl, setLogoUrl, { placeholder: 'https://...' })}

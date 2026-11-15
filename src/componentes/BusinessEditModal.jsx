@@ -57,6 +57,9 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
 
   // Info
   const [phone, setPhone] = useState("");
+  // CUIT del local (Diego 14/11/2026): puede ser el de la organización o uno propio (props.tax_id).
+  // Lo usan Clientes y Movimientos bancarios para reconocer las cuentas propias.
+  const [cuit, setCuit] = useState("");
   const [description, setDescription] = useState("");
   const [addrLine1, setAddrLine1] = useState("");
   const [addrLine2, setAddrLine2] = useState("");
@@ -107,7 +110,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
   const snapshotRef = useRef(null);
   const makeSnapshot = () => ({
     name, primary, secondary, background, font, logoUrl,
-    phone, description, addrLine1, addrLine2, city,
+    phone, cuit, description, addrLine1, addrLine2, city,
     instagram, facebook, tiktok, website,
     mxEmail, mxCod, hasPass: Boolean(mxPass && mxPass.trim()),
   });
@@ -116,7 +119,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     const a = makeSnapshot();
     const b = snapshotRef.current;
     return JSON.stringify(a) !== JSON.stringify(b);
-  }, [name, primary, secondary, background, font, logoUrl, phone, description, addrLine1, addrLine2, city, instagram, facebook, tiktok, website, mxEmail, mxCod, mxPass]);
+  }, [name, primary, secondary, background, font, logoUrl, phone, cuit, description, addrLine1, addrLine2, city, instagram, facebook, tiktok, website, mxEmail, mxCod, mxPass]);
 
   /* ───────────────── Cargar negocio ───────────────── */
   useEffect(() => {
@@ -140,6 +143,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
     setLogoFile(null);
 
     setPhone(contact.phone || "");
+    setCuit(business?.props?.tax_id || "");
     setDescription(business?.props?.description || "");
     setAddrLine1(address.line1 || "");
     setAddrLine2(address.line2 || "");
@@ -164,6 +168,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         font: br.font ?? "Inter, system-ui, sans-serif",
         logoUrl: absUrl(br.logo_url ?? ""),
         phone: contact.phone || "",
+        cuit: business?.props?.tax_id || "",
         description: business?.props?.description || "",
         addrLine1: address.line1 || "",
         addrLine2: address.line2 || "",
@@ -237,6 +242,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         ...prevProps,
         branding,
         contact: { phone: normalizeEmpty(phone) },
+        tax_id: (() => { const n = cuit.replace(/\D/g, ""); return n.length === 11 ? `${n.slice(0, 2)}-${n.slice(2, 10)}-${n.slice(10)}` : null; })(),
         description: normalizeEmpty(description),
         address: {
           line1: normalizeEmpty(addrLine1),
@@ -519,6 +525,16 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
           <form onSubmit={(e) => { e.preventDefault(); next(); }} className="gx-body">
             <section>
               <h4 className="gx-section-title">Información del local</h4>
+              <div className="gx-field">
+                <label htmlFor="gx-cuit" className="gx-label">CUIT</label>
+                <input id="gx-cuit" className="gx-input" placeholder="30-12345678-9" inputMode="numeric"
+                  value={cuit} onChange={(e) => setCuit(e.target.value)} />
+                <small style={{ color: cuit && cuit.replace(/\D/g, "").length !== 11 ? "#b42318" : "#6b7280", fontSize: 12 }}>
+                  {cuit && cuit.replace(/\D/g, "").length !== 11
+                    ? "El CUIT tiene 11 números"
+                    : "Puede ser el de la organización o uno propio. Sirve para no contar tus propias cuentas como clientes."}
+                </small>
+              </div>
               <div className="gx-field">
                 <label htmlFor="gx-phone" className="gx-label">Teléfono</label>
                 <input id="gx-phone" className="gx-input" placeholder="+54 9 ..."
