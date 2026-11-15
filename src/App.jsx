@@ -242,7 +242,7 @@ export default function App() {
   if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
   const enAppMovil = location.pathname === '/m';
   // La pestaña Asesoría es la página pública: sin el menú ni los asistentes de la app aunque haya sesión.
-  const enPaginaPublica = location.pathname.startsWith('/asesoria');
+  const enPaginaPublica = location.pathname.startsWith('/asesoria') || location.pathname.startsWith('/funcionalidades');
   return (
     <ThemeProviderNegocio activeBizId={activeBusinessId}>
       <AppAlertModal />
@@ -262,6 +262,7 @@ export default function App() {
         <Route path="/" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
         {/* Pestaña Asesoría de la página pública: se ve con o sin sesión. */}
         <Route path="/asesoria" element={<LazarilloLanding />} />
+        <Route path="/funcionalidades" element={<LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/activar" element={<Activar />} />
