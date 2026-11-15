@@ -346,6 +346,12 @@ function GestionPanelContenido() {
     ...(panelVacio ? [] : [{ k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> }]),
     ...(!sinEcoFin && !panelVacio ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
     ...(panelVacio ? [] : [{ k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> }]),
+    // Panel sin datos (Diego 15/11/2026: «si un sector no tiene nada para mostrar, armémoslo»): el primer
+    // paso y el EJEMPLO de cómo se va a ver.
+    ...(panelVacio ? [
+      { k: 'panel-primer-paso', s: 'tabla', ref: refTour('panel-primer-paso'), t: <>Tu panel todavía no tiene datos. <b>Conectá tu punto de venta</b> y las ventas y compras entran solas; mientras, podés <b>cargar tu primer gasto</b>.</> },
+      { k: 'panel-ejemplo', s: 'tabla', ref: refTour('panel-ejemplo'), t: <>Así se va a ver, con un <b>ejemplo</b> de números inventados: cada fila es un rubro de gastos y cada columna un mes; abajo, cuánto vendiste y <b>qué te quedó</b>.</> },
+    ] : []),
     ...(mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
     // Botones de la barra del panel y del header (Diego 14/11/2026: «la guía debe considerar los
     // botones del header; el Panel de gestión no lo hace»). Solo los que se ven.
