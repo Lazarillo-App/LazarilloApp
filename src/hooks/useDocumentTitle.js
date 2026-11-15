@@ -26,6 +26,7 @@ const RUTAS = [
     ['/m', 'Resultados', null],
     ['/configuracion', 'Configuración', null],
     ['/perfil', 'Perfil', null],
+    ['/equipo', 'Mi equipo', null],
     ['/alta', 'Asistente de alta', null],
     ['/admin', 'Admin', null],
     ['/login', 'Iniciar sesión', null],

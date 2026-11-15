@@ -635,6 +635,7 @@ export default function Navbar() {
                       iniciales={userInitials}
                       esSuper={getUser()?.es_superusuario === true}
                       conPendientes={conPendientes}
+                      conEquipo={logged && !isAppAdmin && !isStaff}
                       pendientes={tareasPendientes}
                       verComo={!isAppAdmin && rolReal === 'owner'}
                       onPendientes={() => setVerPendientes(true)}

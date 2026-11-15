@@ -7,6 +7,7 @@ import { NavLink } from 'react-router-dom';
 import { Avatar, Box } from '@mui/material';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { VerComoItems } from '@/componentes/VerComo';
@@ -38,7 +39,7 @@ function Opcion({ icono, children, to, onClick, peligro, extra }) {
 }
 
 export default function MenuPerfil({
-  nombre, email, avatar, iniciales, esSuper, pendientes = 0, conPendientes, verComo, onPendientes, onCerrar, onSalir,
+  nombre, email, avatar, iniciales, esSuper, pendientes = 0, conPendientes, conEquipo, verComo, onPendientes, onCerrar, onSalir,
 }) {
   React.useEffect(() => { cargarFuentes(); }, []);
   return (
@@ -71,6 +72,8 @@ export default function MenuPerfil({
           Mis pendientes
         </Opcion>
       )}
+      {/* Mi equipo (Diego 15/11/2026): directo a la gestión del equipo, fuera del perfil. */}
+      {conEquipo && <Opcion icono={<GroupsOutlinedIcon />} to="/equipo" onClick={onCerrar}>Mi equipo</Opcion>}
       {esSuper && (
         <>
           <Linea />
