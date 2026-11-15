@@ -1077,3 +1077,5 @@ function ArticuloAccionesMenu({
     </>
   );
 }
+
+export default React.memo(ArticuloAccionesMenu);
