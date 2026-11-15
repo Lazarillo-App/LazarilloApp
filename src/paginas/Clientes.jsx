@@ -15,6 +15,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
+import { useCelular, EncabezadoPagina, ListaTarjetas } from '@/componentes/base';
 
 const T = {
   txt: '#15213E', txt2: '#5b6577', txt3: '#8a93a3', line: 'rgba(21,33,62,.12)', line2: 'rgba(21,33,62,.07)',
@@ -88,6 +89,8 @@ export default function Clientes() {
   const [mostrar, setMostrar] = useState(300);
   const [filtros, setFiltros] = useState({});
   const [abierto, setAbierto] = useState(null); // { k, x, y } del menú de la columna
+  // Celular (Diego 15/11/2026, «todo sector tiene su vista mobile»): la tabla pasa a tarjetas.
+  const celular = useCelular();
   const ponerFiltro = (k, f) => { setFiltros((o) => ({ ...o, [k]: f })); setMostrar(300); };
 
   useEffect(() => {
@@ -165,10 +168,10 @@ export default function Clientes() {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
 
-  const pagina = { maxWidth: 1360, margin: '0 auto', padding: '18px 22px 40px', fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt };
+  const pagina = { maxWidth: 1360, margin: '0 auto', padding: celular ? '14px 12px 32px' : '18px 22px 40px', fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt };
   const tarjeta = { background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12 };
   const chip = (on, c) => ({
-    fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
+    fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: celular ? 40 : 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
     border: `1px solid ${on ? (c || T.celeste) : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: T.txt,
     display: 'inline-flex', alignItems: 'center', gap: 6,
   });
@@ -218,23 +221,23 @@ export default function Clientes() {
 
   return (
     <div style={pagina}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 14 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Clientes</h1>
-          <div style={{ color: T.txt2, fontSize: 13.5, marginTop: 4 }}>
-            Los que te pagaron por Mercado Pago, en todas las sucursales · del {dma(datos.desde)} al {dma(datos.hasta)}
-            {datos.propios?.length ? ' · sin contar tus propias cuentas' : ''}
-          </div>
-        </div>
+      <EncabezadoPagina
+        titulo="Clientes"
+        bajada={<>
+          Los que te pagaron por Mercado Pago, en todas las sucursales · del {dma(datos.desde)} al {dma(datos.hasta)}
+          {datos.propios?.length ? ' · sin contar tus propias cuentas' : ''}
+        </>}
+        acciones={<>
         <input type="search" value={buscar} onChange={(e) => { setBuscar(e.target.value); setMostrar(300); }} placeholder="Buscar cliente, email o CUIT"
-          style={{ marginLeft: 'auto', fontFamily: 'inherit', fontSize: 13.5, height: 36, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)', width: 260, flexShrink: 1, minWidth: 160 }} />
+          style={{ fontFamily: 'inherit', fontSize: celular ? 16 : 13.5, height: celular ? 44 : 36, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)', width: celular ? 'auto' : 260, flex: celular ? 1 : undefined, flexShrink: 1, minWidth: celular ? 0 : 160 }} />
         <button type="button" onClick={exportar}
-          style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          Exportar a Excel ({visibles.length.toLocaleString('es-AR')})
+          style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: celular ? 44 : 36, padding: celular ? '0 12px' : '0 16px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {celular ? `Exportar (${visibles.length.toLocaleString('es-AR')})` : `Exportar a Excel (${visibles.length.toLocaleString('es-AR')})`}
         </button>
-      </div>
+        </>}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: celular ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 14 }}>
         {kpis.map((k) => (
           <div key={k.l} style={{ ...tarjeta, padding: '12px 14px', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: T.txt3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.l}</div>
@@ -269,6 +272,36 @@ export default function Clientes() {
             Los segmentos (frecuentes, en riesgo, nuevos…) aparecen con 60 días de historia.
           </div>
         )}
+        {celular ? (
+          <ListaTarjetas
+            filas={visibles.slice(0, mostrar)}
+            clave={(c) => c.id}
+            titulo={(c) => (c.nombre ? c.nombre : <span style={{ color: T.txt3, fontWeight: 500 }}>sin nombre</span>)}
+            subtitulo={(c) => c.email || c.docTxt}
+            marca={conSegmentos ? (c) => (
+              <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: `${segInfo[c.seg].c}1f`, color: segInfo[c.seg].c, whiteSpace: 'nowrap' }}>{segInfo[c.seg].uno}</span>
+            ) : undefined}
+            datos={[
+              { l: 'Compras', v: (c) => c.compras },
+              { l: 'Total', v: (c) => pesos(c.total) },
+              { l: 'Sin venir', v: (c) => `${c.sin} d`, color: (c) => (c.sin > 45 ? T.rojo : T.txt) },
+              { l: 'Ticket prom.', v: (c) => pesos(c.ticket) },
+              { l: 'Documento', v: (c) => c.docTxt || '—' },
+              { l: 'Primera', v: (c) => dma(c.primera) },
+              { l: 'Última', v: (c) => dma(c.ultima) },
+              { l: 'Medio', v: (c) => c.medio || '—' },
+              { l: 'Sucursal', v: (c) => c.suc || '—' },
+            ]}
+            vacio="Nada coincide con los filtros."
+            pie={visibles.length > mostrar ? (
+              <div style={{ padding: 4, textAlign: 'center' }}>
+                <button type="button" onClick={() => setMostrar((m) => m + 500)} style={{ ...chip(false), height: 44 }}>
+                  Ver {Math.min(500, visibles.length - mostrar).toLocaleString('es-AR')} más · quedan {(visibles.length - mostrar).toLocaleString('es-AR')}
+                </button>
+              </div>
+            ) : null}
+          />
+        ) : (
         <div style={{ maxHeight: 620, overflow: 'auto' }} onScroll={() => setAbierto(null)}>
           <table style={{ width: '100%', borderCollapse: 'collapse', borderSpacing: 0 }}>
             <thead><tr>
@@ -323,6 +356,7 @@ export default function Clientes() {
           )}
           {!visibles.length && <div style={{ padding: 16, fontSize: 13, color: T.txt3, textAlign: 'center' }}>Nada coincide con los filtros.</div>}
         </div>
+        )}
       </div>
       {abierto && (
         <MenuColumna col={COLS.find((c) => c.k === abierto.k)} pos={abierto} lista={lista} filtro={filtros[abierto.k]}
