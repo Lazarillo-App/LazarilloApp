@@ -54,10 +54,12 @@ export function useRecorrido(id, pasos, activo = true, opciones = {}) {
   // pantalla lo abra (useAbrirGuia) y arrancan ahí.
   useEffect(() => {
     if (!activo) return undefined;
-    if (tomarGuiaPendiente(id)) ver();
+    // Se toma recién si el lugar sigue listo un momento: la tabla de artículos pinta lo que tenía en
+    // caché y enseguida restaura la agrupación guardada; si se tomaba ahí, la guía se perdía.
+    const t = setTimeout(() => { if (tomarGuiaPendiente(id)) ver(); }, 700);
     const f = (e) => { if (e?.detail === id && tomarGuiaPendiente(id)) ver(); };
     window.addEventListener(VER_GUIA, f);
-    return () => window.removeEventListener(VER_GUIA, f);
+    return () => { clearTimeout(t); window.removeEventListener(VER_GUIA, f); };
   }, [id, ver, activo]);
   const omitir = useCallback(() => {
     setForzado(false);
