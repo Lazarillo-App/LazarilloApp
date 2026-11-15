@@ -34,6 +34,8 @@ export const MercadoPagoAPI = {
   autorizar: (bid, suc) => http(`${mpBase(bid)}/autorizar${q(suc)}`, { cache: false }),
   conectar: (bid, code, state) => http(`${mpBase(bid)}/conectar`, { method: 'POST', timeoutMs: 60000, body: { code, state } }),
   // Con varias cuentas en la sucursal (15/11) se dice cuál: `cuenta` = user_id de MP.
+  // Qué cuenta define el CUIT de la sucursal (15/11).
+  cuitSucursal: (bid, suc, cuenta) => http(`${mpBase(bid)}/cuit-sucursal${q(suc)}`, { method: 'POST', body: { cuenta } }),
   desconectar: (bid, suc, cuenta) => http(`${mpBase(bid)}${q(suc, cuenta ? `&cuenta=${encodeURIComponent(cuenta)}` : '')}`, { method: 'DELETE' }),
   sincronizar: (bid, suc, desde, hasta) =>
     http(`${mpBase(bid)}/sincronizar${q(suc)}`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
