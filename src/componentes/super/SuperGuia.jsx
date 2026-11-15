@@ -75,7 +75,18 @@ export default function SuperGuia() {
             <button type="button" style={{ ...boton(true), opacity: guardando ? 0.5 : 1 }} disabled={guardando} onClick={guardar}>Guardar</button>
           </>
         ) : (
-          <button type="button" style={boton(false)} onClick={() => { setBorrador(guia.texto || ''); setEditando(true); }}>Editar</button>
+          <>
+            {/* Diego 15/11/2026: la guía es la versión vigente de las instrucciones del proyecto; se copia
+                entera desde acá y se pega reemplazando las instrucciones del proyecto en Claude. */}
+            {!vacia && (
+              <button type="button" style={boton(false)} onClick={() => {
+                navigator.clipboard?.writeText(guia.texto || '')
+                  .then(() => showAlert('Guía copiada: pegala en las instrucciones del proyecto', 'success'))
+                  .catch(() => showAlert('No se pudo copiar', 'error'));
+              }}>Copiar todo</button>
+            )}
+            <button type="button" style={boton(false)} onClick={() => { setBorrador(guia.texto || ''); setEditando(true); }}>Editar</button>
+          </>
         )}
       </div>
 
