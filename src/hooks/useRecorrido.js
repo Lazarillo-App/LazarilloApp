@@ -39,8 +39,13 @@ export function useRecorrido(id, pasos, activo = true, opciones = {}) {
   // "Omitir" se relee cada vez: hay recorridos que viven en muchas copias (el menú de cada fila de la
   // tabla) y omitirlo en una tiene que valer para todas.
   const automatico = opciones.sinDatos !== undefined ? !!opciones.sinDatos : negocioConRecorridos(active);
+  // Una vez que arrancó solo, sigue hasta Omitir/Entendido aunque mientras tanto el usuario cargue su
+  // primer dato (Diego 14/11/2026: «se inicia la guía y se cierra sola»). Vale por negocio.
+  const [enCurso, setEnCurso] = useState(null);
+  const sigue = enCurso === activeBusinessId;
   const visible = !!activo && !!activeBusinessId && (forzado
-    || (automatico && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado));
+    || ((automatico || sigue) && !cerrado && !omitidoEnSesion(activeBusinessId, id) && !apagado));
+  useEffect(() => { if (visible && !forzado && !sigue) setEnCurso(activeBusinessId); }, [visible, forzado, sigue, activeBusinessId]);
 
   const siguiente = useCallback(() => setPaso((p) => Math.min(p + 1, pasos)), [pasos]);
   const ver = useCallback(() => { setPaso(1); setForzado(true); }, []);
