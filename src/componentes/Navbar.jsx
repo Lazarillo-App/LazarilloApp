@@ -271,6 +271,22 @@ export default function Navbar() {
             '& .navbar-user-avatar': { width: 36, height: 36, fontSize: '0.9rem' },
             '& .MuiIconButton-sizeLarge': { padding: '8px' },
           },
+          // Celular angosto (Diego 15/11/2026, «todo sector tiene que tener vista mobile»): el selector de
+          // negocio se achica y corta el nombre con «…» en vez de empujar el avatar y la campana fuera de la
+          // pantalla (con «CONTAINER BAR» la página quedaba 135 px más ancha y todo se veía achicado).
+          '@media (max-width: 599.95px)': {
+            '& .MuiToolbar-root': { gap: '4px' },
+            '& [data-tour="hdr-negocio"]': { flexShrink: 1, minWidth: 0, ml: 0 },
+            '& [data-tour="hdr-negocio"] .MuiButton-root': { minWidth: 0, maxWidth: '100%', px: 0.5 },
+            '& [data-tour="hdr-negocio"] .MuiButton-endIcon': { ml: 0.25 },
+            '& [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root, & [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root > .MuiBox-root': { minWidth: 0, overflow: 'hidden' },
+            '& .navbar-biz-logo': { display: 'none' },
+            '& [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root > .MuiBox-root > span': {
+              display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            },
+            '& [data-tour="hdr-perfil"], & [data-tour="hdr-campana"], & [data-tour="hdr-config"]': { ml: 0, flexShrink: 0 },
+            '& .navbar-user-avatar': { width: 34, height: 34 },
+          },
         }}
       >
         {/* Sin el maxWidth="xl" (1536px) de MUI: con eso el contenido quedaba
