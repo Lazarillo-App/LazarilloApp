@@ -8,6 +8,9 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import LOGO from '@/assets/brand/logo.png';
 import { BASE } from '@/servicios/apiBase';
 import DOG from '@/assets/brand/anthony.png';
+import { DEMO_COSTOS } from '@/componentes/landing-demos/costos';
+import { DEMO_RESULTADOS } from '@/componentes/landing-demos/resultados';
+import { DEMO_EQUIPO } from '@/componentes/landing-demos/equipo';
 import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG, TABLERO_EJEMPLO } from '@/componentes/landing-logos';
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Archivo:wght@300;400;500;600;700;900&display=swap');
@@ -310,6 +313,31 @@ const logosClientes = [
   { nm: 'Llévalo Listo', src: LOGO_LL },
 ];
 
+// «Mirá cómo funciona» (Diego 15/11/2026): las guías de Anthony de la app, contadas como beneficio,
+// sobre capturas reales con números y nombres cambiados (no son datos de ningún cliente).
+// x / y = dónde va cada punto, en % de la imagen.
+const demos = [
+  { id: 'costos', tab: 'Costos y precios', img: DEMO_COSTOS, alt: 'Tabla de artículos con costo, precio y costo % contra el objetivo',
+    pasos: [
+      { x: 46, y: 6, t: 'Cuánto te cuesta cada plato', d: 'Sale de su receta y se actualiza con cada compra. Debajo, el precio que necesitás para llegar a tu objetivo.' },
+      { x: 71, y: 6, t: 'Qué parte del precio se va en costo', d: 'Contra tu objetivo, plato por plato. En rojo, lo que se pasó.' },
+      { x: 84, y: 2, t: 'El precio nuevo, de un toque', d: 'Si el sugerido supera tu precio, lo tomás con un clic. También podés subir un % a todo un rubro.' },
+    ] },
+  { id: 'resultados', tab: 'Resultados', img: DEMO_RESULTADOS, alt: 'Panel de resultados con mix, canasta, proyección y gastos por rubro',
+    pasos: [
+      { x: 27, y: 4, t: 'Cómo cerraste el mes', d: 'Food cost, personal y el mix de los dos, con la diferencia contra el mes anterior.' },
+      { x: 64, y: 4, t: 'Tu canasta, tu inflación', d: 'Cuánto subieron tus costos de verdad, no los del INDEC.' },
+      { x: 92, y: 4, t: 'Cómo vas a cerrar', d: 'La proyección de ventas del mes, con lo real hasta hoy.' },
+      { x: 92, y: 42, t: 'Cada gasto, contra lo de siempre', d: 'Cada rubro se compara con lo que suele gastar: lo que se dispara se ve en color.' },
+    ] },
+  { id: 'equipo', tab: 'Equipo', img: DEMO_EQUIPO, alt: 'Cronograma semanal del salón con turnos, horas y francos',
+    pasos: [
+      { x: 33, y: 24, t: 'La semana armada en minutos', d: 'Cada persona en su turno, con puesto, horario y feriados.' },
+      { x: 75, y: 10, t: 'Días y horas de cada uno', d: 'En la semana y en el mes, para saber cuánto te cuesta abrir.' },
+      { x: 85, y: 1, t: 'Directo al WhatsApp del equipo', d: 'Lo exportás como imagen y lo mandás. Sin planillas.' },
+    ] },
+];
+
 // Funcionalidades al estilo del menú de Yurest (Diego 15/11/2026). «pronto» = próximamente.
 const funcionalidades = [
   { g: 'Rentabilidad', it: [['📊', 'Food cost y costo mix'], ['🍽️', 'Ingeniería de menú'], ['🧾', 'Recetas y costos'], ['🏷️', 'Política de precios'], ['🧺', 'Tu canasta (inflación propia)'], ['📈', 'Resultados y proyección']] },
@@ -385,6 +413,42 @@ const IAS = [
 const PRIORIDADES = ['Costos y precios', 'Rentabilidad', 'Operación y equipo', 'Proveedores', 'Menú', 'Personal y turnos'];
 
 // Modal de contacto: el pedido se guarda en el servidor y le llega por mail a los asesores.
+function ComoFunciona() {
+  const [tab, setTab] = useState(0);
+  const [paso, setPaso] = useState(0);
+  const d = demos[tab];
+  return (
+    <section className="demo" id="como-funciona">
+      <div className="wrap">
+        <div className="kick">Mirá cómo funciona</div>
+        <h2>Lo que ves todos los días con Lazarillo.</h2>
+        <div className="dtabs" role="tablist">
+          {demos.map((x, i) => (
+            <button key={x.id} role="tab" aria-selected={i === tab} className={i === tab ? 'on' : ''} onClick={() => { setTab(i); setPaso(0); }}>{x.tab}</button>
+          ))}
+        </div>
+        <div className="dbody">
+          <div className="dshot">
+            <img src={d.img} alt={d.alt} loading="lazy" />
+            {d.pasos.map((p, i) => (
+              <button key={i} className={'dpin' + (i === paso ? ' on' : '')} style={{ left: p.x + '%', top: p.y + '%' }} onClick={() => setPaso(i)} aria-label={p.t}>{i + 1}</button>
+            ))}
+          </div>
+          <ol className="dpasos">
+            {d.pasos.map((p, i) => (
+              <li key={i} className={i === paso ? 'on' : ''} onMouseEnter={() => setPaso(i)} onClick={() => setPaso(i)}>
+                <span className="n">{i + 1}</span><div><b>{p.t}</b><p>{p.d}</p></div>
+              </li>
+            ))}
+            <li className="dnota"><img src={DOG} alt="" /> Números y nombres de ejemplo.</li>
+            <li className="dmas"><Link to="/funcionalidades">Ver todas las funcionalidades →</Link></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Funcionalidades() {
   return (
     <>
@@ -553,7 +617,7 @@ export default function LazarilloLanding() {
             <p>Se apoya en el sistema que ya tenés y convierte los números de tu negocio en decisiones claras que todo tu equipo ve, entiende y ejecuta —todos los días.</p>
             <div className="actions">
               <button className="btn btn-sky" onClick={openModal}>Quiero verlo en mi restaurante</button>
-              <a className="btn btn-ghost" href="#que-hace">Cómo funciona</a>
+              <a className="btn btn-ghost" href="#como-funciona">Cómo funciona</a>
             </div>
           </div>
           <div className="dogwrap"><img src={DOG} alt="Anthony" /></div>
@@ -656,6 +720,7 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+      <ComoFunciona />
 
       {/* MARCAS: clientes en banda oscura que se mueve */}
       <section className="marca">
