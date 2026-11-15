@@ -297,6 +297,7 @@ const staffColsDe = (puede) => [
   ...(puede('ver_costo_pct') ? [{ id: 'rentabilidad', label: 'Costo %', width: puede('ver_objetivo') ? '250px' : '.35fr', visible: true }] : []),
   STAFF_COLS[1],
 ];
+
 /* ---------------- componente principal ---------------- */
 /* Tooltip del ⚠ de la fila: qué insumos de la receta no se compran hace rato y desde cuándo.
    Solo las filas con advertencia llevan tooltip (el nombre del artículo no lo necesita). */
@@ -1496,6 +1497,7 @@ export default function TablaArticulos({
     const idx = items.findIndex(a => Number(getId(a)) === curId);
     return { prev: idx > 0, next: idx >= 0 && idx < items.length - 1 };
   }, [recetaArticulo, flatRows]);
+
   const handleScroll = useCallback((e) => {
     const scrollTop = e.currentTarget.scrollTop;
     const firstVisibleIdx = Math.floor(scrollTop / ITEM_H);
