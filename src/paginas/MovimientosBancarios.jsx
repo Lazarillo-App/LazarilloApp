@@ -259,12 +259,6 @@ export default function MovimientosBancarios() {
         <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Movimientos bancarios</h1>
         <div style={{ color: T.txt2, fontSize: 13.5, marginTop: 4 }}>
           🏦 Mercado Pago{mp?.cuenta?.nickname ? ` · ${mp.cuenta.nickname}` : ''}{sucNombre && reales.length ? ` · ${sucNombre}` : ''}
-          {reales.length > 0 && (
-            <button type="button" onClick={() => setActiveBranch(null)}
-              style={{ border: 'none', background: 'none', color: T.celesteDeep, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, padding: '0 0 0 8px', textDecoration: 'underline' }}>
-              Cambiar de sucursal
-            </button>
-          )}
         </div>
       </div>
     </div>
