@@ -497,9 +497,9 @@ export default function LazarilloLanding() {
       {/* ASESORES: el valor humano */}
       <section className="asesores" id="asesores">
         <div className="wrap">
-          <div className="kick" style={{ color: 'var(--sky)' }}>Asesores gastronómicos · de gastronómicos para gastronómicos</div>
+          <div className="kick" style={{ color: 'var(--sky)' }}>Asesoría · de gastronómicos para gastronómicos</div>
           <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br />quién te acompaña.</span></h2>
-          <p className="sub">Somos gastronómicos asesorando gastronómicos. Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
+          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
           <div className="pasos">
             {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
               <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
