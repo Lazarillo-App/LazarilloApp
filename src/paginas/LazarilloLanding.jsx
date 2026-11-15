@@ -57,6 +57,14 @@ nav .btn-sky{padding:11px 22px;font-size:15px;}
 .vision p{font-size:18px;max-width:620px;margin:0 auto;}
 .chips{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .chip{font-size:15px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:50px;padding:10px 22px;background:#fff;}
+.ia{background:#fff;border-top:1px solid var(--line);padding:44px 0;}
+.ia .wrap{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;}
+.ia h3{font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.2px;}
+.ia h3 small{display:block;font-family:'Archivo',system-ui,sans-serif;font-size:14px;font-weight:400;color:#5a6a82;letter-spacing:0;margin-top:4px;}
+.ia-l{display:flex;gap:10px;flex-wrap:wrap;}
+.ia-l a{display:inline-flex;align-items:center;justify-content:center;height:44px;min-width:104px;padding:0 18px;border-radius:50px;background:#fff;border:1.5px solid var(--line);color:var(--ink);font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:14px;text-decoration:none;transition:border-color .15s ease, transform .15s ease;}
+.ia-l a:hover{border-color:var(--sky);transform:translateY(-2px);}
+@media(max-width:700px){.ia .wrap{flex-direction:column;align-items:flex-start;}.ia-l{display:grid;grid-template-columns:repeat(3,1fr);width:100%;}.ia-l a{min-width:0;height:49px;padding:0 8px;}}
 .cta{background:var(--navy);color:#fff;padding:80px 0;text-align:center;border-top:1px solid rgba(255,255,255,.08);}
 .cta h2{font-size:42px;font-weight:700;letter-spacing:-.5px;margin-bottom:10px;}
 .cta .tag{font-family:'Sora',system-ui,sans-serif;letter-spacing:3px;text-transform:uppercase;font-size:14px;color:var(--sky);font-weight:600;margin-top:18px;}
@@ -311,6 +319,20 @@ const asesores = [
 
 const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
 const WA = "https://wa.me/5491163989934";
+
+// «Preguntale a la IA qué es Lazarillo» (idea tomada de Yurest, 15/11/2026).
+// Cada botón abre esa IA con la pregunta ya escrita. La pregunta nombra la web para que no
+// lo confunda con el Lazarillo de Tormes; lo que contesta sale de lo que lee de lazarillo.com.ar
+// (y de /llms.txt). Gemini no acepta la pregunta por link: va por el modo IA de Google.
+const PREGUNTA_IA = 'Explicame qué es Lazarillo (www.lazarillo.com.ar), el ERP gastronómico argentino para restaurantes: qué hace, qué problemas le resuelve a un dueño de restaurante y para qué tipo de negocio sirve. Usá la información de www.lazarillo.com.ar y www.lazarillo.com.ar/llms.txt.';
+const IAS = [
+  ['ChatGPT', 'https://chatgpt.com/?q='],
+  ['Claude', 'https://claude.ai/new?q='],
+  ['Google IA', 'https://www.google.com/search?udm=50&q='],
+  ['Perplexity', 'https://www.perplexity.ai/search?q='],
+  ['Grok', 'https://grok.com/?q='],
+].map(([nm, url]) => ({ nm, href: url + encodeURIComponent(PREGUNTA_IA) }));
+
 
 // Prioridades para el pedido de demo (las mismas áreas del relato).
 const PRIORIDADES = ['Costos y precios', 'Rentabilidad', 'Operación y equipo', 'Proveedores', 'Menú', 'Personal y turnos'];
@@ -707,6 +729,18 @@ export default function LazarilloLanding() {
 
         </>
       )}
+
+      {/* PREGUNTALE A LA IA */}
+      <section className="ia">
+        <div className="wrap">
+          <h3>Preguntale a la IA qué es Lazarillo<small>Se abre con la pregunta ya escrita.</small></h3>
+          <div className="ia-l">
+            {IAS.map((ia) => (
+              <a key={ia.nm} href={ia.href} target="_blank" rel="noopener noreferrer">{ia.nm}</a>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* CTA */}
       <section className="cta" id="contacto">
