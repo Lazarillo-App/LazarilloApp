@@ -1148,6 +1148,7 @@ export default function ArticulosMain(props) {
 
         }
       }
+
       const blob = await downloadVentasCSV(bid, {
         from,
         to,
