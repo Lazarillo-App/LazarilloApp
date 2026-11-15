@@ -12,7 +12,7 @@ export const GUIAS = [
   { id: 'crear_insumo', grupo: 'Recetas', titulo: 'Crear un insumo', detalle: 'Nombre, rubro, unidad y precio', ruta: '/insumos' },
   { id: 'menu_accion', grupo: 'Recetas', titulo: 'Acciones de un artículo', detalle: 'Editar, mover, armar una promo o discontinuar', ruta: '/menu' },
   { id: 'crear_articulo', grupo: 'Recetas', titulo: 'Crear un artículo', detalle: 'Dar de alta un artículo a mano', ruta: '/menu' },
-  { id: 'receta', grupo: 'Recetas', titulo: 'Receta de un artículo', detalle: 'Armar la receta y ver el costo del plato', ruta: '/menu' },
+  { id: 'receta', grupo: 'Recetas', titulo: 'Receta de un artículo', detalle: 'Ingredientes, rendimiento, promo, vincular, foto y paso a paso', ruta: '/menu', sectores: ['datos', 'ingredientes', 'encabezado', 'pie'] },
   { id: 'gestion_panel', grupo: 'Resultados', titulo: 'Panel de gestión', detalle: 'Ventas, gastos y resultados del mes', ruta: '/gestion', sectores: ['filtros', 'tabla', 'header'] },
   { id: 'carga_gastos', grupo: 'Resultados', titulo: 'Cargar una factura o gasto', detalle: 'Factura, gasto vario o pago a empleados', ruta: '/gestion' },
   { id: 'rrhh_cronogramas', grupo: 'RRHH', titulo: 'Cronogramas', detalle: 'Armar la semana, feriados, puestos y mandarla por WhatsApp', ruta: '/rrhh/cronogramas', sectores: ['cronograma', 'header'] },
@@ -25,7 +25,7 @@ export const GRUPOS_GUIAS = ['Recetas', 'Resultados', 'RRHH', 'Equipo y ajustes'
 // es uno de ellos, pero con todos»). «Ver» muestra la guía entera; cada sector, solo sus pasos.
 export const NOMBRE_SECTOR = {
   lateral: 'Lateral', tabla: 'Tabla', barra: 'Barra', header: 'Header', filtros: 'Filtros',
-  cronograma: 'Cronograma', pestanas: 'Pestañas',
+  cronograma: 'Cronograma', pestanas: 'Pestañas', datos: 'Datos', ingredientes: 'Ingredientes', encabezado: 'Encabezado', pie: 'Pie',
 };
 
 /** Al terminar una guía, Anthony ofrece hacerlo ahora con su ayuda (Diego 14/11/2026): abre la guía
