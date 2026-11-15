@@ -8,13 +8,14 @@ import { Box, Tabs, Tab, Typography, Alert } from '@mui/material';
 import { useAuth } from '@/context/AuthContext';
 import SuperPedidos from '@/componentes/super/SuperPedidos';
 import SuperTablero from '@/componentes/super/SuperTablero';
+import SuperGuia from '@/componentes/super/SuperGuia';
 import { T, FT, FB, cargarFuentes } from '@/componentes/ui/temaDiego';
 import SuperAjustes from '@/componentes/super/SuperAjustes';
 import SuperChatConfig from '@/componentes/super/SuperChatConfig';
 import SuperUsuariosSection from '@/componentes/SuperUsuariosSection';
 import { SuperAPI } from '@/servicios/apiSoporte';
 
-const PESTANAS = [['pedidos', 'Pedidos'], ['tareas', 'Pendientes de desarrollo'], ['ajustes', 'Ajustes a medida'], ['chat', 'Chat y avisos'], ['super', 'Super usuarios']];
+const PESTANAS = [['pedidos', 'Pedidos'], ['tareas', 'Pendientes de desarrollo'], ['guia', 'Guía del proyecto'], ['ajustes', 'Ajustes a medida'], ['chat', 'Chat y avisos'], ['super', 'Super usuarios']];
 
 export default function SuperPanel() {
   const { user } = useAuth() || {};
@@ -26,6 +27,15 @@ export default function SuperPanel() {
 
   // El catálogo de claves lo necesitan tanto Ajustes como el detalle de un pedido.
   React.useEffect(() => { cargarFuentes(); }, []);
+  // La raya de la pestaña se mide antes de que cargue la fuente (Sora) y queda corrida: re-medir.
+  const tabsAccion = React.useRef(null);
+  React.useEffect(() => {
+    const medir = () => tabsAccion.current?.updateIndicator();
+    document.fonts?.ready?.then(medir);
+    document.fonts?.addEventListener?.('loadingdone', medir);
+    const t = setTimeout(medir, 600);
+    return () => { clearTimeout(t); document.fonts?.removeEventListener?.('loadingdone', medir); };
+  }, [tab]);
   React.useEffect(() => { SuperAPI.ajustes().then((r) => setCatalogo(r?.catalogo || [])).catch(() => {}); }, []);
 
   const cambiarTab = (t) => setParams(t === 'pedidos' ? {} : { tab: t }, { replace: true });
@@ -44,7 +54,7 @@ export default function SuperPanel() {
       <Typography sx={{ fontFamily: FB, fontSize: 13.5, color: T.text2, mb: 2 }}>
         Lo que piden los clientes, lo que falta desarrollar por módulo y lo que se configura a medida para cada uno.
       </Typography>
-      <Tabs value={tab} onChange={(_e, v) => cambiarTab(v)} variant="scrollable" allowScrollButtonsMobile
+      <Tabs action={tabsAccion} value={tab} onChange={(_e, v) => cambiarTab(v)} variant="scrollable" allowScrollButtonsMobile
         sx={{ mb: 2.5, borderBottom: `1px solid ${T.border}`, minHeight: 40,
           '& .MuiTabs-indicator': { backgroundColor: T.accent, height: 3, borderRadius: 3 } }}>
         {PESTANAS.map(([k, l]) => <Tab key={k} value={k} label={l} sx={{ textTransform: 'none', fontFamily: FT, fontWeight: 600, fontSize: 13.5,
@@ -52,6 +62,7 @@ export default function SuperPanel() {
       </Tabs>
       {tab === 'pedidos' && <SuperPedidos pedidoInicial={pedido} onPedidoAbierto={alAbrirPedido} catalogo={catalogo} />}
       {tab === 'tareas' && <SuperTablero key={tarea || 'tablero'} tareaInicial={tarea} />}
+      {tab === 'guia' && <SuperGuia />}
       {tab === 'ajustes' && <SuperAjustes catalogo={catalogo} onCatalogo={setCatalogo} />}
       {tab === 'chat' && <SuperChatConfig />}
       {tab === 'super' && <SuperUsuariosSection />}

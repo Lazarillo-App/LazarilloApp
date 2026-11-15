@@ -44,6 +44,9 @@ export const SuperAPI = {
   // Avisos del panel (solapa "Admins" de la campana).
   actividad: () => http('/superusuarios/actividad', { withBusinessId: false, cache: false }),
   actividadVista: () => http('/superusuarios/actividad/visto', { method: 'POST', withBusinessId: false }),
+  // Guía del proyecto: qué queremos lograr y cómo trabajamos (14/11/2026).
+  guia: () => http('/superusuarios/guia', { withBusinessId: false, cache: false }),
+  guardarGuia: (texto) => http('/superusuarios/guia', { method: 'PUT', withBusinessId: false, body: { texto } }),
   // Tablero de tareas del equipo (13/11/2026).
   tareas: () => http('/superusuarios/tareas', { withBusinessId: false, cache: false }),
   tarea: (id) => http(`/superusuarios/tareas/${id}`, { withBusinessId: false, cache: false }),
