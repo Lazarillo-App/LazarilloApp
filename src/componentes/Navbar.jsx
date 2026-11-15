@@ -427,6 +427,9 @@ export default function Navbar() {
           boxShadow: 'none',
           // Celular: barra de 56 px, la misma altura que la versión celular del Panel (Diego 08/11/2026).
           '@media (max-width: 899.95px)': {
+            // theme-layout/global.css le fijan el alto al header (86/64 px): con la fila de pestañas abajo tiene
+            // que crecer, si no las pestañas quedan medio afuera (Diego 15/11/2026). Las páginas miden el alto real.
+            height: 'auto !important', minHeight: 'var(--navbar-height)',
             '& .MuiToolbar-root': { minHeight: 56, height: 56 },
             '& .navbar-biz-logo': { height: '34px !important', maxWidth: 90 },
             '& .navbar-biz-fallback': { width: '34px !important', height: '34px !important', fontSize: '15px !important' },
@@ -734,9 +737,13 @@ export default function Navbar() {
         {celu && (
           <Box className="navbar-pestanas" sx={{
             // alignSelf: el AppBar centra a sus hijos; las pestañas van a todo el ancho, desde la izquierda.
-            display: 'flex', alignItems: 'center', gap: 0.5, overflowX: 'auto', alignSelf: 'stretch', px: 1, pb: 0.75,
+            // Alto fijo de 48 con aire arriba y abajo: con overflowX el contenido más alto que la fila se recortaba
+            // (el «+» de Tableros sin plazas quedaba pisado, Diego 15/11/2026).
+            display: 'flex', alignItems: 'center', gap: 0.5, overflowX: 'auto', overflowY: 'hidden', alignSelf: 'stretch',
+            boxSizing: 'border-box', minHeight: 48, px: 1, py: 0.5,
             scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' }, '&:empty': { display: 'none' },
             '& > *': { flexShrink: 0 }, '& .MuiButton-root': { minHeight: 40, whiteSpace: 'nowrap', px: 1.25 },
+            '& .MuiIconButton-root': { width: 36, height: 36, my: 0 },
           }}>
             {botonera}
           </Box>
