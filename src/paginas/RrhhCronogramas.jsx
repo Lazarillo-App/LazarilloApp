@@ -598,6 +598,7 @@ export default function RrhhCronogramas() {
 
   const agregarFila = (turnoId) =>
     mutarFilas((fs) => [...fs, { key: nuevaKey(), turnoId, ownerEmpleadoId: null, celdas: {} }]);
+
   const quitarFila = (fila) => {
     if (Object.keys(fila.celdas).length) { avisar('La fila tiene turnos cargados: vaciala antes de quitarla.', 'error'); return; }
     mutarFilas((fs) => fs.filter((f) => f.key !== fila.key));
@@ -718,7 +719,7 @@ export default function RrhhCronogramas() {
   };
   const guardarEspacio = async (nombre) => {
     const nuevo = !!espacioSel?.nuevo;
-    const clave = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+    const clave = (x) => String(x || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim().toLowerCase();
     if ((config?.espacios || []).some((e) => e.id !== espacioSel?.id && clave(e.nombre) === clave(nombre))) {
       avisar(`Ya hay un espacio «${nombre}».`, 'error');
       return;
