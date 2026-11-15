@@ -54,6 +54,7 @@ import { MESES_IDX } from '@/gestion/formato';
 import { useAccess } from '@/context/AccessContext';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { usePasosHeader, refTour } from '@/componentes/asistente/pasosHeader';
+import { useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
 import { useRecorrido } from '@/hooks/useRecorrido';
 
 const ANIO_ACTUAL = new Date().getFullYear();
@@ -338,7 +339,10 @@ function GestionPanelContenido() {
     'panel-completa': <><b>Pantalla completa</b> para ver la tabla grande (Esc para salir).</>,
   };
   const pasosBarraPanel = barraPanel.map((k) => ({ k, ref: refTour(k), t: TEXTOS_BARRA_PANEL[k] }));
-  const pasosTour = [
+  const sectorPanel = useSectorGuia('gestion_panel');
+  // Sectores (Diego 15/11/2026): Filtros (arriba), Tabla (pestañas, tarjetas y su barra) y Header.
+  const SECTOR_PANEL = { periodo: 'filtros', ecofin: 'filtros', 'panel-notas': 'filtros', cargar: 'filtros', tabs: 'tabla', tarjetas: 'tabla', 'panel-verpor': 'tabla', 'panel-rubros': 'tabla', 'panel-buscar': 'tabla', 'panel-completa': 'tabla' };
+  const pasosTour = pasosDelSector([
     ...(panelVacio ? [] : [{ k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> }]),
     ...(!sinEcoFin && !panelVacio ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
     ...(panelVacio ? [] : [{ k: 'tabs', t: <><b>Compras</b> son tus gastos (los podés ver por concepto, proveedor o insumo), <b>Ventas</b> tus ingresos y <b>Resultados</b> lo que te queda: la ganancia.</> }]),
@@ -348,7 +352,7 @@ function GestionPanelContenido() {
     ...pasosBarraPanel,
     ...pasosHeaderPanel,
     ...(verCarga && estado.tab !== 'ventas' ? [{ k: 'cargar', t: <>Desde acá <b>cargás una factura o un gasto</b> (alquiler, sueldos, servicios). También podés tocar una celda vacía de la tabla.</> }] : []),
-  ];
+  ].map((p) => ({ ...p, s: p.s || SECTOR_PANEL[p.k] || 'tabla' })), sectorPanel);
   // Arranca solo mientras el panel no tenga datos propios (Diego 14/11/2026); si no, desde Guías.
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
     verPanel && !!rango.data && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores,
