@@ -243,6 +243,7 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
         branding,
         contact: { phone: normalizeEmpty(phone) },
         tax_id: (() => { const n = cuit.replace(/\D/g, ""); return n.length === 11 ? `${n.slice(0, 2)}-${n.slice(2, 10)}-${n.slice(10)}` : null; })(),
+        tax_id_origen: cuit === (prevProps.tax_id || "") ? (prevProps.tax_id_origen || null) : null,
         description: normalizeEmpty(description),
         address: {
           line1: normalizeEmpty(addrLine1),
@@ -532,7 +533,9 @@ export default function BusinessEditModal({ open, business, onClose, onSaved }) 
                 <small style={{ color: cuit && cuit.replace(/\D/g, "").length !== 11 ? "#b42318" : "#6b7280", fontSize: 12 }}>
                   {cuit && cuit.replace(/\D/g, "").length !== 11
                     ? "El CUIT tiene 11 números"
-                    : "Puede ser el de la organización o uno propio. Sirve para no contar tus propias cuentas como clientes."}
+                    : business?.props?.tax_id_origen === "mercadopago" && cuit === (business?.props?.tax_id || "")
+                      ? "Lo completamos con el CUIT de tu cuenta de Mercado Pago. Podés cambiarlo."
+                      : "Puede ser el de la organización o uno propio. Sirve para no contar tus propias cuentas como clientes."}
                 </small>
               </div>
               <div className="gx-field">
