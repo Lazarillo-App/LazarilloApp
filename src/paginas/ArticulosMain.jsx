@@ -1397,7 +1397,7 @@ export default function ArticulosMain(props) {
   useEffect(() => {
     const irATodos = () => {
       const id = guiaPedida();
-      if (id !== 'menu_accion' && id !== 'receta') return;
+      if (id !== 'menu_accion' && id !== 'receta' && id !== 'tabla_articulos') return;
       const sel = agrupacionSeleccionada;
       // todoGroupId arranca en 0 hasta que la tabla lo informa: se busca también en las agrupaciones.
       const todoId = Number(todoInfo?.todoGroupId) || Number((agrupacionesRich || []).find(esTodoGroup)?.id) || null;
@@ -2098,7 +2098,6 @@ export default function ArticulosMain(props) {
     }
     return visibleIds;
   }, [activeListId, activeListItems, visibleIds]);
-
   const focusArticle = useCallback(
     (rawId, preferGroupId = null) => {
       const id = Number(rawId);
