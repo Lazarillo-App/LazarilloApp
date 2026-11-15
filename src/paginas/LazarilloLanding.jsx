@@ -177,7 +177,11 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .navtabs a.on{color:#fff;box-shadow:inset 0 -2px 0 var(--sky);}
 .btn-link{background:none;border:0;color:#c8d2e0;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;padding:10px 6px;cursor:pointer;}
 .btn-link:hover{color:#fff;}
-.ases-top{padding:72px 0 56px;}
+.ases-top{padding:74px 0 56px;}
+.ases-top h2{font-size:60px;line-height:1.07;letter-spacing:-1px;font-weight:700;margin:18px 0;}
+.ases-top .sub{font-size:20px;font-weight:350;color:rgba(255,255,255,.74);}
+.d-corta{display:none;}
+.ases-top .sub .solo{display:block;margin-top:14px;font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:24px;color:var(--sky);letter-spacing:-.3px;}
 .ases-top .pasos{margin-bottom:0;}
 .equipo{padding-top:70px;border-top:1px solid rgba(255,255,255,.06);}
 .equipo h2{margin-bottom:30px!important;}
@@ -223,14 +227,15 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
 @media(max-width:1000px){.sgrid,.pgrid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:820px){.brd{display:none;}nav .wrap{flex-wrap:wrap;height:auto;padding-top:12px;padding-bottom:12px;gap:10px;}.navtabs{order:3;width:100%;margin:0;justify-content:center;gap:36px;}.sgrid,.pgrid{grid-template-columns:1fr;}.servicios h2,.faq h2,.principios h2{font-size:28px;}.pcita{font-size:18px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:820px){.brd{display:none;}nav .wrap{height:56px;gap:12px;}nav img{height:28px;}.navtabs{margin:0 auto 0 4px;gap:14px;align-self:stretch;}.navtabs a{font-size:13.5px;display:flex;align-items:center;padding:0;white-space:nowrap;}.navactions{gap:8px;}.btn-link{font-size:13.5px;padding:6px 2px;min-height:44px;}.d-larga{display:none;}.d-corta{display:inline;}.navactions .btn-sky{position:relative;}.navactions .btn-sky::after{content:'';position:absolute;inset:-6px -2px;}.sgrid,.pgrid{grid-template-columns:1fr;}.servicios h2,.faq h2,.principios h2{font-size:28px;}.pcita{font-size:18px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
-  .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
+  .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:8px 14px;font-size:13px;white-space:nowrap;}
   .diff .wrap{grid-template-columns:1fr;} .diff .circle{display:none;}
   .insight .wrap{flex-direction:column;align-items:flex-start;gap:10px;}
-  .diff p{font-size:28px;} .cta h2{font-size:30px;} .hero h1{font-size:38px;}
-}`;
+  .diff p{font-size:28px;} .cta h2{font-size:30px;} .hero h1,.ases-top h2{font-size:32px;} .ases-top .sub{font-size:17px;} .ases-top .sub .solo{font-size:20px;}
+}
+@media(max-width:380px){.hero h1,.ases-top h2{font-size:30px;}}`;
 
 const marqueeChips = [
   "Costos reales por plato", "Política de precios que se sostiene", "Ingeniería de menú",
@@ -263,9 +268,9 @@ const integraciones = [
   { mk: 'MX', t: 'MaxiRest', d: 'POS · ventas, compras y stock', st: 'on' },
   { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'on' },
   { mk: 'ML', t: 'Mercado Libre', d: 'Compras de insumos', st: 'on' },
+  { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'on' },
   { mk: 'WT', t: 'Waitry', d: 'POS y pedidos', st: 'soon' },
   { mk: 'FU', t: 'Fudo', d: 'POS', st: 'soon' },
-  { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
 ]
 
@@ -291,10 +296,10 @@ const preguntas = [
 const principios = [
   ['Tu cliente marca el rumbo', 'Hay dos formas de vender más: buscar clientes para tu producto o crear productos para tus clientes. Con Lazarillo ves cuál te conviene.'],
   ['Lo más importante es identificar el problema', 'Con Lazarillo miramos tus números reales: sin el diagnóstico correcto no hay solución adecuada.'],
-  ['Lo primero que falla es la comunicación', 'Si quienes forman tu negocio, del equipo o no, no están conectados a cada decisión, el resultado no va a ser el esperado. Lazarillo los conecta.'],
-  ['Prevenir antes que curar', 'Ayudamos a que tu equipo esté preparado para lo peor, siempre.'],
-  ['No afirmamos nada sin comprobarlo', 'Escuchamos todas las voces, validamos y recién ahí decidimos.'],
-  ['Lo que no se mueve, se muere', 'Muchas propuestas se instalan y después nadie las supervisa ni las mantiene. Sin retroalimentación y sin gente involucrada en el objetivo, se apagan.'],
+  ['Lo primero que falla es la comunicación', 'Si quienes forman tu negocio, equipo o clientes, no están conectados a cada decisión, el resultado no va a ser el esperado. Lazarillo los conecta.'],
+  ['Prevenir antes que curar', 'Ayudamos a que tu equipo cambie de a poco la mentalidad y esté preparado para lo peor, siempre.'],
+  ['No afirmamos nada sin comprobarlo', 'Escuchamos todas las voces, validamos y decidimos en conjunto.'],
+  ['Lo que no se mueve, se muere', 'Muchas propuestas se instalan y después nadie las supervisa ni las mantiene. Sin retroalimentación y sin gente involucrada en el objetivo, se apagan. Un sistema de trabajo que los una en el objetivo común es la solución.'],
 ];
 
 // Asesores (Florencia se suma cuando confirme).
@@ -421,7 +426,7 @@ export default function LazarilloLanding() {
           </div>
           <div className="navactions">
             <button className="btn-link" onClick={() => navigate('/login')}>Ingresar</button>
-            <button className="btn btn-sky" onClick={openModal}>Pedí una demo</button>
+            <button className="btn btn-sky" onClick={openModal}><span className="d-larga">Pedí una demo</span><span className="d-corta">Demo</span></button>
           </div>
         </div>
       </nav>
@@ -632,7 +637,7 @@ export default function LazarilloLanding() {
         <div className="wrap">
           <div className="kick" style={{ color: 'var(--sky)' }}>Asesoría · de gastronómicos para gastronómicos</div>
           <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br className="brd" /> quién te acompaña.</span></h2>
-          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
+          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos.<span className="solo">Después seguís solo, con tu Lazarillo.</span></p>
           <div className="pasos">
             {[['1', 'Diagnóstico', 'Identificamos el problema: bien descripto, ya tenés la mitad resuelto.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
               <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
