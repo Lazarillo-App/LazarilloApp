@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 export const GUIAS = [
   { id: 'tabla_articulos', grupo: 'Recetas', titulo: 'Artículos', detalle: 'Ventas, costo, precio, objetivo y nuevo precio', ruta: '/menu', sectores: ['lateral', 'tabla', 'barra', 'header'] },
   { id: 'tabla_insumos', grupo: 'Recetas', titulo: 'Insumos', detalle: 'Agrupar, cargar y revisar los insumos', ruta: '/insumos', sectores: ['lateral', 'tabla', 'barra', 'header'] },
+  { id: 'food_cost', grupo: 'Recetas', titulo: 'Food cost', detalle: 'Qué es, cómo se calcula y cómo armarlo por área', ruta: '/menu' },
   { id: 'crear_insumo', grupo: 'Recetas', titulo: 'Crear un insumo', detalle: 'Nombre, rubro, unidad y precio', ruta: '/insumos' },
   { id: 'menu_accion', grupo: 'Recetas', titulo: 'Acciones de un artículo', detalle: 'Editar, mover, armar una promo o discontinuar', ruta: '/menu' },
   { id: 'crear_articulo', grupo: 'Recetas', titulo: 'Crear un artículo', detalle: 'Dar de alta un artículo a mano', ruta: '/menu' },
@@ -54,7 +55,12 @@ function leer() {
 export function pedirGuia(guia, navigate, sector = null) {
   try { sessionStorage.setItem(CLAVE, JSON.stringify({ id: guia.id, t: Date.now(), sector })); } catch { /* sin storage */ }
   if (window.location.pathname === guia.ruta) window.dispatchEvent(new CustomEvent(VER_GUIA, { detail: guia.id }));
-  else navigate(guia.ruta);
+  else {
+    navigate(guia.ruta);
+    // Lo que no se vuelve a montar al navegar (la barra de Recetas es la misma en Artículos e
+    // Insumos, y ahí vive el food cost) se entera por el aviso.
+    setTimeout(() => window.dispatchEvent(new CustomEvent(VER_GUIA, { detail: guia.id })), 400);
+  }
 }
 
 /** Qué guía está pedida ahora (sin consumirla), o null. */
