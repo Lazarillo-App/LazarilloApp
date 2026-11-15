@@ -124,6 +124,8 @@ const leerCols = () => {
   return COLS_DEFAULT;
 };
 
+const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
 export default function MovimientosBancarios() {
   const { activeBusinessId } = useBusiness() || {};
   const { branches = [], activeBranchId, setActiveBranch } = useBranch() || {};
@@ -180,6 +182,15 @@ export default function MovimientosBancarios() {
     }).catch(() => {});
     return () => { vivo = false; };
   }, [bid, suc, ver]);
+
+  // Cuenta recién conectada (Diego 15/11/2026: «se vinculó perfecto pero mirá…» y la lista estaba vacía): mientras
+  // alguna cuenta trae su historial, la pantalla lo dice y se vuelve a leer sola cada 30 s hasta que termina.
+  const trayendoCuentas = (mp?.cuentas || []).filter((c) => !c.historial_completo);
+  useEffect(() => {
+    if (!trayendoCuentas.length) return undefined;
+    const t = setTimeout(() => setVer((n) => n + 1), 30000);
+    return () => clearTimeout(t);
+  }, [mp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rango = useMemo(() => {
     const hoy = new Date();
@@ -303,6 +314,16 @@ export default function MovimientosBancarios() {
         <div style={{ color: T.txt2, fontSize: 13.5, marginTop: 4 }}>
           🏦 Mercado Pago{cuentasMp.length ? ` · ${cuentasMp.map((c) => c.nickname || c.email || `#${c.user_id}`).join(' + ')}` : ''}{sucNombre && reales.length ? ` · ${sucNombre}` : ''}
         </div>
+        {trayendoCuentas.map((c) => (
+          <div key={c.user_id} style={{ marginTop: 8, marginRight: 8, display: 'inline-flex', alignItems: 'center', gap: 8, lineHeight: 1.35, fontSize: 13, color: '#12627F', background: '#5BC2EA1F', border: `1px solid ${T.celeste}`, borderRadius: 999, padding: '4px 12px' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.celeste, flexShrink: 0 }} />
+            <span>
+              Trayendo el historial de <b>{c.nickname || c.email}</b>
+              {c.historial_hasta ? ` · va por ${MESES_LARGO[Number(c.historial_hasta.slice(5, 7)) - 1]} ${c.historial_hasta.slice(0, 4)}` : ''}
+              {' '}· la lista se completa sola
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
