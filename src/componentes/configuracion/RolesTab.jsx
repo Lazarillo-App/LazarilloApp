@@ -1,5 +1,5 @@
 // src/componentes/configuracion/RolesTab.jsx
-// Roles y permisos (Mi perfil › Equipo › Roles). Dueño, Administración y Staff son fijos;
+// Roles y permisos (Mi equipo › Roles). Dueño, Administración y Staff son fijos;
 // los roles a medida se arman sobre Administración: paso 1 qué secciones ve (y si edita),
 // paso 2 qué partes no ve dentro de cada sección. La vista Staff no se toca.
 import React, { useEffect, useMemo, useState } from 'react';
