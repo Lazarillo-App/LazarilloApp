@@ -72,7 +72,7 @@ import ReactDOM from 'react-dom';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { useRecorrido } from '@/hooks/useRecorrido';
 import { usePasosHeader } from '@/componentes/asistente/pasosHeader';
-import { useAbrirGuia } from '@/componentes/asistente/guias';
+import { useAbrirGuia, useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
 import '../css/global.css';
 import '../css/theme-layout.css';
 import '../css/TablaArticulos.css';
@@ -83,7 +83,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\u0300-\\u036f]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1720,22 +1720,24 @@ export default function InsumosMain() {
   const tourPendientesRef = useMemo(() => ({ get current() { return document.querySelector('[data-tour="insumos-tab-pendientes"]'); } }), []);
   // Botones del header y de la barra (Diego 14/11/2026), antes del último paso («+ Agregar»).
   const pasosHeaderIns = usePasosHeader({ conBarra: true });
-  const pasosIns = [
-    { k: 'tabla', ref: tourTablaRef, t: <>Estos son tus <b>insumos</b>: lo que comprás para cocinar. De cada uno ves la unidad, el <b>precio</b> (se actualiza solo con tus compras), en cuántas recetas se usa y cuánto compraste en el período.</> },
-    { k: 'sidebar', ref: tourSidebarRef, t: <>Acá los ves por grupo: <b>Elaborados</b> son los que preparás vos con su propia receta (una salsa, una masa), <b>Top 20</b> los que más comprás, y también las agrupaciones que armes. Para que uno sea elaborado, simplemente <b>cargale su receta</b>.</> },
-    { k: 'marcar', ref: tourMarcarRef, t: <>Con esta casilla <b>marcás</b> insumos para trabajarlos juntos: guardarlos en una <b>lista</b> o mandarlos <b>a revisión</b>. Tildándola acá arriba marcás todos los que ves.</> },
-    { k: 'listas', ref: tourListasRef, t: <>En <b>Listas</b> quedan los grupos de insumos que guardaste (por ejemplo, lo que le pedís a un proveedor), para volver a encontrarlos con un clic.</> },
-    { k: 'pendientes', ref: tourPendientesRef, t: <>En <b>Pendientes</b> ves los cambios que propone tu equipo y esperan tu OK, y lo que se mandó a revisión.</> },
+  const sectorIns = useSectorGuia('tabla_insumos');
+  const pasosIns = pasosDelSector([
+    { k: 'tabla', s: 'tabla', ref: tourTablaRef, t: <>Estos son tus <b>insumos</b>: lo que comprás para cocinar. De cada uno ves la unidad, el <b>precio</b> (se actualiza solo con tus compras), en cuántas recetas se usa y cuánto compraste en el período.</> },
+    { k: 'sidebar', s: 'lateral', ref: tourSidebarRef, t: <>Acá los ves por grupo: <b>Elaborados</b> son los que preparás vos con su propia receta (una salsa, una masa), <b>Top 20</b> los que más comprás, y también las agrupaciones que armes. Para que uno sea elaborado, simplemente <b>cargale su receta</b>.</> },
+    { k: 'marcar', s: 'tabla', ref: tourMarcarRef, t: <>Con esta casilla <b>marcás</b> insumos para trabajarlos juntos: guardarlos en una <b>lista</b> o mandarlos <b>a revisión</b>. Tildándola acá arriba marcás todos los que ves.</> },
+    { k: 'listas', s: 'lateral', ref: tourListasRef, t: <>En <b>Listas</b> quedan los grupos de insumos que guardaste (por ejemplo, lo que le pedís a un proveedor), para volver a encontrarlos con un clic.</> },
+    { k: 'pendientes', s: 'lateral', ref: tourPendientesRef, t: <>En <b>Pendientes</b> ves los cambios que propone tu equipo y esperan tu OK, y lo que se mandó a revisión.</> },
     ...pasosHeaderIns,
-    { k: 'agregar', ref: tourAgregarRef, t: <>Con <b>+ Agregar</b> sumás un insumo nuevo, o muchos juntos desde un archivo. ¿Cargamos el primero ahora? <b>Te acompaño paso a paso.</b></> },
-  ];
+    { k: 'agregar', s: 'barra', ref: tourAgregarRef, t: <>Con <b>+ Agregar</b> sumás un insumo nuevo, o muchos juntos desde un archivo. ¿Cargamos el primero ahora? <b>Te acompaño paso a paso.</b></> },
+  ], sectorIns);
   const recInsumos = useRecorrido(
     'tabla_insumos', pasosIns.length,
     // Espera a que lleguen los insumos: si no, la guía arrancaba sobre la tabla vacía (Diego 14/11/2026).
     !isStaff && !!businessId && barraGestion.paginaActiva === 'insumos' && insumosListData !== undefined
       && !nuevoInsumoOpen && !insumoEditando && !recetaInsumoModal && !groupModalOpen
       && !uploadInsumosOpen && !uploadComprasOpen && !uploadRubrosOpen,
-    { siguiente: { id: 'crear_insumo', label: 'Cargar un insumo ahora' } },
+    // «Hacerlo ahora» solo si el último paso es «+ Agregar» (por sector puede terminar en otro).
+    { siguiente: pasosIns[pasosIns.length - 1]?.k === 'agregar' ? { id: 'crear_insumo', label: 'Cargar un insumo ahora' } : undefined },
   );
   const pasoIns = pasosIns[recInsumos.paso - 1];
 
