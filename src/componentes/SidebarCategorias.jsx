@@ -561,6 +561,7 @@ function SidebarCategorias({
             return (
               <button
                 key={t.id}
+                data-tour={`art-tab-${t.id}`}
                 onClick={() => handleSidebarMode(t.id)}
                 className={activo ? 'on' : undefined}
               >
@@ -577,7 +578,7 @@ function SidebarCategorias({
             sector. Un efecto más abajo lo deja siempre en "Todo" (todos los rubros
             permitidos de su sector, directo, sin ese paso). */}
         {sidebarMode === 'agrupaciones' && !staff && (
-          <FormControl size="small" fullWidth sx={{ mb: 1 }}>
+          <FormControl size="small" fullWidth sx={{ mb: 1 }} data-tour="art-agrupacion">
             <InputLabel>Agrupaciones</InputLabel>
             <Select
               label="Agrupaciones"
@@ -829,6 +830,7 @@ function SidebarCategorias({
         {sidebarMode === 'agrupaciones' && !staff && !esVistaVentas(agrupacionSeleccionada) && (
           <div style={{ padding: '2px 0 6px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <ToggleButtonGroup
+              data-tour="art-rubro"
               size="small" exclusive value={localListMode}
               onChange={(_, val) => handleListModeChange(val)}
               disabled={loadingPrefs}
