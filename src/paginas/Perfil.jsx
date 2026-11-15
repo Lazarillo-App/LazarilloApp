@@ -944,15 +944,8 @@ function PerfilContenido() {
           }}
         />
 
-        {/* Staff: no ve gestión de equipo (es de otras cuentas, no de la propia),
-            pero sí Seguridad — cambiar su contraseña es de su propia cuenta,
-            nada relativo al negocio. */}
-        {!isStaff && (
-          <>
-            {/* ── Equipo (FUNCIONAL) ── */}
-            <TeamSection />
-          </>
-        )}
+        {/* Equipo se mudó a su propia página «Mi equipo» (/equipo), desde el menú del avatar
+            debajo de Mis pendientes (Diego 15/11/2026: «está raro mezclado con el perfil»). */}
 
         {/* ── Seguridad ── */}
         <SecuritySection />
@@ -1036,6 +1029,19 @@ function PerfilContenido() {
           {snack.msg}
         </div>
       </Snackbar>
+    </Box>
+  );
+}
+
+/* ── Mi equipo (/equipo): la gestión del equipo, separada del perfil (Diego 15/11/2026) ── */
+export function MiEquipo() {
+  return (
+    <Box className="zoom-reset" sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
+      <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
+        <GroupsIcon sx={{ color: tc, fontSize: 26 }} />
+        <Typography variant="h5" fontWeight={800}>Mi equipo</Typography>
+      </Stack>
+      <TeamSection />
     </Box>
   );
 }
