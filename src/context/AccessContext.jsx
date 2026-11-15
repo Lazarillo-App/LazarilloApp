@@ -11,13 +11,15 @@
 
 import React, {
   createContext, useCallback, useContext,
-  useEffect, useMemo, useState,
+  useEffect, useMemo, useRef, useState,
 } from 'react';
 
 import { useAuth } from './AuthContext';
 import { useBusiness } from './BusinessContext';
 import { MeAPI } from '../servicios/apiMe';
 import { setVistaPrevia } from '../servicios/vistaPrevia';
+import { invalidateHttpCache } from '../servicios/apiBusinesses';
+import { queryClient } from '../lib/reactQueryClient';
 import { esOculto } from '@/gestion/ocultosRol';
 
 const AccessCtx = createContext(null);
@@ -110,9 +112,20 @@ export function AccessProvider({ children }) {
   const [verComo, setVerComoState] = useState(null);
   const rolReal = currentBusiness?.role || null;
   const verComoActivo = rolReal === 'owner' && verComo ? verComo : null;
-  const setVerComo = useCallback((v) => { setVerComoState(v); setVistaPrevia(!!v); }, []);
+  const asignacionVista = useRef(null);
+  const setVerComo = useCallback((v) => {
+    // Primero el header (X-Ver-Como) y después el estado: lo que se pida de nuevo ya sale bien.
+    setVistaPrevia(!!v, v?.assignmentId || null);
+    // Con una persona los datos cambian (sus sectores): se descarta lo cacheado al entrar o salir.
+    if ((asignacionVista.current || null) !== (v?.assignmentId || null)) {
+      asignacionVista.current = v?.assignmentId || null;
+      invalidateHttpCache();
+      try { queryClient.invalidateQueries(); } catch { /* sin react-query */ }
+    }
+    setVerComoState(v);
+  }, []);
   useEffect(() => {
-    const salir = () => { setVerComoState(null); setVistaPrevia(false); };
+    const salir = () => { setVerComoState(null); setVistaPrevia(false); asignacionVista.current = null; };
     window.addEventListener('business:switched', salir);
     window.addEventListener('auth:logout', salir);
     return () => { window.removeEventListener('business:switched', salir); window.removeEventListener('auth:logout', salir); };

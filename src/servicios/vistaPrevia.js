@@ -6,6 +6,15 @@
 const BLOQUEAR = false;
 let activa = false;
 let instalado = false;
+// «Ver como» una persona (Diego 15/11/2026, «lo quiero exacto»): sus lecturas (GET) viajan con
+// X-Ver-Como = id de su asignación y el servidor responde como esa persona (sus sectores, sus
+// permisos con ajustes). Sesión y equipo no: el que mira sigue siendo el dueño.
+let asignacion = null;
+const SIN_VER_COMO = /\/api\/(me|auth|team|roles|superusuarios|admin)(\/|\?|$)/;
+const llevaVerComo = (method, url) => {
+  const m = String(method || 'GET').toUpperCase();
+  return !!asignacion && m === 'GET' && esApi(url) && !SIN_VER_COMO.test(String(url));
+};
 
 // Pedidos que no guardan datos del negocio y tienen que seguir andando (cambiar de negocio, sesión).
 const PERMITIDOS = [/\/businesses\/\d+\/select\b/, /\/businesses\/active\b/, /\/me\/active-business\b/, /\/auth\//];
@@ -32,6 +41,14 @@ function instalar() {
         return Promise.resolve(new Response(JSON.stringify({ error: 'vista_previa', message: 'En "Ver como" no se guardan cambios.' }),
           { status: 403, headers: { 'Content-Type': 'application/json' } }));
       }
+      if (llevaVerComo(method, url)) {
+        const hs = new Headers(init?.headers || (typeof input === 'object' ? input?.headers : undefined));
+        hs.set('X-Ver-Como', String(asignacion));
+        if (typeof input === 'object' && typeof Request !== 'undefined' && input instanceof Request) {
+          return fetchOriginal(new Request(input, { headers: hs }), { ...init, headers: hs });
+        }
+        return fetchOriginal(input, { ...init, headers: hs });
+      }
       return fetchOriginal(input, init);
     };
   }
@@ -42,13 +59,15 @@ function instalar() {
     XHR.open = function (method, url, ...resto) { this.__lzMetodo = method; this.__lzUrl = url; return abrir.call(this, method, url, ...resto); };
     XHR.send = function (...args) {
       if (bloquea(this.__lzMetodo, this.__lzUrl)) { avisar(); this.abort(); return undefined; }
+      if (llevaVerComo(this.__lzMetodo, this.__lzUrl)) { try { this.setRequestHeader('X-Ver-Como', String(asignacion)); } catch { /* ya enviado */ } }
       return enviar.apply(this, args);
     };
   }
 }
 
-export function setVistaPrevia(v) {
+export function setVistaPrevia(v, asignacionId = null) {
   activa = !!v;
+  asignacion = activa && asignacionId ? Number(asignacionId) : null;
   if (activa) instalar();
 }
 export const vistaPreviaActiva = () => activa;

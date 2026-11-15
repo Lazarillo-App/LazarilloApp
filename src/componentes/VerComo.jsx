@@ -51,8 +51,8 @@ export function VerComoItems({ onElegido }) {
       const e = await efectivosAcceso(pers.assignmentId);
       onElegido?.();
       setVerComo(e.tipo === 'staff'
-        ? { id: pers.id, nombre: pers.nombre, rol: 'staff', subrol: pers.rolNombre !== 'Staff' ? pers.rolNombre : null, permisos: null, permisosStaff: e.permisos || {} }
-        : { id: pers.id, nombre: pers.nombre, rol: 'admin', subrol: null, permisos: { secciones: e.secciones || {}, ocultos: e.ocultos || [] }, permisosStaff: null });
+        ? { id: pers.id, assignmentId: pers.assignmentId, nombre: pers.nombre, rol: 'staff', subrol: pers.rolNombre !== 'Staff' ? pers.rolNombre : null, permisos: null, permisosStaff: e.permisos || {} }
+        : { id: pers.id, assignmentId: pers.assignmentId, nombre: pers.nombre, rol: 'admin', subrol: null, permisos: { secciones: e.secciones || {}, ocultos: e.ocultos || [] }, permisosStaff: null });
       navigate('/inicio');
     } catch { /* si falla, se queda el menú abierto */ }
     finally { setCargandoId(null); }
