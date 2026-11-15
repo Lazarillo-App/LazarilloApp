@@ -113,6 +113,8 @@ export default function Clientes() {
     return () => { vivo = false; clearTimeout(t); };
   }, [bid]);
   const trayendo = (datos?.cuentas || []).filter((c) => !c.completo);
+  // Si Mercado Pago rechazó el último pedido (token vencido, permisos), se dice en vez de «trayendo».
+  const conError = trayendo.find((c) => c.error && !c.trayendo);
 
   const hoy = hoyIso();
   const nombreSuc = (s) => (Number(s) === 0 ? (branches.find((b) => b.id === 'main')?.name || 'Principal') : (branches.find((b) => sucursalNum(b.id) === Number(s))?.name || `Sucursal ${s}`));
@@ -197,10 +199,12 @@ export default function Clientes() {
         <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Clientes</h1>
         <div style={{ ...tarjeta, padding: '22px 24px', maxWidth: 560, marginTop: 14 }}>
           <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
-            {trayendo.length ? 'Estamos trayendo tu historial de Mercado Pago' : 'Todavía no hay clientes'}
+            {conError ? 'No pudimos traer tu historial de Mercado Pago' : trayendo.length ? 'Estamos trayendo tu historial de Mercado Pago' : 'Todavía no hay clientes'}
           </div>
           <div style={{ color: T.txt2, fontSize: 14, marginBottom: trayendo.length || datos.cuentas?.length ? 0 : 14 }}>
-            {trayendo.length
+            {conError
+              ? <>Mercado Pago respondió: «{conError.error}». Lo volvemos a intentar solo cada 15 minutos; si sigue, desconectá y volvé a conectar la cuenta en Movimientos bancarios.</>
+              : trayendo.length
               ? <>Va mes por mes hacia atrás y tarda unos minutos. La lista aparece sola acá, y te avisamos en la campana cuando termine.
                 {trayendo[0].hasta ? <> Ya va por {MESES_LARGO[Number(trayendo[0].hasta.slice(5, 7)) - 1]} {trayendo[0].hasta.slice(0, 4)}.</> : null}</>
               : datos.cuentas?.length
