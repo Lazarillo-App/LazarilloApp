@@ -200,6 +200,41 @@ export default function MovimientosBancarios() {
       && (!q || `${f.quien} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
   }, [delPeriodo, lado, medio, caja, buscar]);
 
+  // Exportar (Diego 15/11/2026: «exportar los movimientos bancarios del período seleccionado»): lo que se ve
+  // con el período y los filtros elegidos, TODOS (no solo los 1.500 de la lista) y con todas las columnas,
+  // los importes como números para sumar en Excel. La librería se carga recién al tocar el botón.
+  const [exportando, setExportando] = useState(false);
+  const exportar = async () => {
+    if (!visibles.length) return;
+    setExportando(true);
+    try {
+      const XLSX = await import('xlsx');
+      const n = (v) => (v ? Math.round(Number(v) * 100) / 100 : 0);
+      const filas = visibles.map((f) => ({
+        Fecha: f.fecha, Hora: f.hora || '', Tipo: f.tipo, 'Pagador / detalle': f.lado === 'salida' ? (f.detalle || '') : (f.quien || ''),
+        'CUIT / DNI': f.doc || '', Descripción: f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '') : '', Medio: f.medio || '',
+        'Nº operación': f.op ? String(f.op) : '', 'Cupón (POS)': f.claveMx || '', 'Referencia externa': f.ref || '',
+        Acreditación: f.acredita || '', Cuotas: f.cuotas || '', Tarjeta: f.tarjeta ? `•••• ${f.tarjeta}` : '', 'Caja / QR': f.caja || '',
+        Importe: n(f.bruto), Comisión: -n(f.comision), Impuestos: -n(f.retenciones),
+        // Igual que el KPI «Neto del período»: una devolución total no resta (MP ya sacó ese cobro de la
+        // lista); la parcial sí. Así la suma de esta columna da el mismo neto que la pantalla.
+        Neto: f.lado === 'devolucion' && !f.parcial ? 0 : n(f.neto),
+        Nota: f.lado === 'devolucion' ? (f.parcial ? 'Devolución parcial: resta del neto' : 'Devolución total: el cobro ya no figura, no resta otra vez') : '',
+      }));
+      const hoja = XLSX.utils.json_to_sheet(filas);
+      hoja['!cols'] = Object.keys(filas[0]).map((k) => ({ wch: Math.max(10, k.length + 2, ...filas.slice(0, 200).map((x) => String(x[k] ?? '').length + 1)) }));
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
+      const fechas = visibles.map((f) => f.fecha).sort();
+      const cuenta = String(mp?.cuenta?.nickname || 'mercadopago').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      XLSX.writeFile(libro, `movimientos-${cuenta}-${fechas[0]}_${fechas[fechas.length - 1]}.xlsx`);
+    } catch {
+      avisar('No pude armar el Excel. Probá de nuevo.');
+    } finally {
+      setExportando(false);
+    }
+  };
+
   const tot = useMemo(() => {
     const ent = delPeriodo.filter((f) => f.lado === 'entrada');
     const sal = delPeriodo.filter((f) => f.lado === 'salida');
@@ -429,6 +464,10 @@ export default function MovimientosBancarios() {
           <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, importe, Nº de operación o cupón de MaxiRest"
             style={{ ...campo, flex: '1 1 220px', minWidth: 180 }} />
           <span style={{ color: T.txt2, fontSize: 13, whiteSpace: 'nowrap' }}>{visibles.length.toLocaleString('es-AR')} movimientos</span>
+          <button type="button" onClick={exportar} disabled={!visibles.length || exportando}
+            style={{ ...chip(false), fontWeight: 700, background: T.celeste, border: 'none', color: '#12111F', opacity: !visibles.length || exportando ? 0.5 : 1 }}>
+            {exportando ? 'Armando…' : 'Exportar a Excel'}
+          </button>
           <span style={{ position: 'relative' }}>
             <button type="button" onClick={() => setVerCols((v) => !v)} style={chip(verCols)} aria-expanded={verCols}>Columnas ▾</button>
             {verCols && (
