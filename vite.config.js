@@ -57,7 +57,14 @@ function iconoCelularPlugin() {
   }
 }
 
+// En Windows la carpeta puede llegar como "c:\…" o "C:\…" según desde dónde se abrió la terminal
+// (la de VS Code usa minúscula). Con dos páginas HTML, Vite busca el CSS de <style> de
+// pantalla/index.html con una de las dos y no lo encuentra («No matching HTML proxy module»,
+// 15/11/2026). Con la letra del disco siempre en mayúscula, el build sale igual desde cualquier lado.
+const RAIZ = __dirname.replace(/^([a-z]):/, (_, d) => `${d.toUpperCase()}:`)
+
 export default defineConfig({
+  root: RAIZ,
   base: '/',
   plugins: [react(), versionFilePlugin(), iconoCelularPlugin()],
   define: {
@@ -68,8 +75,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
-        pantalla: path.resolve(__dirname, 'pantalla/index.html'),
+        main: path.resolve(RAIZ, 'index.html'),
+        pantalla: path.resolve(RAIZ, 'pantalla/index.html'),
       },
     },
   },
