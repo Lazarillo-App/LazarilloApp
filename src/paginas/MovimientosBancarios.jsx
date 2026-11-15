@@ -59,7 +59,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
       neto: neto != null ? neto : bruto,
       ref: b.ref || '', doc: fmtDoc(b.doc, b.docTipo), acredita: b.acredita || '', cuotas: b.cuotas || null,
       op: String(b.op || b.mpId || ''), claveMx: b.claveMx || claveMx(b.mpId),
-      caja: b.caja || '', tarjeta: b.tarjeta || '', cuenta: b.cuenta ? String(b.cuenta) : '',
+      caja: b.caja || '', tarjeta: b.tarjeta || '', cuenta: b.cuenta ? String(b.cuenta) : '', email: b.email || '',
     };
   });
   const dev = devoluciones.map((d) => ({
@@ -103,6 +103,7 @@ const COLUMNAS = [
   { k: 'hora', l: 'Hora' },
   { k: 'tipo', l: 'Tipo', fija: true },
   { k: 'pagador', l: 'Pagador', fija: true },
+  { k: 'email', l: 'Email' },
   { k: 'detalle', l: 'Descripción' },
   { k: 'medio', l: 'Medio' },
   { k: 'op', l: 'Nº operación' },
@@ -215,7 +216,7 @@ export default function MovimientosBancarios() {
       && (!medio || f.medio === medio)
       && (!caja || f.caja === caja)
       && (!cuentaSel || f.cuenta === cuentaSel)
-      && (!q || `${f.quien} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
+      && (!q || `${f.quien} ${f.email || ''} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
   }, [delPeriodo, lado, medio, caja, cuentaSel, buscar]);
 
   // Exportar (Diego 15/11/2026: «exportar los movimientos bancarios del período seleccionado»): lo que se ve
@@ -230,7 +231,7 @@ export default function MovimientosBancarios() {
       const n = (v) => (v ? Math.round(Number(v) * 100) / 100 : 0);
       const filas = visibles.map((f) => ({
         Fecha: f.fecha, Hora: f.hora || '', Tipo: f.tipo, 'Pagador / detalle': f.lado === 'salida' ? (f.detalle || '') : (f.quien || ''),
-        'CUIT / DNI': f.doc || '', Descripción: f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '') : '', Medio: f.medio || '',
+        'CUIT / DNI': f.doc || '', Email: f.email || '', Descripción: f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '') : '', Medio: f.medio || '',
         'Nº operación': f.op ? String(f.op) : '', 'Cupón (POS)': f.claveMx || '', 'Referencia externa': f.ref || '',
         ...(variasCuentas ? { Cuenta: nombreCuenta(f.cuenta) } : {}),
         Acreditación: f.acredita || '', Cuotas: f.cuotas || '', Tarjeta: f.tarjeta ? `•••• ${f.tarjeta}` : '', 'Caja / QR': f.caja || '',
@@ -496,7 +497,7 @@ export default function MovimientosBancarios() {
               {cajas.map((m) => <option key={m} value={m}>Caja {m}</option>)}
             </select>
           )}
-          <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, importe, Nº de operación o cupón de MaxiRest"
+          <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, email, importe, Nº de operación o cupón del POS"
             style={{ ...campo, flex: '1 1 0', minWidth: 120 }} />
           <button type="button" onClick={exportar} disabled={!visibles.length || exportando} title="Bajar a Excel lo que se ve: período y filtros elegidos"
             style={{ ...chip(false), fontWeight: 700, background: T.celeste, border: 'none', color: '#12111F', opacity: !visibles.length || exportando ? 0.5 : 1 }}>
@@ -545,6 +546,7 @@ export default function MovimientosBancarios() {
                       </>
                     )}
                   </td>}
+                  {ve('email') && <td style={{ ...td, color: f.email ? T.txt2 : T.txt3, textAlign: 'left', fontSize: 12.5 }}>{f.email || '—'}</td>}
                   {ve('detalle') && <td style={{ ...td, color: T.txt3, whiteSpace: 'normal', maxWidth: 220, textAlign: 'left' }}>{f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '—') : '—'}</td>}
                   {ve('medio') && <td style={{ ...td, color: T.txt2 }}>{f.medio}</td>}
                   {ve('op') && <td title={f.claveMx ? `En MaxiRest (cupón del informe 22): ${f.claveMx}` : ''}
