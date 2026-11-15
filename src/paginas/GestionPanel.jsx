@@ -321,7 +321,8 @@ function GestionPanelContenido() {
   // Arranca solo mientras el panel no tenga datos propios (Diego 14/11/2026); si no, desde Guías.
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
     verPanel && !!rango.data && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores,
-    { sinDatos: sinDatosPanel });
+    // Al final ofrece cargar la primera factura con la ayuda de Anthony (Diego 14/11/2026).
+    { sinDatos: sinDatosPanel, siguiente: verCarga && pasosTour[pasosTour.length - 1]?.k === 'cargar' ? { id: 'carga_gastos', label: 'Cargar una factura ahora' } : undefined });
   const pasoTour = pasosTour[recPanel.paso - 1];
 
   return (

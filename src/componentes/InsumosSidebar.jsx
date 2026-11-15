@@ -513,6 +513,7 @@ function InsumosSidebar({
             return (
               <button
                 key={t.id}
+                data-tour={`insumos-tab-${t.id}`}
                 onClick={t.onClick}
                 className={activo ? 'on' : undefined}
               >

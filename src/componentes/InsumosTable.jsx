@@ -1023,7 +1023,7 @@ const InsumosTable = forwardRef(function InsumosTable({
             style={{ gridTemplateColumns: isElaborados ? GRID_ELAB : GRID_NO_ELAB, gap: 8 }}
           >
             {puedeSeleccionar && (
-              <div className="c-keep" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="c-keep" data-tour="insumos-marcar" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <input type="checkbox"
                   checked={!!selectionMode && idsVisibles.length > 0 && idsVisibles.every((id) => selectedInsumoIds.has(id))}
                   onChange={() => {
