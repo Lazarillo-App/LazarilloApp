@@ -28,26 +28,26 @@ const GROUPS = [
     modules: [
       // Medios de pago salió del menú (Diego 10/11/2026): se gestionan desde el desplegable de cada pago.
       // Tableros = las plazas de despacho de cocina y barra (Diego 12/11/2026).
-      { id: 'tableros', label: 'Tableros', emoji: '📋', to: '/tableros' },
-      { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas' },
+      { id: 'tableros', label: 'Tableros', emoji: '📋', to: '/tableros', claves: 'plazas cocina barra despacho pantalla tv' },
+      { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas', claves: 'empleados personal cronogramas turnos sueldos feriados calendario' },
     ],
   },
   {
     id: 'rentabilidad', label: 'Rentabilidad',
     modules: [
-      { id: 'recetas', label: 'Recetas', emoji: '📖', to: '/menu' },
-      { id: 'stock', label: 'Stock', emoji: '📦', to: null },
-      { id: 'compras', label: 'Compras', emoji: '🛒', to: null },
+      { id: 'recetas', label: 'Recetas', emoji: '📖', to: '/menu', claves: 'menu articulos insumos costos food cost precios canasta' },
+      { id: 'stock', label: 'Stock', emoji: '📦', to: null, claves: 'inventario existencias' },
+      { id: 'compras', label: 'Compras', emoji: '🛒', to: null, claves: 'pedidos proveedores' },
     ],
   },
   {
     id: 'administracion', label: 'Administración',
     modules: [
-      { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: '/conciliacion' },
-      { id: 'movimientos-bancarios', label: 'Movimientos bancarios', emoji: '🏦', to: '/movimientos-bancarios', soloAdmin: true },
-      { id: 'clientes', label: 'Clientes', emoji: '👥', to: '/clientes', soloAdmin: true },
+      { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: '/conciliacion', claves: 'banco mercado pago tarjetas cupones extracto' },
+      { id: 'movimientos-bancarios', label: 'Movimientos bancarios', emoji: '🏦', to: '/movimientos-bancarios', soloAdmin: true, claves: 'banco cuenta extracto mercado pago' },
+      { id: 'clientes', label: 'Clientes', emoji: '👥', to: '/clientes', soloAdmin: true, claves: 'cuenta corriente cobranzas' },
       // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
-      { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion' },
+      { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion', claves: 'panel gestion gastos compras ventas balance equilibrio facturas cargar pagos impagas proveedores sueldos' },
       // Conceptos de caja y Carga de gastos salen del menú (Diego 10/11/2026): Conceptos va en el
       // header del Panel de Gestión y la carga se hace desde el panel («Cargar Gastos»).
       // Sin "Versión celular" (usuaria 08/11/2026: se sigue desarrollando, pero no hace falta un botón
@@ -61,6 +61,11 @@ const GROUPS = [
 // que da un golpe visual muy fuerte con negocios de colores muy saturados,
 // muy claros o muy oscuros. Con la base siempre oscura, el texto claro
 // mantiene buen contraste sin importar el color del negocio.
+// Buscador (Diego 15/11/2026: no filtraba nada): sin mayúsculas ni acentos, por nombre y por palabras clave.
+const sinAcentos = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+const coincide = (m, q) => !q || sinAcentos(m.label).includes(q)
+  || sinAcentos(`${m.label} ${m.claves || ''}`).split(/\s+/).some((w) => w.startsWith(q));
+
 const C = {
   noche: 'color-mix(in srgb, var(--color-primary, #7a1f3d) 20%, #12111F)',
   line: 'rgba(255,255,255,.10)',
@@ -76,6 +81,13 @@ export default function ModulosDrawer({ open, onClose }) {
   // Ajuste a medida (13/11): módulos que el equipo ocultó para este cliente/negocio.
   const ocultos = useAjuste('modulos_ocultos', []);
   const visible = (m) => !(Array.isArray(ocultos) && ocultos.includes(m.id)) && (!SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]));
+
+  const q = sinAcentos(query.trim());
+  const grupos = GROUPS.map((g) => ({ ...g, modules: g.modules.filter((m) => visible(m) && coincide(m, q)) }))
+    .filter((g) => g.modules.length);
+  const primero = grupos.flatMap((g) => g.modules).find((m) => m.to);
+  // Al cerrar el menú se limpia la búsqueda: la próxima vez arranca con todo.
+  React.useEffect(() => { if (!open) setQuery(''); }, [open]);
 
   const irA = (to) => {
     if (!to) return;
@@ -97,14 +109,15 @@ export default function ModulosDrawer({ open, onClose }) {
 
         {/* Los gap van en px: en sx un número es theme.spacing (gap: 12 eran 96px y separaba todo,
             Diego 15/11/2026). */}
-        {/* Buscador de funciones — por ahora solo visual, sin filtrar nada.
-            Más adelante: tipear "pagos de mercado pago" y redirigir directo
-            a Conciliación con eso a la vista. */}
+        {/* Buscador de funciones: filtra los módulos; Enter abre el primero. Más adelante: tipear
+            "pagos de mercado pago" y abrir Conciliación con eso a la vista. */}
         <Box sx={{ margin: '2px 12px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: C.hover, border: `1px solid ${C.line}`, borderRadius: 10, padding: '9px 12px' }}>
           <span style={{ fontSize: 15, opacity: 0.7 }}>🔍</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && primero) irA(primero.to); if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); } }}
+            autoFocus
             placeholder="Buscar una función…"
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
@@ -131,12 +144,15 @@ export default function ModulosDrawer({ open, onClose }) {
           scrollbarWidth: 'none', msOverflowStyle: 'none',
           '&::-webkit-scrollbar': { display: 'none' },
         }}>
-          {GROUPS.map((g) => (
+          {!grupos.length && (
+            <Box sx={{ color: C.sidebarDim, fontSize: 14, padding: '8px 4px' }}>No hay nada con «{query.trim()}».</Box>
+          )}
+          {grupos.map((g) => (
             <Box key={g.id} sx={{ marginBottom: '12px' }}>
               <Box sx={{ fontSize: 12, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', color: C.sidebarDim, padding: '0 4px 7px' }}>
                 {g.label}
               </Box>
-              {g.modules.filter(visible).map((m) => {
+              {g.modules.map((m) => {
                 const disabled = !m.to;
                 return (
                   <Box
