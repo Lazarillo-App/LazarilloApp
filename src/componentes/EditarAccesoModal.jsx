@@ -358,7 +358,7 @@ function FilaNegocio({ n, persona, equipo = [], esYo, puedeInvitarAdmin, busy, o
           <TextField autoFocus fullWidth size="small" placeholder="Ej. Cocinero, Mozo, Jefe de barra" value={creando || ''}
             onChange={(e) => setCreando(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') crearSubrol(); }} sx={{ mt: 0.5 }} />
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Nace con lo básico del Staff. Qué más puede hacer se tilda en Mi perfil › Equipo › Roles.
+            Nace con lo básico del Staff. Qué más puede hacer se tilda en Mi equipo › Roles.
           </Typography>
         </DialogContent>
         <DialogActions>
