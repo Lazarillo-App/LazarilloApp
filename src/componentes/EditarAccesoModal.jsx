@@ -13,14 +13,18 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, Stack, Typography, Box, Chip, IconButton, MenuItem,
-  TextField, Alert, Divider, CircularProgress, Tooltip,
+  TextField, Alert, Divider, CircularProgress, Tooltip, Switch,
 } from '@mui/material';
 import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
 import BusinessIcon from '@mui/icons-material/Business';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';
-import { createInvitation, revokeAssignment, updateAssignment } from '@/servicios/apiTeam';
+import TuneIcon from '@mui/icons-material/Tune';
+import StarRoundedIcon from '@mui/icons-material/StarRounded';
+import { createInvitation, revokeAssignment, updateAssignment, efectivosAcceso, pasarTitularidad } from '@/servicios/apiTeam';
+import AjustesPersonaDialog from '@/componentes/configuracion/AjustesPersonaDialog';
+import { cantidadAjustes } from '@/componentes/configuracion/catalogoPermisos';
 import { listarSectores } from '@/servicios/apiSectores';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
@@ -36,8 +40,24 @@ const ROL_LABEL = { owner: 'Dueño', admin: 'Administración', staff: 'Staff' };
 // Subroles de Staff (Diego 11/11/2026): 'staff:<id>' = subrol a medida (Jefe de cocina, Cocinero…).
 const valorRol = (n) => (n.role === 'admin' && n.customRoleId ? `rol:${n.customRoleId}` : (n.role === 'staff' && n.customRoleId ? `staff:${n.customRoleId}` : n.role));
 const CREAR_SUBROL = '__crear_subrol';
+// Errores del back de co-dueño (Diego 14/11/2026) en castellano.
+const ERRORES = {
+  titular_pasa_primero: 'Es el titular de la cuenta: primero pasá la titularidad a otro Dueño.',
+  only_owner_assigns_owner: 'Solo un Dueño puede hacer Dueño a otra persona.',
+  cannot_revoke_owner: 'Al titular de la cuenta no se le puede quitar el acceso.',
+  nuevo_no_es_duenio: 'La persona tiene que ser Dueño en todos los negocios antes de ser titular.',
+  only_titular: 'Solo el titular puede pasar la titularidad.',
+};
+const textoError = (e, def) => {
+  const c = e?.response?.data?.error || e?.data?.error || e?.message;
+  return ERRORES[c] || c || def;
+};
+const nombreRol = (n) => (n.role === 'staff' && n.customRoleNombre ? `Staff · ${n.customRoleNombre}` : n.customRoleNombre) || ROL_LABEL[n.role] || n.role;
+// "Igual a…": el acceso de otra persona que sirve de referencia (el del mismo negocio si tiene).
+const accesoReferencia = (m, n) => (m.negocios || []).filter((x) => x.assignmentId)
+  .sort((a, b) => Number(b.scopeType === n.scopeType && b.scopeId === n.scopeId) - Number(a.scopeType === n.scopeType && a.scopeId === n.scopeId))[0] || null;
 
-function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
+function FilaNegocio({ n, persona, equipo = [], esYo, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const { isOwner, businesses = [] } = useAccess() || {};
   const [editando, setEditando] = useState(false);
   const [rol, setRol] = useState(valorRol(n));
@@ -49,6 +69,10 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
   const [guardando, setGuardando] = useState(false);
   const [errorEdit, setErrorEdit] = useState(null);
   const [gestionando, setGestionando] = useState(false);
+  const [igualA, setIgualA] = useState(''); // email de la persona de referencia
+  const [ajustesCopia, setAjustesCopia] = useState(null); // ajustes copiados con "Igual a…"
+  const [ajustesDlg, setAjustesDlg] = useState(null); // { tipo, base, ajustes } al abrir "Ajustes solo para…"
+  const [titularDlg, setTitularDlg] = useState(false);
 
   // Roles a medida de la organización de este acceso (solo los asigna el dueño).
   const bizDeFila = n.scopeType === 'business'
@@ -93,7 +117,39 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
     setRol(valorRol(n));
     setSectorIds(new Set(n.sectorIds || []));
     setErrorEdit(null);
+    setIgualA(''); setAjustesCopia(null);
     setEditando(true);
+  };
+
+  // Personas que sirven de referencia: con acceso propio y cuyo rol puedo asignar.
+  const referencias = useMemo(() => equipo
+    .filter((m) => m.email !== persona?.email)
+    .map((m) => ({ m, ref: accesoReferencia(m, n) }))
+    .filter(({ ref }) => ref && (isOwner || (ref.role !== 'owner' && (puedeInvitarAdmin || ref.role === 'staff'))))
+    .sort((a, b) => String(a.m.alias || a.m.email).localeCompare(String(b.m.alias || b.m.email))),
+  [equipo, persona?.email, n, isOwner, puedeInvitarAdmin]);
+
+  const elegirIgualA = (email) => {
+    setIgualA(email);
+    const r = referencias.find((x) => x.m.email === email)?.ref;
+    if (!r) { setAjustesCopia(null); return; }
+    setRol(valorRol(r));
+    // Los sectores son de cada negocio: se copian solo si es el mismo.
+    if (r.scopeType === 'business' && n.scopeType === 'business' && Number(r.scopeId) === Number(n.scopeId)) setSectorIds(new Set(r.sectorIds || []));
+    setAjustesCopia(r.role === 'owner' ? {} : (r.ajustes || {}));
+  };
+
+  const abrirAjustes = async () => {
+    setErrorEdit(null);
+    try {
+      const r = await efectivosAcceso(n.assignmentId);
+      setAjustesDlg({ tipo: r.tipo === 'staff' ? 'staff' : 'admin', base: r.base || {}, ajustes: r.ajustes || {} });
+    } catch (e) { setErrorEdit(textoError(e, 'No se pudieron leer sus permisos')); }
+  };
+  const guardarAjustes = async (ajustes) => {
+    await updateAssignment(n.assignmentId, { ajustes });
+    try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
+    onGuardado?.();
   };
 
   const guardar = async () => {
@@ -103,6 +159,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
       const role = esMedida ? 'admin' : (rol.startsWith('staff') ? 'staff' : rol);
       await updateAssignment(n.assignmentId, {
         role,
+        ...(ajustesCopia && role !== 'owner' ? { ajustes: ajustesCopia } : {}),
         ...(role === 'staff' ? { customRoleId: rol.startsWith('staff:') ? Number(rol.slice(6)) : null } : {}),
         sectorIds: role === 'staff' ? Array.from(sectorIds) : [],
         // Solo el dueño toca el rol a medida (null = Administración completa).
@@ -112,13 +169,18 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
       setEditando(false);
       onGuardado?.();
     } catch (e) {
-      setErrorEdit(e?.response?.data?.error || e?.message || 'No se pudo guardar');
+      setErrorEdit(textoError(e, 'No se pudo guardar'));
     } finally {
       setGuardando(false);
     }
   };
 
-  const puedeEditar = n.role !== 'owner' && !!n.assignmentId;
+  // Co-dueño (Diego 14/11/2026): un Dueño puede cambiar a otro Dueño; el titular solo pasando la titularidad.
+  const puedeEditar = !!n.assignmentId && !n.esTitular && (n.role !== 'owner' || isOwner);
+  // Ajustes solo para esta persona: el Dueño a cualquiera; el resto solo al Staff.
+  const puedeAjustar = !!n.assignmentId && n.role !== 'owner' && (isOwner || n.role === 'staff');
+  const nAjustes = cantidadAjustes(n.ajustes);
+  const bizTitularidad = n.scopeType === 'business' ? n.scopeId : bizDeFila;
 
   return (
     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, px: 1.5, py: 1 }}>
@@ -127,13 +189,35 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
         <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>
           {n.scopeName}
         </Typography>
+        {!editando && n.esTitular && (
+          <Tooltip title="Titular de la cuenta">
+            <Chip icon={<StarRoundedIcon sx={{ fontSize: '0.85rem !important', color: '#f5b301 !important' }} />} label="Titular" size="small"
+              sx={{ height: 20, fontSize: '0.66rem', bgcolor: '#f5b30118', color: '#9a6b00', fontWeight: 600 }} />
+          </Tooltip>
+        )}
         {!editando && (
-          <Chip label={(n.role === 'staff' && n.customRoleNombre ? `Staff · ${n.customRoleNombre}` : n.customRoleNombre) || ROL_LABEL[n.role] || n.role} size="small"
+          <Chip label={nAjustes ? `${nombreRol(n)} + ${nAjustes}` : nombreRol(n)} size="small"
+            title={nAjustes ? `${nAjustes} ajuste${nAjustes !== 1 ? 's' : ''} solo para esta persona` : undefined}
             sx={{ height: 20, fontSize: '0.66rem', bgcolor: `${tc}15`, color: tc }} />
         )}
         {n.account_status === 'invited' && (
           <Chip label="pendiente" size="small" color="warning" variant="outlined"
             sx={{ height: 20, fontSize: '0.62rem' }} />
+        )}
+        {puedeAjustar && !editando && (
+          <Tooltip title="Ajustes solo para esta persona">
+            <span>
+              <IconButton size="small" onClick={abrirAjustes} disabled={busy} sx={{ color: nAjustes ? tc : undefined }}>
+                <TuneIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+        {n.esTitular && esYo && isOwner && !editando && (
+          <Button size="small" onClick={() => setTitularDlg(true)} disabled={busy}
+            sx={{ textTransform: 'none', fontSize: '0.72rem', color: tc, minWidth: 0, px: 1, height: 28 }}>
+            Pasar titularidad…
+          </Button>
         )}
         {puedeEditar && !editando && (
           <Tooltip title="Editar rol/sector">
@@ -144,15 +228,18 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
             </span>
           </Tooltip>
         )}
-        <Tooltip title="Quitar acceso a este negocio">
-          <span>
-            <IconButton size="small" onClick={() => onQuitar(n)} disabled={busy}
-              sx={{ color: 'error.main' }}>
-              <DeleteOutlineIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
+        {!n.esTitular && (n.role !== 'owner' || isOwner) && (
+          <Tooltip title="Quitar acceso a este negocio">
+            <span>
+              <IconButton size="small" onClick={() => onQuitar(n)} disabled={busy}
+                sx={{ color: 'error.main' }}>
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
       </Stack>
+      {errorEdit && !editando && <Alert severity="error" sx={{ mt: 1 }} onClose={() => setErrorEdit(null)}>{errorEdit}</Alert>}
 
       {editando && (
         <Box sx={{ mt: 1.25 }}>
@@ -160,7 +247,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
               select label="Rol" size="small" value={rol}
-              onChange={(e) => { if (e.target.value === CREAR_SUBROL) { setCreando(''); return; } setRol(e.target.value); }}
+              onChange={(e) => { if (e.target.value === CREAR_SUBROL) { setCreando(''); return; } setRol(e.target.value); setIgualA(''); setAjustesCopia(null); }}
               sx={{ width: 190 }}
             >
               {/* Acción primero, en franja gris (patrón de desplegables con acción). */}
@@ -168,6 +255,7 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
                 sx={{ bgcolor: 'action.hover', color: 'primary.main', fontWeight: 600, fontSize: '0.85rem', '&:hover': { bgcolor: 'action.selected' } }}>
                 + Crear subrol de Staff
               </MenuItem>
+              {isOwner && <MenuItem value="owner">Dueño</MenuItem>}
               {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
               {puedeInvitarAdmin && rolesMedida.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`}>{r.nombre}</MenuItem>)}
               {/* Si el rol a medida ya no está en la lista (otra organización), igual se muestra. */}
@@ -183,6 +271,21 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
                 <MenuItem value={rol} sx={{ pl: 3.5 }}>└ {n.customRoleNombre || 'Subrol'}</MenuItem>
               )}
             </TextField>
+            <TextField select label="Igual a…" size="small" value={igualA} onChange={(e) => elegirIgualA(e.target.value)}
+              sx={{ flex: 1, minWidth: 0 }}
+              SelectProps={{ renderValue: (v) => referencias.find((x) => x.m.email === v)?.m.alias || v }}
+              disabled={!referencias.length}>
+              {referencias.map(({ m, ref }) => (
+                <MenuItem key={m.email} value={m.email}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontSize: '0.85rem' }} noWrap>{m.alias || m.email}</Typography>
+                    <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary' }} noWrap>
+                      {nombreRol(ref)}{cantidadAjustes(ref.ajustes) ? ` + ${cantidadAjustes(ref.ajustes)}` : ''} · {ref.scopeName}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              ))}
+            </TextField>
             <Button size="small" onClick={() => setEditando(false)} disabled={guardando}>Cancelar</Button>
             <Button size="small" variant="contained" onClick={guardar} disabled={guardando}
               sx={{ bgcolor: tc, '&:hover': { bgcolor: tc, filter: 'brightness(0.9)' } }}>
@@ -190,6 +293,16 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
             </Button>
           </Stack>
 
+          {igualA && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+              Copia el rol{rol.startsWith('staff') && n.scopeType === 'business' && referencias.find((x) => x.m.email === igualA)?.ref?.scopeId === n.scopeId ? ', los sectores' : ''} y los ajustes de {referencias.find((x) => x.m.email === igualA)?.m.alias || igualA}. Se guarda como una copia: si después le cambiás algo a esa persona, no se toca este acceso.
+            </Typography>
+          )}
+          {rol === 'owner' && n.role !== 'owner' && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+              Como Dueño ve y edita todo, puede sumar Dueños y gestionar roles. El titular de la cuenta sigue siendo uno solo.
+            </Typography>
+          )}
           {rol.startsWith('staff') && n.scopeType === 'business' && (
             <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: `${tc}08`, border: `1px solid ${tc}30`, mt: 1 }}>
               <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.5 }}>
@@ -253,11 +366,73 @@ function FilaNegocio({ n, puedeInvitarAdmin, busy, onQuitar, onGuardado }) {
           <Button variant="contained" disabled={!String(creando || '').trim()} onClick={crearSubrol} sx={{ bgcolor: tc }}>Crear</Button>
         </DialogActions>
       </Dialog>
+      {ajustesDlg && (
+        <AjustesPersonaDialog open onClose={() => setAjustesDlg(null)}
+          persona={persona?.alias || persona?.email} rolNombre={nombreRol(n)}
+          tipo={ajustesDlg.tipo} base={ajustesDlg.base} ajustes={ajustesDlg.ajustes} onGuardar={guardarAjustes} />
+      )}
+      {titularDlg && (
+        <PasarTitularidadDialog onClose={() => setTitularDlg(false)} equipo={equipo} yoEmail={persona?.email}
+          businessId={bizTitularidad} onHecho={() => { try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {} onGuardado?.(); }} />
+      )}
     </Box>
   );
 }
 
-export default function EditarAccesoModal({ open, onClose, persona, onChanged }) {
+/* ─── Pasar la titularidad de la cuenta a otro Dueño (Diego 14/11/2026) ─── */
+function PasarTitularidadDialog({ onClose, equipo, yoEmail, businessId, onHecho }) {
+  const duenios = equipo.filter((m) => m.email !== yoEmail && (m.negocios || []).some((x) => x.role === 'owner'));
+  const [userId, setUserId] = useState(duenios[0]?.user_id || '');
+  const [sigoDuenio, setSigoDuenio] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  const pasar = async () => {
+    setGuardando(true); setError(null);
+    try {
+      await pasarTitularidad({ businessId: Number(businessId), userId: Number(userId), yoQuedo: sigoDuenio ? 'owner' : 'admin' });
+      onHecho?.(); onClose();
+    } catch (e) { setError(textoError(e, 'No se pudo pasar la titularidad')); }
+    finally { setGuardando(false); }
+  };
+  return (
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+        <StarRoundedIcon sx={{ color: '#f5b301' }} /> Pasar titularidad
+      </DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError(null)}>{error}</Alert>}
+        {!duenios.length ? (
+          <Typography variant="body2" color="text.secondary">
+            La titularidad pasa a otro Dueño. Primero hacé Dueño a alguien: Editar acceso › Rol › Dueño.
+          </Typography>
+        ) : (
+          <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+            <TextField select size="small" label="Nuevo titular" value={userId} onChange={(e) => setUserId(e.target.value)} fullWidth>
+              {duenios.map((m) => <MenuItem key={m.email} value={m.user_id}>{m.alias || m.email}</MenuItem>)}
+            </TextField>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography variant="body2">Yo sigo como Dueño</Typography>
+              <Switch checked={sigoDuenio} onChange={(e) => setSigoDuenio(e.target.checked)} />
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {sigoDuenio ? 'Seguís viendo y editando todo; solo deja de ser tuya la cuenta.' : 'Quedás como Administración.'} Pasa en todos los negocios de la cuenta.
+            </Typography>
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} disabled={guardando}>Cancelar</Button>
+        {!!duenios.length && (
+          <Button variant="contained" disableElevation onClick={pasar} disabled={guardando || !userId} sx={{ bgcolor: tc }}>
+            {guardando ? 'Pasando…' : 'Pasar titularidad'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+export default function EditarAccesoModal({ open, onClose, persona, equipo = [], esYo = false, onChanged }) {
   const { items: allBusinesses, activeId } = useBusiness() || {};
   const { canDo, isOwner } = useAccess() || {};
   const puedeInvitarAdmin = canDo?.('invite_admin');
@@ -341,7 +516,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
       try { window.dispatchEvent(new CustomEvent('team:changed')); } catch {}
       onChanged?.();
     } catch (e) {
-      setError(e?.message || 'No se pudo quitar el acceso');
+      setError(textoError(e, 'No se pudo quitar el acceso'));
     } finally {
       setBusy(false);
     }
@@ -367,7 +542,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
       setSectorIds(new Set());
       onChanged?.();
     } catch (e) {
-      setError(e?.response?.data?.error || e?.message || 'No se pudo agregar el acceso');
+      setError(textoError(e, 'No se pudo agregar el acceso'));
     } finally {
       setBusy(false);
     }
@@ -402,6 +577,9 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                 <FilaNegocio
                   key={n.assignmentId ?? `${n.scopeType}-${n.scopeId}`}
                   n={n}
+                  persona={persona}
+                  equipo={equipo}
+                  esYo={esYo}
                   puedeInvitarAdmin={puedeInvitarAdmin}
                   busy={busy}
                   onQuitar={quitarAcceso}
@@ -444,6 +622,7 @@ export default function EditarAccesoModal({ open, onClose, persona, onChanged })
                   onChange={(e) => setNuevoRol(e.target.value)}
                   sx={{ width: 170 }}
                 >
+                  {isOwner && <MenuItem value="owner">Dueño</MenuItem>}
                   {puedeInvitarAdmin && <MenuItem value="admin">Administración</MenuItem>}
                   {puedeInvitarAdmin && rolesMedidaNuevo.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`}>{r.nombre}</MenuItem>)}
                   <MenuItem value="staff">Staff</MenuItem>
