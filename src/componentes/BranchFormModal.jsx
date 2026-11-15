@@ -70,6 +70,8 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
         props:    {
           social: { instagram: instagram.trim() || null, website: website.trim() || null },
           cuit: cuitNum ? `${cuitNum.slice(0, 2)}-${cuitNum.slice(2, 10)}-${cuitNum.slice(10)}` : null,
+          // si lo cambian a mano deja de ser «el de Mercado Pago»
+          cuit_origen: cuitNum && cuitNum === String(branch?.props?.cuit || '').replace(/\D/g, '') ? (branch?.props?.cuit_origen || null) : null,
         },
       };
 
@@ -140,7 +142,9 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
 
           {field('CUIT de la sucursal', cuit, setCuit, {
             placeholder: '30-12345678-9',
-            helperText: 'Puede ser el de la organización o uno propio. Sirve para no contar tus propias cuentas como clientes.',
+            helperText: branch?.props?.cuit_origen === 'mercadopago' && cuit === (branch?.props?.cuit || '')
+              ? 'Lo completamos con el CUIT de tu cuenta de Mercado Pago. Podés cambiarlo.'
+              : 'Puede ser el de la organización o uno propio. Sirve para no contar tus propias cuentas como clientes.',
             inputProps: { inputMode: 'numeric' },
           })}
 
