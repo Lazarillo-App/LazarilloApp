@@ -7,6 +7,7 @@
 import { useEffect, useRef } from 'react';
 
 export const GUIAS = [
+  { id: 'tabla_articulos', grupo: 'Recetas', titulo: 'Artículos', detalle: 'Ventas, costo, precio, objetivo y nuevo precio', ruta: '/menu' },
   { id: 'tabla_insumos', grupo: 'Recetas', titulo: 'Insumos', detalle: 'Agrupar, cargar y revisar los insumos', ruta: '/insumos' },
   { id: 'crear_insumo', grupo: 'Recetas', titulo: 'Crear un insumo', detalle: 'Nombre, rubro, unidad y precio', ruta: '/insumos' },
   { id: 'menu_accion', grupo: 'Recetas', titulo: 'Acciones de un artículo', detalle: 'Editar, mover, armar una promo o discontinuar', ruta: '/menu' },

@@ -9,6 +9,24 @@ import { useLocation } from 'react-router-dom';
 /** Ref que busca el elemento en el DOM cada vez (el header vive fuera de la página). */
 export const refTour = (clave) => ({ get current() { return document.querySelector(`[data-tour="${clave}"]`); } });
 
+/** ¿El elemento se ve de verdad? Dentro de la ventana y sin que lo corte un contenedor con
+ *  overflow (la tabla de artículos a 1100 px corta la última columna). Compara rectángulos del
+ *  mismo sistema (getBoundingClientRect), así no depende del zoom de la app. */
+export function seVe(el) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return false;
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+    const pr = p.getBoundingClientRect();
+    if (cx < pr.left || cx > pr.right || cy < pr.top || cy > pr.bottom) return false;
+  }
+  return true;
+}
+
 const visible = (clave) => {
   const el = document.querySelector(`[data-tour="${clave}"]`);
   if (!el) return false;
