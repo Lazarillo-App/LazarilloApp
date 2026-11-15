@@ -9,7 +9,11 @@ import LOGO from '@/assets/brand/logo.png';
 import { BASE } from '@/servicios/apiBase';
 import DOG from '@/assets/brand/anthony.png';
 import { DEMO_COSTOS } from '@/componentes/landing-demos/costos';
-import { DEMO_RESULTADOS } from '@/componentes/landing-demos/resultados';
+import { DEMO_MOVIL } from '@/componentes/landing-demos/movil';
+import { DEMO_CLIENTES } from '@/componentes/landing-demos/clientes';
+import { DEMO_COBROS } from '@/componentes/landing-demos/cobros';
+import { DEMO_COCINA } from '@/componentes/landing-demos/cocina';
+import { DEMO_CONCILIACION } from '@/componentes/landing-demos/conciliacion';
 import { DEMO_EQUIPO } from '@/componentes/landing-demos/equipo';
 import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG, TABLERO_EJEMPLO } from '@/componentes/landing-logos';
 
@@ -200,8 +204,10 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .dbody{display:grid;grid-template-columns:1fr 330px;gap:28px;align-items:start;}
 .dshot{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(21,33,62,.18);border:1px solid var(--line);background:#fff;}
 .dshot img{display:block;width:100%;height:auto;}
-.dpin{position:absolute;width:30px;height:30px;margin:-4px 0 0 -4px;border-radius:50%;border:2px solid #fff;background:var(--sky);color:var(--ink);font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s;}
-.dpin.on{background:var(--ink);color:#fff;transform:scale(1.18);box-shadow:0 0 0 6px rgba(91,194,234,.45);}
+.dshot.movil .dpin{width:22px;height:22px;font-size:11px;}
+.dshot.movil{max-width:300px;margin:0 auto;border:10px solid var(--navy);border-radius:34px;box-shadow:0 22px 50px rgba(21,33,62,.28);}
+.dpin{position:absolute;width:26px;height:26px;transform:translate(-50%,-50%);border-radius:50%;border:2px solid #fff;background:var(--sky);color:var(--ink);font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s;}
+.dpin.on{background:var(--ink);color:#fff;transform:translate(-50%,-50%) scale(1.18);box-shadow:0 0 0 6px rgba(91,194,234,.45);}
 .dpasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
 .dpasos li{display:flex;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent;transition:background .15s;}
 .dpasos li.on{background:#fff;border-color:var(--line);box-shadow:0 6px 18px rgba(21,33,62,.08);}
@@ -319,22 +325,48 @@ const logosClientes = [
 const demos = [
   { id: 'costos', tab: 'Costos y precios', img: DEMO_COSTOS, alt: 'Tabla de artículos con costo, precio y costo % contra el objetivo',
     pasos: [
-      { x: 46, y: 6, t: 'Cuánto te cuesta cada plato', d: 'Sale de su receta y se actualiza con cada compra. Debajo, el precio que necesitás para llegar a tu objetivo.' },
-      { x: 71, y: 6, t: 'Qué parte del precio se va en costo', d: 'Contra tu objetivo, plato por plato. En rojo, lo que se pasó.' },
-      { x: 84, y: 2, t: 'El precio nuevo, de un toque', d: 'Si el sugerido supera tu precio, lo tomás con un clic. También podés subir un % a todo un rubro.' },
+      { x: 48.5, y: 8, t: 'Cuánto te cuesta cada plato', d: 'Sale de su receta y se actualiza con cada compra. Debajo, el precio que necesitás para llegar a tu objetivo.' },
+      { x: 70.0, y: 7, t: 'Qué parte del precio se va en costo', d: 'Contra tu objetivo, plato por plato. En rojo, lo que se pasó.' },
+      { x: 85.5, y: 3.5, t: 'El precio nuevo, de un toque', d: 'Si el sugerido supera tu precio, lo tomás con un clic. También podés subir un % a todo un rubro.' },
     ] },
-  { id: 'resultados', tab: 'Resultados', img: DEMO_RESULTADOS, alt: 'Panel de resultados con mix, canasta, proyección y gastos por rubro',
+  { id: 'movil', tab: 'En el celular', img: DEMO_MOVIL, movil: true, alt: 'Tablero de resultados del dueño en el celular',
+    nota: '100% web: lo abrís en el celular o en la compu, sin instalar nada.',
     pasos: [
-      { x: 27, y: 4, t: 'Cómo cerraste el mes', d: 'Food cost, personal y el mix de los dos, con la diferencia contra el mes anterior.' },
-      { x: 64, y: 4, t: 'Tu canasta, tu inflación', d: 'Cuánto subieron tus costos de verdad, no los del INDEC.' },
-      { x: 92, y: 4, t: 'Cómo vas a cerrar', d: 'La proyección de ventas del mes, con lo real hasta hoy.' },
-      { x: 92, y: 42, t: 'Cada gasto, contra lo de siempre', d: 'Cada rubro se compara con lo que suele gastar: lo que se dispara se ve en color.' },
+      { x: 4, y: 22.5, t: 'Cómo vas a cerrar el mes', d: 'Ventas y gastos proyectados al cierre, con lo real hasta hoy.' },
+      { x: 4, y: 42, t: 'Food cost, personal y mix', d: 'Contra el mes anterior, y cuánta plata es la diferencia.' },
+      { x: 4, y: 80.5, t: 'Cada gasto, por rubro', d: 'Cuánto se lleva cada rubro de lo que vendés.' },
+    ] },
+  { id: 'clientes', tab: 'Clientes', img: DEMO_CLIENTES, alt: 'Clientes que pagaron por Mercado Pago, con segmentos y días sin venir',
+    pasos: [
+      { x: 40.5, y: 12.8, t: 'Quién vuelve y quién no', d: 'Los que te pagan por Mercado Pago: cuántos repiten y su ticket promedio.' },
+      { x: 20.5, y: 28.7, t: 'Clientes en riesgo', d: 'Frecuentes, nuevos, dormidos: sabés a quién llamar antes de perderlo.' },
+      { x: 62.0, y: 35, t: 'Hace cuánto no vienen', d: 'Los días sin venir de cada uno. Exportás la lista para tus campañas.' },
+    ] },
+  { id: 'cobros', tab: 'Cobros', img: DEMO_COBROS, alt: 'Movimientos de Mercado Pago con comisiones, impuestos y neto',
+    pasos: [
+      { x: 16.5, y: 24.4, t: 'Lo que te cuesta cobrar', d: 'Las comisiones de Mercado Pago, por medio de cobro.' },
+      { x: 31.5, y: 24.4, t: 'Impuestos y retenciones', d: 'Todo lo que te descuentan, sumado y en % de lo cobrado.' },
+      { x: 74.3, y: 52.5, t: 'Cada cobro, chequeado', d: 'Importe, comisión, impuestos y neto de cada operación. Se trae solo todos los días.' },
+    ] },
+  { id: 'conciliacion', tab: 'Conciliación', img: DEMO_CONCILIACION, alt: 'Conciliación de las ventas del POS con los cobros del banco',
+    pasos: [
+      { x: 2.5, y: 37.8, t: 'Tus ventas y tus cobros, lado a lado', d: 'Lo que vendiste en el POS de un lado y lo que entró al banco del otro.' },
+      { x: 11, y: 43.3, t: 'Se concilian solos', d: 'Por cupón, por importe o por hora: Lazarillo cruza cada venta con su cobro.' },
+      { x: 2.5, y: 22.9, t: 'Cuánto ya está chequeado', d: 'Los conciliados del período, con la diferencia de cada uno.' },
+      { x: 81, y: 22.9, t: 'Lo que falta, a la vista', d: 'Lo pendiente de cada lado y la diferencia, para resolverlo a mano.' },
+    ] },
+  { id: 'cocina', tab: 'Cocina', img: DEMO_COCINA, alt: 'Tablero de cocina en modo armar, con los platos y sus ingredientes por color',
+    pasos: [
+      { x: 83.0, y: 6.5, t: 'Elegís los platos', d: 'Con «+ Productos» armás la plaza: ensaladas, parrilla, postres.' },
+      { x: 2.5, y: 37, t: 'Los ordenás arrastrando', d: 'Cada ingrediente con su cantidad, en el orden en que se arma el plato.' },
+      { x: 18.0, y: 33, t: 'Colores que se ven de lejos', d: 'Tocás un color para cambiarlo: el equipo reconoce cada ingrediente de un vistazo.' },
+      { x: 78.0, y: 6.5, t: 'Directo a la TV de la cocina', d: 'La vinculás a la TV y se actualiza sola.' },
     ] },
   { id: 'equipo', tab: 'Equipo', img: DEMO_EQUIPO, alt: 'Cronograma semanal del salón con turnos, horas y francos',
     pasos: [
-      { x: 33, y: 24, t: 'La semana armada en minutos', d: 'Cada persona en su turno, con puesto, horario y feriados.' },
-      { x: 75, y: 10, t: 'Días y horas de cada uno', d: 'En la semana y en el mes, para saber cuánto te cuesta abrir.' },
-      { x: 85, y: 1, t: 'Directo al WhatsApp del equipo', d: 'Lo exportás como imagen y lo mandás. Sin planillas.' },
+      { x: 22.0, y: 26, t: 'La semana armada en minutos', d: 'Cada persona en su turno, con puesto, horario y feriados.' },
+      { x: 72.5, y: 14.5, t: 'Días y horas de cada uno', d: 'En la semana y en el mes, para saber cuánto te cuesta abrir.' },
+      { x: 88.0, y: 3, t: 'Directo al WhatsApp del equipo', d: 'Lo exportás como imagen y lo mandás. Sin planillas.' },
     ] },
 ];
 
@@ -428,7 +460,7 @@ function ComoFunciona() {
           ))}
         </div>
         <div className="dbody">
-          <div className="dshot">
+          <div className={'dshot' + (d.movil ? ' movil' : '')}>
             <img src={d.img} alt={d.alt} loading="lazy" />
             {d.pasos.map((p, i) => (
               <button key={i} className={'dpin' + (i === paso ? ' on' : '')} style={{ left: p.x + '%', top: p.y + '%' }} onClick={() => setPaso(i)} aria-label={p.t}>{i + 1}</button>
@@ -440,7 +472,7 @@ function ComoFunciona() {
                 <span className="n">{i + 1}</span><div><b>{p.t}</b><p>{p.d}</p></div>
               </li>
             ))}
-            <li className="dnota"><img src={DOG} alt="" /> Números y nombres de ejemplo.</li>
+            <li className="dnota"><img src={DOG} alt="" /> {d.nota ? <span>{d.nota}<br />Números y nombres de ejemplo.</span> : 'Números y nombres de ejemplo.'}</li>
             <li className="dmas"><Link to="/funcionalidades">Ver todas las funcionalidades →</Link></li>
           </ol>
         </div>
