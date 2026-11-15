@@ -150,15 +150,6 @@ export default function Conciliacion() {
           borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)',
         }}>{aviso}</div>
       )}
-      {reales.length > 0 && (
-        <div style={{ maxWidth: 1180, margin: '16px auto 0', padding: '0 22px', fontSize: 14, color: '#15213E', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span>Conciliando: <b>{sucNombre || 'Sucursal'}</b></span>
-          <button type="button" onClick={() => setActiveBranch(null)}
-            style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, padding: 0, textDecoration: 'underline' }}>
-            Cambiar de sucursal
-          </button>
-        </div>
-      )}
       <BarraTraer bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} maxi={maxi}
         guardadas={inicial.fuentes} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
       {(inicial.fuentes.banco?.length > 0 || inicial.egresos.length > 0) && (
