@@ -15,7 +15,7 @@ export default function PanelGemelos({
   return (
     <>
     {!esElaborado && !promoMode && (
-      <Box ref={gemelosPanelRef} sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
+      <Box ref={gemelosPanelRef} data-tour="rec-vincular" sx={{ flex: 1, minWidth: 260, display: isStaff ? 'none' : undefined }}>
         {/* Header colapsable */}
         <Box onClick={() => {
           setGemelosOpen(v => !v);
