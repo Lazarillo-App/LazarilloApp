@@ -24,7 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
 import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
 import SpotlightTour from '../componentes/SpotlightTour';
-import { usePasosHeader } from '../componentes/asistente/pasosHeader';
+import { usePasosHeader, refTour } from '../componentes/asistente/pasosHeader';
 import { useSectorGuia } from '../componentes/asistente/guias';
 import { useRecorrido } from '../hooks/useRecorrido';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
@@ -598,7 +598,6 @@ export default function RrhhCronogramas() {
 
   const agregarFila = (turnoId) =>
     mutarFilas((fs) => [...fs, { key: nuevaKey(), turnoId, ownerEmpleadoId: null, celdas: {} }]);
-
   const quitarFila = (fila) => {
     if (Object.keys(fila.celdas).length) { avisar('La fila tiene turnos cargados: vaciala antes de quitarla.', 'error'); return; }
     mutarFilas((fs) => fs.filter((f) => f.key !== fila.key));
@@ -719,7 +718,7 @@ export default function RrhhCronogramas() {
   };
   const guardarEspacio = async (nombre) => {
     const nuevo = !!espacioSel?.nuevo;
-    const clave = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    const clave = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
     if ((config?.espacios || []).some((e) => e.id !== espacioSel?.id && clave(e.nombre) === clave(nombre))) {
       avisar(`Ya hay un espacio «${nombre}».`, 'error');
       return;
@@ -869,7 +868,18 @@ export default function RrhhCronogramas() {
   const refsTour = { semana: useRef(null), dias: useRef(null), fila: useRef(null), agregar: useRef(null), puestos: useRef(null), grilla: useRef(null), copiar: useRef(null), exportar: useRef(null) };
   const pasosHeaderCrono = usePasosHeader();
   const sectorCrono = useSectorGuia('rrhh_cronogramas');
-  const pasosTour = [
+  // Sin nómina o con el EJEMPLO en pantalla (semana sin armar) la guía igual se puede ver desde Guías
+  // (Diego 15/11/2026: «si un sector no tiene nada para mostrar, armémoslo»).
+  const cronoSinNomina = !(config?.empleados || []).length;
+  const cronoEnEjemplo = !cronoSinNomina && !(config?.historia?.semanas > 0) && !semanaExiste && !cargandoSemana && !ejemploVisto;
+  const pasosVacio = cronoSinNomina ? [
+    { k: 'sin-nomina', ref: refTour('crono-sin-nomina'), t: <>Para armar cronogramas primero necesitás a tu <b>equipo</b>: usá la nómina de otro negocio tuyo o cargala a mano en <b>Nómina</b>. Si tu punto de venta la tiene, entra sola.</> },
+  ] : cronoEnEjemplo ? [
+    { k: 'ejemplo', ref: refsTour.grilla, t: <>Atrás tenés un <b>ejemplo</b> de cómo se va a ver tu semana: cada fila es una persona por turno y cada columna un día.</> },
+    { k: 'armar', ref: refTour('crono-armar'), t: <>Tocá <b>Armar la semana</b> y arrancás: tocás una celda, elegís quién y su puesto, y se guarda solo. Ahí te muestro el resto.</> },
+    { k: 'semana', t: <>Acá elegís la <b>semana</b> que querés armar o mirar.</> },
+  ] : null;
+  const pasosTour = pasosVacio ? pasosVacio.map((p) => ({ ...p, s: 'cronograma' })).concat(cel ? [] : pasosHeaderCrono).filter((p) => !sectorCrono || p.s === sectorCrono) : [
     { k: 'semana', t: <>Elegí la <b>semana</b> que querés armar o mirar.</> },
     { k: 'dias', t: <>Tocá un día para marcar un <b>feriado</b>, un <b>cierre</b> o un <b>evento</b>. Cargalos con anticipación: con ellos Lazarillo entiende por qué un día se vende distinto y <b>proyecta mejor las ventas del mes</b>.</> },
     { k: 'fila', t: <>Cada fila es una persona. <b>Clic</b> en un día le carga el turno, <b>clic derecho</b> lo saca y con <b style={{ whiteSpace: 'nowrap' }}>⋮⋮</b> la arrastrás a otro lugar o turno. Tocando el nombre cambiás toda la fila.</> },
@@ -885,11 +895,12 @@ export default function RrhhCronogramas() {
     .filter((p) => !sectorCrono || p.s === sectorCrono);
   // Arranca solo mientras el negocio no cargó ningún cronograma propio (Diego 14/11/2026).
   const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
-    !cargando && !cargandoSemana && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel && !espacioSel
-      && !(sinHistoria && !semanaExiste && !ejemploVisto && !cargandoSemana), // con el EJEMPLO en pantalla, después de «Armar la semana»
+    !cargando && !cargandoSemana && !errorCarga && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel && !espacioSel,
     // «Datos propios» = alguna semana guardada en el negocio (índice que llega junto con la config).
     // Antes miraba la semana en pantalla, que carga después: la guía aparecía y se cerraba sola.
-    { sinDatos: sinHistoria && !semanasIdx.length });
+    // Sin nómina o con el EJEMPLO en pantalla no arranca sola (arranca después de «Armar la semana»):
+    // solo si la piden desde Guías.
+    { sinDatos: !pasosVacio && sinHistoria && !semanasIdx.length });
   const pasoTour = pasosTour[recCrono.paso - 1];
   const primerTurno = (espacio?.turnos || []).find((t) => !minimizados[`${espacioId}:${t.id}`])?.id;
   const primeraFila = filas.find((f) => f.turnoId === primerTurno)?.key;
@@ -1014,6 +1025,7 @@ export default function RrhhCronogramas() {
 
       {/* arranque sin nómina */}
       {sinNomina ? (
+        <div data-tour="crono-sin-nomina">
         <GrillaEjemplo>
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
@@ -1033,6 +1045,7 @@ export default function RrhhCronogramas() {
             />
           )}
         </GrillaEjemplo>
+        </div>
       ) : verEjemplo ? (
         <div ref={refsTour.grilla}>
           <GrillaEjemplo>
@@ -1043,7 +1056,7 @@ export default function RrhhCronogramas() {
             <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text3, marginBottom: 16 }}>
               Cada fila es una persona por turno: tocás una celda, elegís quién y su puesto, y se guarda solo.
             </div>
-            <Boton grande activo onClick={() => setEjemploVisto(true)}>Armar la semana {String(semanaId).slice(4)}</Boton>
+            <span data-tour="crono-armar" style={{ display: 'inline-flex' }}><Boton grande activo onClick={() => setEjemploVisto(true)}>Armar la semana {String(semanaId).slice(4)}</Boton></span>
           </GrillaEjemplo>
         </div>
       ) : (
