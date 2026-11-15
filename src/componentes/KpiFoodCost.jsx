@@ -1,6 +1,10 @@
 // src/componentes/KpiFoodCost.jsx
 import React, { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { showConfirm } from "@/servicios/appConfirm";
+import SpotlightTour from "./SpotlightTour";
+import { useRecorrido } from "@/hooks/useRecorrido";
+import { useAbrirGuia } from "@/componentes/asistente/guias";
+import { refTour, seVe } from "@/componentes/asistente/pasosHeader";
 
 /* ──────────────────────────────────────────────────────────────
    KPI de Food Cost — Lazarillo Gestión
@@ -910,11 +914,38 @@ export default function KpiFoodCost({
   const raiz = useRef(null);
   const dentro = useRef(false);
 
+  // Guía «Food cost» (Diego 15/11/2026: «el food cost debería tener explicación»). Se abre el panel y
+  // se explica qué es, cómo se calcula, los KPI por área y la configuración. Solo lo que se ve.
+  useAbrirGuia('food_cost', () => setAbierto(true));
+  const TEXTOS_FC = {
+    'fc-chip': <>Tu <b>food cost real</b> del período: lo que <b>compraste</b> de mercadería dividido lo que <b>vendiste</b>. No es el costo % de la receta (el teórico): es lo que de verdad gastaste contra lo que vendiste.</>,
+    'fc-tabs': <><b>General</b> es todo el negocio. Con <b>+ Nuevo</b> armás un food cost por área (Bebidas, Comidas, Café…) eligiendo qué ventas y qué compras le tocan.</>,
+    'fc-calc': <>Las <b>ventas</b> y las <b>compras</b> del mes y el resultado: el %, cuánto subió o bajó contra el mes anterior y contra el <b>promedio del año</b>. Con ‹ › pasás de mes.</>,
+    'fc-vista': <><b>▦</b> muestra los números y <b>∿</b> el gráfico mes a mes, para ver la tendencia.</>,
+    'fc-config': <><b>⚙ Configurar</b>: elegís qué ventas (por agrupación, rubro o artículo) y qué compras (por rubro o insumo) entran. Queda como regla: lo nuevo de un rubro elegido entra solo. Si armaste áreas, <b>✓ cuadra</b> te avisa que sumen el general.</>,
+  };
+  const [clavesFc, setClavesFc] = useState([]);
+  useEffect(() => {
+    if (!abierto) return undefined;
+    const medir = () => {
+      const ok = Object.keys(TEXTOS_FC).filter((k) => seVe(document.querySelector(`[data-tour="${k}"]`)));
+      setClavesFc((prev) => (prev.join() === ok.join() ? prev : ok));
+    };
+    const t1 = setTimeout(medir, 250);
+    const t2 = setTimeout(medir, 1200);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierto]);
+  const pasosFc = clavesFc.map((k) => ({ k, ref: refTour(k), t: TEXTOS_FC[k] }));
+  const recFc = useRecorrido('food_cost', pasosFc.length, abierto && pasosFc.length > 0);
+  const pasoFc = pasosFc[recFc.paso - 1];
+
   useEffect(() => {
     // el cierre no puede resolverse con contains sobre el target:
     // al re-renderizar la lista el nodo clickeado deja de existir en el DOM
     const down = (e) => (dentro.current = !!raiz.current?.contains(e.target));
-    const up = () => { if (!dentro.current) setAbierto(false); };
+    // Tocar la guía de Anthony (Siguiente, Omitir) no cierra el panel (Diego 15/11/2026).
+    const up = (e) => { if (!dentro.current && !e?.target?.closest?.('[data-guia]')) setAbierto(false); };
     document.addEventListener("mousedown", down, true);
     document.addEventListener("click", up);
     return () => {
@@ -1184,10 +1215,15 @@ export default function KpiFoodCost({
   const alto = calc.pct > 20;
 
   return (
+    <>
+    {recFc.visible && pasoFc && (
+      <SpotlightTour key={pasoFc.k} targetRef={pasoFc.ref} pose={recFc.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+        {...recFc.props(recFc.paso)} text={pasoFc.t} />
+    )}
     <div className="kfc" ref={raiz}>
       <style>{CSS}</style>
 
-      <div className={`kfc-chip${abierto ? " on" : ""}`} onClick={() => setAbierto((a) => !a)}>
+      <div data-tour="fc-chip" className={`kfc-chip${abierto ? " on" : ""}`} onClick={() => setAbierto((a) => !a)}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A7268" strokeWidth="2" strokeLinecap="round">
           <path d="M3 17l5-6 4 3 5-7 4 4" />
         </svg>
@@ -1232,7 +1268,7 @@ export default function KpiFoodCost({
             setLejos((a) => (a === v ? a : v));
           }}
         >
-          <div className="kfc-tabs">
+          <div className="kfc-tabs" data-tour="fc-tabs">
             {/* El general manda y los sub cuelgan de él: van un escalón más
                 chicos y detrás de una línea, para que no se lean como pares. */}
             {kpis.map((k, idx) => {
@@ -1283,13 +1319,13 @@ export default function KpiFoodCost({
                 siempre pegado al borde, esté o no el switch de vista. */}
             <span className="kfc-tright">
               {hayGrafico && modo === "resumen" && (
-                <span className="kfc-sw">
+                <span className="kfc-sw" data-tour="fc-vista">
                   {[["datos", "▦"], ["grafico", "∿"]].map(([v, ic]) => (
                     <span key={v} className={vista === v ? "on" : ""} onClick={() => setVista(v)}>{ic}</span>
                   ))}
                 </span>
               )}
-              <span className="kfc-cfg" onClick={() => setModo((m) => (m === "config" ? "resumen" : "config"))}>
+              <span className="kfc-cfg" data-tour="fc-config" onClick={() => setModo((m) => (m === "config" ? "resumen" : "config"))}>
                 {haySubs && (
                   <span className={cuadra ? "ok" : "bad"}>{cuadra ? "✓ cuadra" : "⚠ no cuadra"}</span>
                 )}
@@ -1301,7 +1337,7 @@ export default function KpiFoodCost({
           {modo === "resumen" ? (
             <>
               {!(hayGrafico && vista === "grafico") && (
-              <div className="kfc-calc">
+              <div className="kfc-calc" data-tour="fc-calc">
                 <div className="kfc-origen">
                   <div className="kfc-fila">
                     <span className="kfc-rot">Ventas</span>
@@ -1498,6 +1534,7 @@ export default function KpiFoodCost({
         </div>
       )}
     </div>
+    </>
   );
 }
 

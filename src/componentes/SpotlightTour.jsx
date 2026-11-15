@@ -158,8 +158,8 @@ function SpotlightTourContenido({
     // Sin elemento que resaltar: fondo oscuro y la burbuja al centro.
     return (
       <>
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 1400 }} onClick={(e) => e.stopPropagation()} />
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: Z_BURBUJA, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 'min(400px, calc(100vw - 32px))' }}>
+        <div data-guia="" style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 1400 }} onClick={(e) => e.stopPropagation()} />
+        <div data-guia="" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: Z_BURBUJA, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 'min(400px, calc(100vw - 32px))' }}>
           <img src={ANT[pose] || ANT.senala} alt="Anthony" style={{ height: 64, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
           <Burbuja text={text} paso={paso} onNever={onNever} onSkip={onSkip} skipLabel={skipLabel} onNext={onNext} nextLabel={nextLabel} />
         </div>
@@ -190,10 +190,10 @@ function SpotlightTourContenido({
     <>
       {/* 4 paneles oscuros alrededor del "agujero" — el agujero en sí no tiene
           nada encima, así que el elemento real sigue siendo clickeable */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: Math.max(0, holeTop), background: DIM, zIndex: Z, pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()} />
-      <div style={{ position: 'fixed', top: holeBottom, left: 0, right: 0, bottom: 0, background: DIM, zIndex: Z, pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()} />
-      <div style={{ position: 'fixed', top: holeTop, left: 0, width: Math.max(0, holeLeft), height: holeHeight, background: DIM, zIndex: Z, pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()} />
-      <div style={{ position: 'fixed', top: holeTop, left: holeRight, right: 0, height: holeHeight, background: DIM, zIndex: Z, pointerEvents: 'auto' }} onClick={(e) => e.stopPropagation()} />
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: Math.max(0, holeTop), background: DIM, zIndex: Z, pointerEvents: 'auto' }} data-guia="" onClick={(e) => e.stopPropagation()} />
+      <div style={{ position: 'fixed', top: holeBottom, left: 0, right: 0, bottom: 0, background: DIM, zIndex: Z, pointerEvents: 'auto' }} data-guia="" onClick={(e) => e.stopPropagation()} />
+      <div style={{ position: 'fixed', top: holeTop, left: 0, width: Math.max(0, holeLeft), height: holeHeight, background: DIM, zIndex: Z, pointerEvents: 'auto' }} data-guia="" onClick={(e) => e.stopPropagation()} />
+      <div style={{ position: 'fixed', top: holeTop, left: holeRight, right: 0, height: holeHeight, background: DIM, zIndex: Z, pointerEvents: 'auto' }} data-guia="" onClick={(e) => e.stopPropagation()} />
 
       {/* Anillo de resalte, decorativo, no bloquea clicks */}
       <div style={{
@@ -205,7 +205,7 @@ function SpotlightTourContenido({
       }} />
 
       {/* Burbuja de Anthony */}
-      <div ref={burbujaRef} style={{
+      <div ref={burbujaRef} data-guia="" style={{
         position: 'fixed', top: bubbleTop, left: Math.max(12, Math.min(holeLeft, anchoVista - 420)),
         zIndex: Z_BURBUJA, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 400,
       }}>
