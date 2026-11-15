@@ -598,6 +598,7 @@ export default function TablaArticulos({
       const headerH = tablaHeaderRef.current?.getBoundingClientRect().height || 0;
       setListHeight(Math.max(240, Math.round(wrapH - headerH)));
     };
+
     recalcular();
     const ro = new ResizeObserver(recalcular);
     ro.observe(wrapEl);
@@ -2277,6 +2278,7 @@ export default function TablaArticulos({
             {/* El destino del rubro lo dice el botón de la derecha ("→ Mover a / X"):
                 acá no se repite, así el nombre del rubro no se corta en 2 líneas. */}
           </div>
+
           <div style={{ ...cellNum, textAlign: 'center' }}>
             {ventasVista === '$' ? (
               <>
