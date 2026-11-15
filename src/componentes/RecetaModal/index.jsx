@@ -69,7 +69,7 @@ import VistaPreviaFotoModal from './VistaPreviaFotoModal';
 import VistaCocinaModal from './VistaCocinaModal';
 import ItemRow from './ItemRow';
 import PieCostos from './PieCostos';
-import { BotonesReceta, RecorridoReceta, DialogosReceta } from './AccionesReceta';
+import { BotonesReceta, RecorridoReceta, DialogosReceta, usePasosReceta } from './AccionesReceta';
 import ModalReemplazarInsumo from './ModalReemplazarInsumo';
 import TabMermaInsumo from './TabMermaInsumo';
 import CostoPreferidoSelector from './CostoPreferidoSelector';
@@ -313,7 +313,10 @@ export default function RecetaModal({
   const recIngredientesRef = useRef(null);
   const recFotoRef = useRef(null);
   const recGuardarRef = useRef(null);
-  const rec = useRecorrido('receta', 5, open && !modoInsumo && !loading && !notasModalOpen && !isStaff);
+  // Guía ampliada (Diego 15/11/2026: faltaban el paso a paso y su foto, las promociones, las vinculaciones,
+  // el rendimiento, la merma…): los pasos se arman en usePasosReceta (AccionesReceta.jsx), solo los que se ven.
+  const pasosReceta = usePasosReceta({ open: open && !modoInsumo && !loading, recResumenRef, recAgregarRef, recIngredientesRef, recFotoRef, recGuardarRef });
+  const rec = useRecorrido('receta', pasosReceta.length, open && !modoInsumo && !loading && !notasModalOpen && !isStaff);
   const [previewFotoOpen, setPreviewFotoOpen] = useState(false);
   const [editarFotoSrc, setEditarFotoSrc] = useState(null); // foto en edición desde el preview
   const [cocinaModalOpen, setCocinaModalOpen] = useState(false);
@@ -1434,7 +1437,6 @@ export default function RecetaModal({
     }[unidadCanonicaRend] || 'porción';
     return `Costo / ${unidadStr} (÷${fmt(divisorRendCanonico)})`;
   }, [divisorRendCanonico, unidadCanonicaRend]);
-
   // El bloque "Rendimiento del lote" confunde si siempre está a la vista — se muestra
   // minimizado salvo que la receta ya tenga un rendimiento distinto del default (1
   // porción, sin equivalente) o el usuario lo haya abierto a mano. Es solo una cuestión
@@ -2598,7 +2600,7 @@ export default function RecetaModal({
             {/* Todo a 32 px: Marcar medía 29 y los íconos 30/34 (revisión de alineación 11/11/2026) */}
             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ '& .MuiIconButton-root': { width: 32, height: 32 } }}>
               {!isStaff && !promoMode && (
-                <Button size="small" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
+                <Button size="small" data-tour="rec-marcar" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
                   sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0, height: 32 }}>
                   {marcarModo ? 'Listo' : 'Marcar'}
                 </Button>
@@ -2607,6 +2609,7 @@ export default function RecetaModal({
               <Tooltip title={modoInsumo ? 'Buscar insumo' : 'Buscar artículo'}>
                 <IconButton
                   size="small"
+                  data-tour="rec-buscar"
                   onClick={(e) => setLupaAnchor(e.currentTarget)}
                   sx={{ color: 'inherit', opacity: 0.85, '&:hover': { opacity: 1 } }}
                 >
@@ -2638,7 +2641,7 @@ export default function RecetaModal({
 
               {/* Vista Cocina */}
               <Tooltip title="Vista Cocina">
-                <IconButton size="small" onClick={() => setCocinaModalOpen(true)}
+                <IconButton size="small" data-tour="rec-cocina" onClick={() => setCocinaModalOpen(true)}
                   sx={{ color: 'inherit', opacity: 0.85, '&:hover': { opacity: 1 } }}>
                   <VisibilityIcon fontSize="small" />
                 </IconButton>
@@ -2959,6 +2962,7 @@ export default function RecetaModal({
 
                         {!modoInsumo && (
                           <ToggleButtonGroup
+                            data-tour="rec-tipo"
                             value={promoMode ? 'promo' : 'producto'}
                             exclusive
                             size="small"
@@ -3401,7 +3405,7 @@ export default function RecetaModal({
         </Box >
       </Modal >
 
-      <RecorridoReceta rec={rec} recResumenRef={recResumenRef} recAgregarRef={recAgregarRef} recIngredientesRef={recIngredientesRef} recFotoRef={recFotoRef} recGuardarRef={recGuardarRef} />
+      <RecorridoReceta rec={rec} pasos={pasosReceta} />
 
       {/* ── Modal notas + foto ── */}
       {
