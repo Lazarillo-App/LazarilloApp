@@ -8,7 +8,7 @@ import React from "react";
 export function renderBarraSuperior({ allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady }) {
   return (
     allLoaded && !setupOpen ? (
-          <div onClick={() => setSetupOpen(true)} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: C.white, border: "1px solid " + C.line2, borderRadius: 12, padding: "10px 16px", marginBottom: 14, cursor: "pointer" }}>
+          <div data-tour="conc-setup" onClick={() => setSetupOpen(true)} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: C.white, border: "1px solid " + C.line2, borderRadius: 12, padding: "10px 16px", marginBottom: 14, cursor: "pointer" }}>
             <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13.5, color: C.green }}>✓ Fuentes cargadas</span>
             <span style={{ fontSize: 13, color: C.txt2 }}>{resumenPeriodo}</span>
             <span style={{ fontSize: 12.5, color: C.txt3 }}>tol {tol === 0 ? "mismo día" : "± 1 día"} · auto {autoMargenVal}{autoMargenTipo === "pct" ? "%" : "$"} · sugerencias {margenVal}{margenTipo === "pct" ? "%" : "$"}</span>
@@ -22,7 +22,7 @@ export function renderBarraSuperior({ allDates, allLoaded, autoMargenTipo, autoM
         ) : (
           <>
             {/* UPLOADERS */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 18 }}>
+            <div data-tour="conc-fuentes" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 18 }}>
               {FUENTES.map((f) => (
                 <UploaderCard key={f.key} fuente={f} loaded={data[f.key]} onOpen={() => setModal(f)} />
               ))}
@@ -30,7 +30,7 @@ export function renderBarraSuperior({ allDates, allLoaded, autoMargenTipo, autoM
 
             {/* PERÍODO + CONFIG */}
             {months.length > 0 && (
-              <div style={{ background: C.white, border: "1px solid " + C.line2, borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
+              <div data-tour="conc-periodo" style={{ background: C.white, border: "1px solid " + C.line2, borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 12 }}>
                   {months.map((ym) => {
                     const [y, m] = ym.split("-");
@@ -98,14 +98,14 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
             )}
 
             {/* Buscadores: comprobante (izq, sobre ingresos) y pago por importe (der, sobre banco) */}
-            <div data-keep-sel style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 12, position: "relative", zIndex: 45 }}>
+            <div data-keep-sel data-tour="conc-buscar" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 12, position: "relative", zIndex: 45 }}>
               <BuscadorBox icon={"🔎"} placeholder="Buscar comprobante o cliente (ej. 0001-00149895, Guccione)" value={busqComp} onChange={setBusqComp} results={resComp} onPick={irAResultado} lado="ing" />
               <BuscadorBox icon={"🔎"} placeholder="Buscar pago por importe (ej. 15600) o pagador" value={busqPago} onChange={setBusqPago} results={resPago} onPick={irAResultado} lado="ban" />
             </div>
 
             {/* Barra comparativa: sticky para no perderla (ni Conciliar) al scrollear.
                 Se destaca con una sombra celeste más fuerte cuando hay selección. */}
-            <div data-keep-sel style={{ position: "sticky", top: 8, zIndex: 40, filter: (haySeleccion || hayHighlight) ? "drop-shadow(0 8px 26px rgba(91,194,234,.5))" : "drop-shadow(0 5px 16px rgba(21,33,62,.18))", transition: "filter .18s" }}>
+            <div data-keep-sel data-tour="conc-barra" style={{ position: "sticky", top: 8, zIndex: 40, filter: (haySeleccion || hayHighlight) ? "drop-shadow(0 8px 26px rgba(91,194,234,.5))" : "drop-shadow(0 5px 16px rgba(21,33,62,.18))", transition: "filter .18s" }}>
             <DayCompareBar ing={barTotals.ing} ban={barTotals.ban} ctxIng={barTotals.ctxIng} ctxBan={barTotals.ctxBan}
               refIng={barTotals.refIng} refBan={barTotals.refBan}
               cntIng={barTotals.cntIng} cntBan={barTotals.cntBan} cntIngRef={barTotals.cntIngRef} cntBanRef={barTotals.cntBanRef}
@@ -119,7 +119,7 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
             {dayView && filterV === "pend" ? (
               /* ===== VISTA POR DÍA COMPARTIDA: ingreso izq / banco der, misma banda ===== */
               <Panel>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                <div data-tour="conc-paneles" style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                   <div style={{ minWidth: 0, borderRight: "1px solid " + C.line }}>
                     <PanelHead titulo="Facturas y Cobranzas" count={diaCounts ? diaCounts.v + " del día" : view.fV.length + " de " + view.V.length}
                       tabs={[["all","Todas"],["ok","Conciliadas"],["pend","Pendientes"]]} active={activeTab} onTab={goTab}
@@ -172,7 +172,7 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
                   )} />
               </Panel>
             ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div data-tour="conc-paneles" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               {/* INGRESOS */}
               <Panel>
                 <PanelHead titulo="Facturas y Cobranzas" count={(dayView && filterV === "pend" && diaCounts) ? diaCounts.v + " del día" : view.fV.length + " de " + view.V.length}
