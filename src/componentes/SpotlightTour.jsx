@@ -14,6 +14,10 @@ import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from
 import { createPortal } from 'react-dom';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
 
+// La burbuja va por encima del aviso «Hay una versión nueva» (zIndex 9999, abajo al centro): lo
+// tapaba y no se podía tocar Siguiente (Diego 14/11/2026).
+const Z_BURBUJA = 10002;
+
 function getZoomFactor() {
   try {
     const z = parseFloat(getComputedStyle(document.documentElement).zoom);
@@ -25,8 +29,30 @@ function getZoomFactor() {
 
 // Se dibuja en <body> (portal): dentro de un contenedor con su propio apilamiento (la tabla, que es
 // position: fixed) quedaba DEBAJO del modal de receta aunque tuviera z-index mayor (10/11).
-export default function SpotlightTour(props) {
+// Una sola guía a la vez (Diego 14/11/2026): al abrir la carga de factura desde la guía, la del
+// Panel seguía abierta debajo y se veían dos burbujas. Se muestra solo la última que apareció;
+// cuando se cierra, vuelve la anterior.
+// La que se pidió desde «Guías» (pedida) gana sobre las que arrancan solas.
+let pila = [];
+const avisos = new Set();
+const avisar = () => avisos.forEach((f) => f());
+let contador = 0;
+const arriba = () => pila.reduce((m, x) => (!m || x.prio >= m.prio ? x : m), null);
+
+export default function SpotlightTour({ pedida = false, ...props }) {
+  const [yo] = useState(() => { contador += 1; return contador; });
+  const [, forzar] = useState(0);
+  const prio = pedida ? 1 : 0;
+  useLayoutEffect(() => {
+    pila = [...pila, { yo, prio }];
+    const f = () => forzar((n) => n + 1);
+    avisos.add(f);
+    avisar();
+    return () => { pila = pila.filter((x) => x.yo !== yo); avisos.delete(f); avisar(); };
+  }, [yo, prio]);
   if (typeof document === 'undefined') return null;
+  const top = arriba();
+  if (top && top.yo !== yo) return null;
   return createPortal(<SpotlightTourContenido {...props} />, document.body);
 }
 
@@ -58,12 +84,8 @@ function SpotlightTourContenido({
     if (!el) { setRect(null); return; }
     const r = el.getBoundingClientRect();
     const zoom = getZoomFactor();
-    setRect({
-      top: r.top / zoom,
-      left: r.left / zoom,
-      width: r.width / zoom,
-      height: r.height / zoom,
-    });
+    const nuevo = { top: r.top / zoom, left: r.left / zoom, width: r.width / zoom, height: r.height / zoom };
+    setRect((prev) => (prev && ['top', 'left', 'width', 'height'].every((k) => Math.abs(prev[k] - nuevo[k]) < 0.5) ? prev : nuevo));
   }, [targetRef]);
 
   useLayoutEffect(() => {
@@ -88,14 +110,32 @@ function SpotlightTourContenido({
   useEffect(() => {
     const el = targetRef?.current;
     if (!el) return;
+    // Si el elemento quedó fuera de la vista (pestañas que no entran a 1100 px), se lo trae.
+    const r0 = el.getBoundingClientRect();
+    if (r0.right > window.innerWidth || r0.left < 0 || r0.bottom > window.innerHeight || r0.top < 0) {
+      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* sin scroll */ }
+    }
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
     window.addEventListener('resize', recompute);
     window.addEventListener('scroll', recompute, true);
+    // Menús y modales entran con animación (el ⋮ de MUI crece desde la esquina) y la pantalla se
+    // puede correr después (un aviso que aparece arriba): el recuadro quedaba corrido y más chico
+    // (Diego 14/11/2026). Se sigue al elemento cuadro a cuadro mientras la guía está abierta; solo
+    // se vuelve a pintar si se movió.
+    document.addEventListener('transitionend', recompute, true);
+    document.addEventListener('animationend', recompute, true);
+    let raf = requestAnimationFrame(function seguir() {
+      recompute();
+      raf = requestAnimationFrame(seguir);
+    });
     return () => {
       ro.disconnect();
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', recompute);
       window.removeEventListener('scroll', recompute, true);
+      document.removeEventListener('transitionend', recompute, true);
+      document.removeEventListener('animationend', recompute, true);
     };
   }, [targetRef, recompute]);
 
@@ -105,7 +145,7 @@ function SpotlightTourContenido({
     return (
       <>
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', zIndex: 1400 }} onClick={(e) => e.stopPropagation()} />
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1402, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 'min(400px, calc(100vw - 32px))' }}>
+        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: Z_BURBUJA, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 'min(400px, calc(100vw - 32px))' }}>
           <img src={ANT[pose] || ANT.senala} alt="Anthony" style={{ height: 64, width: 'auto', objectFit: 'contain', flexShrink: 0 }} />
           <Burbuja text={text} paso={paso} onNever={onNever} onSkip={onSkip} skipLabel={skipLabel} onNext={onNext} nextLabel={nextLabel} />
         </div>
@@ -152,7 +192,7 @@ function SpotlightTourContenido({
       {/* Burbuja de Anthony */}
       <div ref={burbujaRef} style={{
         position: 'fixed', top: bubbleTop, left: Math.max(12, Math.min(holeLeft, anchoVista - 420)),
-        zIndex: Z + 2, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 400,
+        zIndex: Z_BURBUJA, display: 'flex', alignItems: 'flex-end', gap: 10, maxWidth: 400,
       }}>
         <img src={ANT[pose] || ANT.senala} alt="Anthony" style={{ height: 64, width: 'auto', objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 3px 6px rgba(20,30,50,.25))' }} />
         <Burbuja text={text} paso={paso} onNever={onNever} onSkip={onSkip} skipLabel={skipLabel} onNext={onNext} nextLabel={nextLabel} />
