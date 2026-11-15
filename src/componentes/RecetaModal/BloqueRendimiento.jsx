@@ -13,7 +13,7 @@ export default function BloqueRendimiento({
 }) {
   return (
     <>
-    <Box sx={{ flex: 1, minWidth: 260, display: isStaff || promoMode ? 'none' : undefined }}>
+    <Box data-tour="rec-rendimiento" sx={{ flex: 1, minWidth: 260, display: isStaff || promoMode ? 'none' : undefined }}>
       <Box
         onClick={() => setRendimientoManualOpen(!rendimientoOpen)}
         sx={{
