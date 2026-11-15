@@ -71,6 +71,7 @@ import { useBarraGestion, useRegistrarBarra } from '@/context/BarraGestionContex
 import ReactDOM from 'react-dom';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { useRecorrido } from '@/hooks/useRecorrido';
+import { usePasosHeader } from '@/componentes/asistente/pasosHeader';
 import { useAbrirGuia } from '@/componentes/asistente/guias';
 import '../css/global.css';
 import '../css/theme-layout.css';
@@ -82,7 +83,7 @@ const normalize = (s) =>
   String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1717,14 +1718,26 @@ export default function InsumosMain() {
   const tourMarcarRef = useMemo(() => ({ get current() { return document.querySelector('[data-tour="insumos-marcar"]'); } }), []);
   const tourListasRef = useMemo(() => ({ get current() { return document.querySelector('[data-tour="insumos-tab-listas"]'); } }), []);
   const tourPendientesRef = useMemo(() => ({ get current() { return document.querySelector('[data-tour="insumos-tab-pendientes"]'); } }), []);
+  // Botones del header y de la barra (Diego 14/11/2026), antes del último paso («+ Agregar»).
+  const pasosHeaderIns = usePasosHeader({ conBarra: true });
+  const pasosIns = [
+    { k: 'tabla', ref: tourTablaRef, t: <>Estos son tus <b>insumos</b>: lo que comprás para cocinar. De cada uno ves la unidad, el <b>precio</b> (se actualiza solo con tus compras), en cuántas recetas se usa y cuánto compraste en el período.</> },
+    { k: 'sidebar', ref: tourSidebarRef, t: <>Acá los ves por grupo: <b>Elaborados</b> son los que preparás vos con su propia receta (una salsa, una masa), <b>Top 20</b> los que más comprás, y también las agrupaciones que armes. Para que uno sea elaborado, simplemente <b>cargale su receta</b>.</> },
+    { k: 'marcar', ref: tourMarcarRef, t: <>Con esta casilla <b>marcás</b> insumos para trabajarlos juntos: guardarlos en una <b>lista</b> o mandarlos <b>a revisión</b>. Tildándola acá arriba marcás todos los que ves.</> },
+    { k: 'listas', ref: tourListasRef, t: <>En <b>Listas</b> quedan los grupos de insumos que guardaste (por ejemplo, lo que le pedís a un proveedor), para volver a encontrarlos con un clic.</> },
+    { k: 'pendientes', ref: tourPendientesRef, t: <>En <b>Pendientes</b> ves los cambios que propone tu equipo y esperan tu OK, y lo que se mandó a revisión.</> },
+    ...pasosHeaderIns,
+    { k: 'agregar', ref: tourAgregarRef, t: <>Con <b>+ Agregar</b> sumás un insumo nuevo, o muchos juntos desde un archivo. ¿Cargamos el primero ahora? <b>Te acompaño paso a paso.</b></> },
+  ];
   const recInsumos = useRecorrido(
-    'tabla_insumos', 6,
+    'tabla_insumos', pasosIns.length,
     // Espera a que lleguen los insumos: si no, la guía arrancaba sobre la tabla vacía (Diego 14/11/2026).
     !isStaff && !!businessId && barraGestion.paginaActiva === 'insumos' && insumosListData !== undefined
       && !nuevoInsumoOpen && !insumoEditando && !recetaInsumoModal && !groupModalOpen
       && !uploadInsumosOpen && !uploadComprasOpen && !uploadRubrosOpen,
     { siguiente: { id: 'crear_insumo', label: 'Cargar un insumo ahora' } },
   );
+  const pasoIns = pasosIns[recInsumos.paso - 1];
 
   /* ── Render ── */
   return (
@@ -2072,29 +2085,9 @@ export default function InsumosMain() {
         </Alert>
       </Snackbar>
 
-      {recInsumos.visible && recInsumos.paso === 1 && (
-        <SpotlightTour targetRef={tourTablaRef} pose="presenta" placement="bottom" {...recInsumos.props(1)}
-          text={<>Estos son tus <b>insumos</b>: lo que comprás para cocinar. De cada uno ves la unidad, el <b>precio</b> (se actualiza solo con tus compras), en cuántas recetas se usa y cuánto compraste en el período.</>} />
-      )}
-      {recInsumos.visible && recInsumos.paso === 2 && (
-        <SpotlightTour targetRef={tourSidebarRef} pose="senala" placement="bottom" {...recInsumos.props(2)}
-          text={<>Acá los ves por grupo: <b>Elaborados</b> son los que preparás vos con su propia receta (una salsa, una masa), <b>Top 20</b> los que más comprás, y también las agrupaciones que armes. Para que uno sea elaborado, simplemente <b>cargale su receta</b>.</>} />
-      )}
-      {recInsumos.visible && recInsumos.paso === 3 && (
-        <SpotlightTour targetRef={tourMarcarRef} pose="senala" placement="bottom" {...recInsumos.props(3)}
-          text={<>Con esta casilla <b>marcás</b> insumos para trabajarlos juntos: guardarlos en una <b>lista</b> o mandarlos <b>a revisión</b>. Tildándola acá arriba marcás todos los que ves.</>} />
-      )}
-      {recInsumos.visible && recInsumos.paso === 4 && (
-        <SpotlightTour targetRef={tourListasRef} pose="senala" placement="bottom" {...recInsumos.props(4)}
-          text={<>En <b>Listas</b> quedan los grupos de insumos que guardaste (por ejemplo, lo que le pedís a un proveedor), para volver a encontrarlos con un clic.</>} />
-      )}
-      {recInsumos.visible && recInsumos.paso === 5 && (
-        <SpotlightTour targetRef={tourPendientesRef} pose="senala" placement="bottom" {...recInsumos.props(5)}
-          text={<>En <b>Pendientes</b> ves los cambios que propone tu equipo y esperan tu OK, y lo que se mandó a revisión.</>} />
-      )}
-      {recInsumos.visible && recInsumos.paso === 6 && (
-        <SpotlightTour targetRef={tourAgregarRef} pose="senala" placement="bottom" {...recInsumos.props(6)}
-          text={<>Con <b>+ Agregar</b> sumás un insumo nuevo, o muchos juntos desde un archivo. ¿Cargamos el primero ahora? <b>Te acompaño paso a paso.</b></>} />
+      {recInsumos.visible && pasoIns && (
+        <SpotlightTour key={pasoIns.k} targetRef={pasoIns.ref} pose={recInsumos.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+          {...recInsumos.props(recInsumos.paso)} text={pasoIns.t} />
       )}
     </div>
   );
