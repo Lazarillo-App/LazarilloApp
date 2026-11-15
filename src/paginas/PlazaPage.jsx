@@ -14,6 +14,26 @@ import { useBusiness } from '@/context/BusinessContext';
 import RecetaModal from '@/componentes/RecetaModal';
 import { useOrganization } from '@/context/OrganizationContext';
 import { BASE } from '@/servicios/apiBase';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosHeader, usePasosPresentes } from '@/componentes/asistente/pasosHeader';
+import { useSectorGuia } from '@/componentes/asistente/guias';
+import { useRecorrido } from '@/hooks/useRecorrido';
+
+// Guía de Tableros (Diego 15/11/2026: «tableros no tiene guía»). Una sola guía para las dos
+// pantallas: sin plazas (ejemplo + primer paso) y la plaza. Sectores: Tablero y Header.
+function GuiaTableros({ pasos, activo, sinDatos, clave = '' }) {
+  const pasosHeader = usePasosHeader();
+  const sector = useSectorGuia('tableros');
+  const presentes = usePasosPresentes(pasos, pasos.map((p) => p.k).join() + clave);
+  const todos = presentes.concat(pasosHeader).filter((p) => !sector || p.s === sector);
+  const rec = useRecorrido('tableros', todos.length, activo && presentes.length > 0, { sinDatos });
+  const paso = todos[rec.paso - 1];
+  if (!rec.visible || !paso) return null;
+  return <SpotlightTour key={paso.k} targetRef={paso.ref} pose={rec.paso === 1 ? 'presenta' : 'senala'}
+    placement={paso.arriba ? 'top' : 'bottom'} text={paso.t} {...rec.props(rec.paso)} />;
+}
+// La primera tarjeta del tablero (el primer producto).
+const primeraTarjeta = { get current() { return document.querySelector('[data-tour="tab-vista"] > div > div'); } };
 
 // Lo que se guarda de cada tarjeta: orden de todos los renglones, ocultos y extras.
 const fichaDe = (renglones) => ({
@@ -44,7 +64,14 @@ export function TablerosInicio() {
   const ejemplo = PLAZAS_EJEMPLO[ej];
   return (
     <Box sx={{ px: 2, py: 2, bgcolor: '#fff', minHeight: '100%' }}>
-      <Box sx={{ maxWidth: 720, mx: 'auto', mb: 3, p: 2.5, borderRadius: 2, border: '1px solid #5BC2EA', bgcolor: 'rgba(91,194,234,.06)', textAlign: 'center' }}>
+      <GuiaTableros activo={!creando} sinDatos pasos={[
+        { k: 'tab-primer-paso', s: 'tablero', t: t.puedeCrear
+          ? <>Una <b>plaza</b> es un puesto de despacho: un sector de la cocina o de la barra. Con <b>+ Crear plaza</b> armás la primera y elegís sus productos.</>
+          : <>Una <b>plaza</b> es un puesto de despacho: un sector de la cocina o de la barra. Las crea el jefe de cocina, un encargado o el dueño.</> },
+        { k: 'tab-ejemplos', s: 'tablero', t: <>Mirá los <b>ejemplos</b>: cada uno es el tablero de una plaza distinta.</> },
+        { k: 'tab-ejemplo', s: 'tablero', arriba: true, t: <>Así se ve un tablero: cada producto con sus ingredientes, cantidades y colores. Sale de tus <b>recetas</b>: no cargás nada dos veces.</> },
+      ]} />
+      <Box data-tour="tab-primer-paso" sx={{ maxWidth: 720, mx: 'auto', mb: 3, p: 2.5, borderRadius: 2, border: '1px solid #5BC2EA', bgcolor: 'rgba(91,194,234,.06)', textAlign: 'center' }}>
         <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.1rem' }}>Armá tu primera plaza</Typography>
         <Typography color="text.secondary" sx={{ fontSize: '0.9rem', mt: 0.75, mb: 1.5 }}>
           Una plaza es un puesto de despacho: un sector de la cocina o de la barra (Ensaladas, Freidora, Frozen). Su tablero es la lámina de armado de sus productos, para que la comunicación no falle.
@@ -58,7 +85,7 @@ export function TablerosInicio() {
           </Typography>
         )}
       </Box>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+      <Stack data-tour="tab-ejemplos" direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
         <Box component="span" sx={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: 'text.secondary', border: '1px solid #d8dde6', borderRadius: 1, px: 1, py: 0.25 }}>EJEMPLO</Box>
         {PLAZAS_EJEMPLO.map((pz, i) => (
           <Box key={pz.nombre} component="button" type="button" onClick={() => setEj(i)}
@@ -68,7 +95,7 @@ export function TablerosInicio() {
         ))}
         <Typography sx={{ fontSize: 12, color: 'text.disabled' }}>· {ejemplo.sector} · así se ve un tablero, no se guarda</Typography>
       </Stack>
-      <Box aria-hidden sx={{ opacity: 0.85, pointerEvents: 'none', userSelect: 'none' }}>
+      <Box data-tour="tab-ejemplo" aria-hidden sx={{ opacity: 0.85, pointerEvents: 'none', userSelect: 'none' }}>
         <VistaPlaza productos={ejemplo.productos} />
       </Box>
       <EditorPlaza abierto={creando} sectores={t.sectores} onCerrar={() => setCreando(false)}
@@ -196,8 +223,16 @@ export default function PlazaPage() {
 
   return (
     <Box sx={{ bgcolor: '#fff', minHeight: '100%', px: 3, py: 2 }}>
+      <GuiaTableros activo={!receta && !insumoEq && !sumando && !tv} sinDatos={false} clave={`${data.plaza.id}:${data.productos.length}`} pasos={[
+        { k: 'tab-plaza', s: 'tablero', t: <>Esta es la plaza <b>{data.plaza.nombre}</b>: un puesto de despacho. Su tablero es la lámina de armado de cada producto, para que se arme siempre igual.</> },
+        { k: 'tab-tarjeta', tour: 'tab-vista', ref: primeraTarjeta, s: 'tablero', t: <>Cada tarjeta es un producto con sus ingredientes y cantidades, tal como su <b>receta</b>. Tocá el nombre y abrís la receta: lo que cambies ahí se ve acá.</> },
+        { k: 'tab-vacia', s: 'tablero', t: <>Esta plaza todavía no tiene productos: sumalos con <b>+ Productos</b>.</> },
+        { k: 'tab-armar', s: 'tablero', t: <>Con <b>Armar</b> ordenás los renglones arrastrando, cambiás colores, ocultás lo que no va, agregás notas y elegís si se ve el <b>peso</b>, la <b>observación</b> o ambos.</> },
+        { k: 'tab-productos', s: 'tablero', t: <>Con <b>+ Productos</b> sumás o sacás productos de esta plaza.</> },
+        { k: 'tab-tv', s: 'tablero', t: <>Con <b>TV</b> vinculás la pantalla de la cocina: muestra esta plaza sola, todos los días.</> },
+      ]} />
       <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2.5 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box data-tour="tab-plaza" sx={{ flex: 1, minWidth: 0 }}>
           <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.15rem', lineHeight: 1.2 }}>{data.plaza.nombre}</Typography>
           <Typography variant="caption" color="text.secondary">
             {data.plaza.sectorNombre} · {data.productos.length} producto{data.productos.length !== 1 ? 's' : ''}
@@ -219,19 +254,19 @@ export default function PlazaPage() {
         )}
         {/* «TV» (Diego 14/11/2026): la TV de la cocina muestra esta plaza sola, todos los días. */}
         {data.puedeArmar && (
-          <Button size="small" variant="outlined" disableElevation startIcon={<TvOutlinedIcon />} onClick={() => setTv(true)}
+          <Button data-tour="tab-tv" size="small" variant="outlined" disableElevation startIcon={<TvOutlinedIcon />} onClick={() => setTv(true)}
             sx={{ height: 34, whiteSpace: 'nowrap' }}>
             TV
           </Button>
         )}
         {/* «+ Productos» (Diego 12/11/2026): sumar o sacar productos sin ir a Configuración. */}
         {data.puedeArmar && (
-          <Button size="small" variant="outlined" disableElevation onClick={() => setSumando(true)} sx={{ height: 34, whiteSpace: 'nowrap' }}>
+          <Button data-tour="tab-productos" size="small" variant="outlined" disableElevation onClick={() => setSumando(true)} sx={{ height: 34, whiteSpace: 'nowrap' }}>
             + Productos
           </Button>
         )}
         {data.puedeArmar && (
-          <Button size="small" variant={armando ? 'contained' : 'outlined'} disableElevation
+          <Button data-tour="tab-armar" size="small" variant={armando ? 'contained' : 'outlined'} disableElevation
             startIcon={armando ? <CheckIcon /> : <EditOutlinedIcon />} onClick={() => setArmando((v) => !v)}
             sx={{ height: 34, whiteSpace: 'nowrap' }}>
             {armando ? 'Listo' : 'Armar'}
@@ -239,15 +274,15 @@ export default function PlazaPage() {
         )}
       </Stack>
       {!data.productos.length ? (
-        <Typography color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
+        <Typography data-tour="tab-vacia" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
       ) : (
-        <VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
+        <Box data-tour="tab-vista"><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
             if (insumoId) setInsumoEq({ id: insumoId, nombre: r.nombre, articleId });
           }}
-          onAbrir={(p) => setReceta({ id: p.articleId, nombre: p.nombre })} />
+          onAbrir={(p) => setReceta({ id: p.articleId, nombre: p.nombre })} /></Box>
       )}
       {receta && (
         <RecetaModal open onClose={() => setReceta(null)} articulo={receta}
