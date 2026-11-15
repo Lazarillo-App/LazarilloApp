@@ -4,7 +4,7 @@ import { showAlert } from '../servicios/appAlert';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useAbrirGuia } from '@/componentes/asistente/guias';
+import { useAbrirGuia, guiaPedida, VER_GUIA } from '@/componentes/asistente/guias';
 import { useOrganization } from '../context/OrganizationContext';
 import TablaArticulos from '../componentes/TablaArticulos';
 import SidebarCategorias from '../componentes/SidebarCategorias';
@@ -958,6 +958,7 @@ export default function ArticulosMain(props) {
     todoIdRef.current = todoInfo?.todoGroupId ?? null;
   }, [todoInfo?.todoGroupId]);
 
+
   const handleTodoInfo = useCallback((info) => {
     const safe = info || {};
     const rawId = safe.todoGroupId;
@@ -1389,6 +1390,29 @@ export default function ArticulosMain(props) {
       }).filter(Boolean),
     }));
   }, [agrupaciones, metaById]);
+
+  // Guías «Receta de un artículo» y «Acciones de un artículo» (Diego 14/11/2026): en Top 20 /
+  // vistas de ventas o Discontinuados no hay fila con menú ⋮ (o está vacía si no hubo ventas) y la
+  // guía no arrancaba. Si la piden ahí, pasa a «Todos» para tener un artículo donde mostrarla.
+  useEffect(() => {
+    const irATodos = () => {
+      const id = guiaPedida();
+      if (id !== 'menu_accion' && id !== 'receta') return;
+      const sel = agrupacionSeleccionada;
+      // todoGroupId arranca en 0 hasta que la tabla lo informa: se busca también en las agrupaciones.
+      const todoId = Number(todoInfo?.todoGroupId) || Number((agrupacionesRich || []).find(esTodoGroup)?.id) || null;
+      if (todoId && (!sel || esVistaVentas(sel) || isDiscontinuadosGroup(sel))) {
+        setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
+        setCategoriaSeleccionada(null);
+        setFiltroBusqueda('');
+      }
+    };
+    irATodos();
+    window.addEventListener(VER_GUIA, irATodos);
+    return () => window.removeEventListener(VER_GUIA, irATodos);
+  // También al cambiar la agrupación: la vista guardada (Top 20) se restaura después de montar.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todoInfo?.todoGroupId, agrupacionSeleccionada?.id, agrupacionesRich]);
 
   const discGroup = useMemo(
     () => (agrupacionesRich || []).find(isDiscontinuadosGroup) || null,

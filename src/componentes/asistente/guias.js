@@ -49,6 +49,11 @@ export function pedirGuia(guia, navigate) {
   else navigate(guia.ruta);
 }
 
+/** Qué guía está pedida ahora (sin consumirla), o null. */
+export function guiaPedida() {
+  return leer()?.id ?? null;
+}
+
 /** La guía pendiente de este id (y la consume). La llama el recorrido cuando ya se puede mostrar. */
 export function tomarGuiaPendiente(id) {
   const v = leer();
@@ -59,23 +64,32 @@ export function tomarGuiaPendiente(id) {
 
 // Una sola copia abre el modal por pedido (el menú ⋮ está en cada fila de la tabla).
 let reclamado = null;
-function reclamarGuia(id) {
+/** Abre una sola vez por pedido. abrir() puede devolver false si esta copia no pudo (fila oculta):
+ *  entonces queda libre para otra. */
+function abrirUnaVez(id, abrir) {
   const v = leer();
-  if (v?.id !== id || reclamado === v.t) return false;
-  reclamado = v.t;
-  return true;
+  if (v?.id !== id || reclamado === v.t) return;
+  if (abrir?.() !== false) reclamado = v.t;
 }
 
 /** En la pantalla que abre el modal o menú de una guía: si la piden, lo abre (una vez).
- *  listo = la pantalla ya puede abrirlo (ej. la tabla ya tiene artículos). */
-export function useAbrirGuia(id, abrir, listo = true) {
+ *  listo = la pantalla ya puede abrirlo (ej. la tabla ya tiene artículos).
+ *  espera = ms que la pantalla tiene que quedar quieta antes de abrir: la tabla de artículos
+ *  pinta primero lo que tenía en caché y después restaura la agrupación guardada; si abría
+ *  en ese instante, la fila desaparecía y la guía se perdía (Diego 14/11/2026). */
+export function useAbrirGuia(id, abrir, listo = true, espera = 0) {
   const ref = useRef(abrir);
   ref.current = abrir;
   useEffect(() => {
     if (!listo) return undefined;
-    if (reclamarGuia(id)) ref.current?.();
-    const f = (e) => { if (e?.detail === id && reclamarGuia(id)) ref.current?.(); };
+    let t = null;
+    const intentar = () => {
+      clearTimeout(t);
+      t = setTimeout(() => abrirUnaVez(id, ref.current), espera);
+    };
+    if (guiaPedida() === id) intentar();
+    const f = (e) => { if (e?.detail === id) intentar(); };
     window.addEventListener(VER_GUIA, f);
-    return () => window.removeEventListener(VER_GUIA, f);
-  }, [id, listo]);
+    return () => { clearTimeout(t); window.removeEventListener(VER_GUIA, f); };
+  }, [id, listo, espera]);
 }

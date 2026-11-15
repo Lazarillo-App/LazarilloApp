@@ -302,7 +302,12 @@ function ArticuloAccionesMenu({
   const handleClose = useCallback(() => setAnchorEl(null), []);
   // Guía «Acciones de un artículo» de Anthony: abre el menú ⋮ de la primera fila (Diego 14/11/2026).
   const btnMenuRef = useRef(null);
-  useAbrirGuia('menu_accion', () => { if (btnMenuRef.current) setAnchorEl(btnMenuRef.current); });
+  useAbrirGuia('menu_accion', () => {
+    const b = btnMenuRef.current;
+    if (!b?.isConnected || !b.offsetParent) return false; // fila oculta: que la abra otra
+    setAnchorEl(b);
+    return true;
+  }, true, 900);
 
   // ── Derivados básicos del artículo ─────────────────────────────────────────
   const articuloIdNum = getNum(articulo?.id);

@@ -1729,11 +1729,12 @@ export default function TablaArticulos({
   const hayArticulos = flatRows.some((r) => r.kind === 'item');
   useAbrirGuia('receta', () => {
     const a = flatRows.find((r) => r.kind === 'item')?.art;
-    if (!a) return;
+    if (!a) return false;
     const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
     const objetivoResuelto = getObjetivoArticulo(a, String(agrupacionSeleccionada?.id || ''));
     setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
-  }, hayArticulos);
+    return true;
+  }, hayArticulos, 900);
 
   // ── EditarItemModal: misma lista filtrada/ordenada que ve el usuario,
   // mismo patrón que navReceta/navegarReceta de arriba ──

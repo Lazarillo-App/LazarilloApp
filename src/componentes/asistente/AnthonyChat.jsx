@@ -44,7 +44,8 @@ const TECLAS = MAC
 
 export default function AnthonyChat() {
   const [abierto, setAbierto] = useState(false);
-  const [vista, setVista] = useState('chat');        // chat | pedidos | guias
+  // Abre en «Guías» (Diego 14/11/2026): es lo que más se usa al tocar a Anthony.
+  const [vista, setVista] = useState('guias');       // chat | pedidos | guias
   const navigate = useNavigate();
   const location = useLocation();
   const [cfg, setCfg] = useState(null);
@@ -108,7 +109,7 @@ export default function AnthonyChat() {
       const d = e.detail || {};
       reiniciar();
       setAbierto(true);
-      setVista(d.vista === 'pedidos' ? 'pedidos' : 'chat');
+      setVista(d.vista === 'pedidos' || d.vista === 'guias' ? d.vista : 'chat');
       setContexto(d.contexto || null);
       if (d.mensaje) setMensaje(d.mensaje);
       pendienteRef.current = d.opcion ? d : null;

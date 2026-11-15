@@ -83,8 +83,9 @@ export function useRecorrido(id, pasos, activo = true, opciones = {}) {
     // Sin «No mostrar más» (Diego 14/11/2026): se cierra con Omitir y se vuelve a ver desde Guías.
     props: (n) => {
       const sig = n >= pasos ? opciones.siguiente : null;
-      if (sig) return { onSkip: omitir, paso: { actual: n, total: pasos }, onNext: () => { omitir(); seguirConGuia(sig.id); }, nextLabel: sig.label, skipLabel: 'Más tarde' };
-      return { onSkip: omitir, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' };
+      // pedida: la abrió el usuario desde Guías → se muestra por encima de las automáticas.
+      if (sig) return { pedida: forzado, onSkip: omitir, paso: { actual: n, total: pasos }, onNext: () => { omitir(); seguirConGuia(sig.id); }, nextLabel: sig.label, skipLabel: 'Más tarde' };
+      return { pedida: forzado, onSkip: omitir, paso: { actual: n, total: pasos }, onNext: n < pasos ? siguiente : undefined, nextLabel: n < pasos ? 'Siguiente' : undefined, skipLabel: n < pasos ? 'Omitir' : 'Entendido' };
     },
   };
 }
