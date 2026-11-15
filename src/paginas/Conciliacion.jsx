@@ -357,7 +357,7 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
         <span style={fuente}>
           <b style={{ color: '#15213E' }}>🏦 Mercado Pago</b>
           {conMp
-            ? <span>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
+            ? <span>{(mp.cuentas?.length ? mp.cuentas.map((c) => c.nickname || c.email).join(' + ') : null) || mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
                 {esperando ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}</span>
             : mp?.configurado
               ? <span>sin conectar{sucNombre ? ` en ${sucNombre}` : ''} · <RouterLink to="/configuracion?tab=7" style={{ fontWeight: 700 }}>Conectar</RouterLink></span>

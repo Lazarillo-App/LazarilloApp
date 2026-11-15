@@ -22,7 +22,7 @@ export default function MercadoPagoCaja({ businessId, themeColor = '#2492C8' }) 
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
       <Stack direction="row" alignItems="center" spacing={1.25} sx={{ px: 2, py: 1.25, minHeight: 56, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography sx={{ fontWeight: 700, fontSize: '0.95rem' }}>Mercado Pago</Typography>
-        {conSucursales && <Chip size="small" label="una cuenta por sucursal" sx={{ height: 22, fontSize: 11.5 }} />}
+        {conSucursales && <Chip size="small" label="una o más cuentas por sucursal" sx={{ height: 22, fontSize: 11.5 }} />}
       </Stack>
       <Stack sx={{ px: 2, pt: 1.25 }} spacing={0.75}>
         {configurado === false && (
@@ -71,9 +71,19 @@ function FilaSucursal({ businessId, suc, nombre, themeColor, onConfigurado }) {
       setError('No se pudo empezar la conexión. Probá de nuevo en un rato.');
     }
   };
-  const desconectar = async () => {
-    if (!(await showConfirm(`¿Desconectar Mercado Pago${nombre ? ` de ${nombre}` : ''}? Lazarillo deja de traer los cobros. Lo ya traído queda en la conciliación.`))) return;
-    try { await MercadoPagoAPI.desconectar(businessId, suc); cargar(); } catch { setError('No se pudo desconectar.'); }
+  // Varias cuentas por sucursal (Diego 15/11/2026): cada una se desconecta sola; las demás siguen.
+  const desconectar = async (c) => {
+    const quien = c?.nickname || c?.email || 'esta cuenta';
+    if (!(await showConfirm(`¿Desconectar ${quien}${nombre ? ` de ${nombre}` : ''}? Lazarillo deja de traer sus cobros. Lo ya traído queda.`))) return;
+    try { await MercadoPagoAPI.desconectar(businessId, suc, c?.user_id); cargar(); } catch { setError('No se pudo desconectar.'); }
+  };
+  const cuentas = est?.cuentas?.length ? est.cuentas : (est?.conectado ? [{ ...est.cuenta, conectado_at: est.conectado_at }] : []);
+  const fmtCuit = (d) => { const x = String(d || '').replace(/\D/g, ''); return x.length === 11 ? `${x.slice(0, 2)}-${x.slice(2, 10)}-${x.slice(10)}` : (x || ''); };
+  const cs = est?.cuit_sucursal;
+  const manda = (c) => cs?.cuenta != null && String(cs.cuenta) === String(c.user_id);
+  const usarCuit = async (c) => {
+    if (!(await showConfirm(`¿Usar el CUIT ${fmtCuit(c.doc)} (${c.titular || c.nickname}) como CUIT de ${cs?.sucursal || 'la sucursal'}?`))) return;
+    try { await MercadoPagoAPI.cuitSucursal(businessId, suc, c.user_id); cargar(); } catch { setError('No se pudo cambiar el CUIT de la sucursal.'); }
   };
 
   return (
@@ -83,15 +93,13 @@ function FilaSucursal({ businessId, suc, nombre, themeColor, onConfigurado }) {
         {est && (est.conectado
           ? <Chip size="small" label="Conectado" sx={{ height: 22, fontWeight: 700, bgcolor: '#1a9c6e1a', color: '#1a9c6e' }} />
           : <Chip size="small" label="Sin conectar" sx={{ height: 22, fontWeight: 600 }} />)}
-        {est?.conectado && (
-          <Typography variant="body2">
-            <b>{est.cuenta?.nickname || est.cuenta?.email || `#${est.cuenta?.user_id}`}</b>
-            {est.conectado_at ? <span style={{ color: '#64748b' }}> · desde el {fecha(est.conectado_at)}</span> : null}
-          </Typography>
-        )}
         <Box sx={{ flex: 1 }} />
         {est?.conectado ? (
-          <Button size="small" onClick={desconectar} sx={{ textTransform: 'none', color: 'text.secondary' }}>Desconectar</Button>
+          <Button size="small" onClick={conectar} disabled={!est?.configurado || yendo}
+            startIcon={yendo ? <CircularProgress size={14} color="inherit" /> : null}
+            sx={{ textTransform: 'none', fontWeight: 700, color: themeColor }}>
+            {yendo ? 'Abriendo Mercado Pago…' : '+ Conectar otra cuenta'}
+          </Button>
         ) : (
           <Button variant="contained" size="small" onClick={conectar} disabled={!est?.configurado || yendo}
             startIcon={yendo ? <CircularProgress size={14} color="inherit" /> : null}
@@ -100,6 +108,44 @@ function FilaSucursal({ businessId, suc, nombre, themeColor, onConfigurado }) {
           </Button>
         )}
       </Stack>
+      {/* Cada cuenta con su titular y su CUIT (Diego 15/11/2026: «que esté claro el CUIT y el titular de cada
+          cuenta»), y cuál define el CUIT de la sucursal («se elige qué cuenta manda, bien clarito»). */}
+      {cuentas.map((c) => (
+        <Stack key={c.user_id || 'c'} direction="row" alignItems="center" spacing={1} useFlexGap flexWrap="wrap"
+          sx={{ mt: 0.75, ml: nombre ? 1 : 0, px: 1.25, py: 0.75, borderRadius: 1.5, border: '1px solid', borderColor: manda(c) ? themeColor : 'divider' }}>
+          <Box sx={{ flex: 1, minWidth: 220 }}>
+            <Typography variant="body2" sx={{ lineHeight: 1.35 }}>
+              <b>{c.nickname || c.email || `#${c.user_id}`}</b>
+              {c.conectado_at ? <span style={{ color: '#64748b' }}> · desde el {fecha(c.conectado_at)}</span> : null}
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#475569', lineHeight: 1.35 }}>
+              Titular: <b>{c.titular || '—'}</b> · CUIT <b>{c.doc ? fmtCuit(c.doc) : '—'}</b>
+            </Typography>
+            {c.ultimo_sync_error ? <Typography variant="body2" sx={{ color: '#b45309' }}>Último error: {c.ultimo_sync_error}</Typography> : null}
+          </Box>
+          {manda(c)
+            ? <Chip size="small" label="✓ Define el CUIT de la sucursal" sx={{ height: 24, fontWeight: 700, bgcolor: `${themeColor}1f`, color: '#12627F' }} />
+            : (c.doc && String(c.doc).replace(/\D/g, '').length === 11 && (
+              <Button size="small" onClick={() => usarCuit(c)} sx={{ textTransform: 'none', fontWeight: 600 }}>Usar su CUIT para la sucursal</Button>
+            ))}
+          <Button size="small" onClick={() => desconectar(c)} sx={{ textTransform: 'none', color: 'text.secondary' }}>Desconectar</Button>
+        </Stack>
+      ))}
+      {cs && cuentas.length > 0 && (
+        <Typography variant="body2" sx={{ mt: 0.75, ml: nombre ? 1 : 0 }}>
+          CUIT de {cs.sucursal}: <b>{cs.cuit || 'sin cargar'}</b>
+          <span style={{ color: '#64748b' }}>
+            {cs.cuenta != null
+              ? ` — sale de la cuenta ${cuentas.find((c) => manda(c))?.nickname || ''}.`
+              : (cs.cuit ? ' — cargado a mano (no coincide con ninguna cuenta).' : ' — elegí de qué cuenta sale.')}
+          </span>
+        </Typography>
+      )}
+      {est?.conectado && (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontSize: 12.5 }}>
+          Para sumar otra cuenta, antes cerrá la sesión de Mercado Pago en este navegador (o usá una ventana de incógnito): si no, Mercado Pago vuelve a dar la que ya está abierta.
+        </Typography>
+      )}
       {!est && !error && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Un segundo…</Typography>}
       {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
       {est?.conectado && (
