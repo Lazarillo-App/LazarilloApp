@@ -8,6 +8,8 @@
 // Uso (credenciales del usuario de pruebas, ver claude/acceso-pruebas.md en el proyecto):
 //   LZ_EMAIL=.. LZ_PASS=.. LZ_NEGOCIO=147 node scripts/control-pantallas.cjs salida
 // Opcionales: LZ_RUTAS=/clientes,/equipo  LZ_ANCHOS=360,390,1366  LZ_FRONT  LZ_BACK
+// LZ_DIST=ruta/al/dist → prueba un build local antes de mergear
+//   (VITE_BASE=/ VITE_BACKEND_URL=https://lazarillo-backend-testing.onrender.com/api npx vite build --outDir ...)
 // Al terminar deja el usuario de pruebas otra vez en el negocio DEMO (225).
 // En los anchos de celular guarda una captura de página completa por ruta en la carpeta de salida.
 const { chromium } = require('playwright'); const fs = require('fs');
@@ -56,6 +58,15 @@ const medir = (W) => {
     const movil = w < 500;
     const ctx = await b.newContext({ viewport: { width: w, height: movil ? 844 : 900 }, isMobile: movil, hasTouch: movil, deviceScaleFactor: movil ? 2 : 1,
       userAgent: movil ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' : undefined });
+    if (process.env.LZ_DIST) {
+      // Probar un build local ANTES de mergear: el origen de testing sirve el dist (vite build con VITE_BASE=/)
+      const path = require('path');
+      await ctx.route(FRONT + '/**', async route => {
+        const u = new URL(route.request().url()); let f = path.join(process.env.LZ_DIST, decodeURIComponent(u.pathname));
+        if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(process.env.LZ_DIST, 'index.html');
+        await route.fulfill({ path: f });
+      });
+    }
     const p = await ctx.newPage(); p.setDefaultTimeout(90000);
     await p.goto(FRONT + '/login'); await p.waitForSelector('input[type=password]');
     await p.locator('input:not([type=password]):visible').first().fill(process.env.LZ_EMAIL);
