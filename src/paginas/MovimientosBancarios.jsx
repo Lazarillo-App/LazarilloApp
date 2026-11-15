@@ -13,6 +13,7 @@ import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { ConciliacionAPI, MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
 import MenuColumna from '@/componentes/base/MenuColumna';
+import DescuentosMP from '@/componentes/bancos/DescuentosMP';
 import { pasaFiltro, filtroActivo } from '@/componentes/base/filtrosColumna';
 import logoMercadoPago from '@/assets/bancos/mercadopago.svg';
 import logoGalicia from '@/assets/bancos/galicia.svg';
@@ -167,7 +168,10 @@ export default function MovimientosBancarios() {
   const [aviso, setAviso] = useState('');
   const avisoT = useRef(null);
   const avisar = (t, ms = 5000) => { setAviso(t); clearTimeout(avisoT.current); if (ms) avisoT.current = setTimeout(() => setAviso(''), ms); };
-  const vistaBancos = new URLSearchParams(useLocation().search).get('vista') === 'bancos';
+  const busqueda = new URLSearchParams(useLocation().search);
+  const vistaBancos = busqueda.get('vista') === 'bancos';
+  // Pestaña «Lo que descuenta MP» (Diego 15/11/2026): los cargos de Mercado Pago, al tablero.
+  const vistaDescuentos = busqueda.get('tab') === 'descuentos';
 
   useEffect(() => {
     if (!bid || suc === null) return;
@@ -342,7 +346,7 @@ export default function MovimientosBancarios() {
   // Sin ningún banco conectado, la pantalla es «Conectá tu banco» (no hay movimientos que mostrar).
   if (vistaBancos || (mp && !mp.conectado)) return <ConectaTuBanco mp={mp} sucNombre={reales.length ? sucNombre : ''} />;
   if (error) return <div style={{ padding: 32, color: '#991b1b' }}>{error}</div>;
-  if (!datos) return <div style={{ padding: 32, color: '#64748b' }}>Cargando los movimientos…</div>;
+  if (!datos && !vistaDescuentos) return <div style={{ padding: 32, color: '#64748b' }}>Cargando los movimientos…</div>;
 
   const encabezado = (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -361,9 +365,30 @@ export default function MovimientosBancarios() {
             </span>
           </div>
         ))}
+        <div role="tablist" style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          {[{ k: '', l: 'Movimientos' }, { k: 'descuentos', l: 'Lo que descuenta MP' }].map((t) => {
+            const on = (t.k === 'descuentos') === vistaDescuentos;
+            return (
+              <RouterLink key={t.k} role="tab" aria-selected={on} to={t.k ? '?tab=descuentos' : '?'} replace
+                style={{ display: 'inline-flex', alignItems: 'center', height: 34, padding: '0 14px', borderRadius: 999, fontSize: 13.5, fontWeight: 600, textDecoration: 'none',
+                  border: `1px solid ${on ? T.celeste : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: on ? '#12627F' : T.txt }}>
+                {t.l}
+              </RouterLink>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
+  if (vistaDescuentos) {
+    return (
+      <div style={pagina}>
+        {encabezado}
+        {aviso ? <div style={{ position: 'fixed', left: 20, bottom: 20, zIndex: 1300, background: '#15213E', color: '#fff', borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)', maxWidth: 520 }}>{aviso}</div> : null}
+        <DescuentosMP bid={bid} avisar={avisar} />
+      </div>
+    );
+  }
   const barra = <BarraTraerMP bid={bid} suc={suc} mp={mp} periodo={periodo} rango={rango}
     cubre={datos.filas.length ? { desde: datos.filas[datos.filas.length - 1].fecha, hasta: datos.filas[0].fecha, n: datos.filas.length } : null}
     onTraido={() => setVer((n) => n + 1)} avisar={avisar} />;
