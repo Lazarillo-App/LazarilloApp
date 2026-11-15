@@ -117,6 +117,10 @@ export default function Navbar() {
   }, [activeBusinessId]);
   // Alta de un usuario sin negocios (/perfil muestra el asistente): el header
   // dice "Asistente de alta" en lugar de Artículos/Insumos/Menú.
+  // Los botones de Recetas (Artículos · Insumos | Menú) van solo dentro de Recetas (Diego 15/11/2026:
+  // en Configuración, Mi perfil, Mi equipo, Conciliación, Super… se veían y no tenían que ver).
+  const pRuta = location.pathname;
+  const enRecetas = isAppAdmin || pRuta === '/' || pRuta.startsWith('/menu') || pRuta.startsWith('/articulos') || pRuta.startsWith('/insumos');
   const enAlta = !isAppAdmin && (location.pathname.startsWith('/alta') || (location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0)));
 
   // Badge de alertas en el ícono de configuración
@@ -371,19 +375,19 @@ export default function Navbar() {
                     mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
                     <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
                   ] : null}
-                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/movimientos-bancarios') && !location.pathname.startsWith('/clientes') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
+                  {!enAlta && enRecetas && puedeVer('recetas') && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && !location.pathname.startsWith('/clientes') && (
+                  {!enAlta && !isAppAdmin && enRecetas && puedeVer('recetas') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && !location.pathname.startsWith('/clientes') && (
+                  {!enAlta && !isAppAdmin && veMenuDiseno && enRecetas && puedeVer('recetas') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -505,7 +509,7 @@ export default function Navbar() {
                 }
                 return (
                   <>
-                    {(enInicio || !puedeVer('recetas')) ? null : isAppAdmin ? (
+                    {(enInicio || !enRecetas || !puedeVer('recetas')) ? null : isAppAdmin ? (
                       <Button color="inherit"
                         sx={{ color: 'inherit', position: 'relative', ...activeSx(enMenu) }}
                         component={NavLink} to="/menu">
