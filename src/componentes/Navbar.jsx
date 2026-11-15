@@ -592,6 +592,19 @@ export default function Navbar() {
                 <SucursalesChips />
               </Box>
             )}
+            {/* Movimientos bancarios y Conciliación: cada sucursal tiene su cuenta (Diego 15/11/2026: «me gusta
+                que te haga elegir una cuando entrás, pero después tienen que quedar arriba en el menú como en
+                el resto de las pantallas»). Sin "Todas" y sin marcar ninguna hasta que se elige. */}
+            {!isAppAdmin && (location.pathname.startsWith('/movimientos-bancarios') || location.pathname.startsWith('/conciliacion')) && (
+              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
+                <SucursalesChips sinTodas elegir ayuda={
+                  <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
+                    <b>Sucursales</b><br />
+                    Cada sucursal cobra en su propia cuenta de Mercado Pago: elegí cuál ver.
+                  </span>
+                } />
+              </Box>
+            )}
             {/* Cronogramas: cada sucursal tiene su calendario (Diego, 07/11) → sin "Todas". */}
             {!isAppAdmin && location.pathname.startsWith('/rrhh/cronogramas') && (
               <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
