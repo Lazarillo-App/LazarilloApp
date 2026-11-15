@@ -189,6 +189,44 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .ases-top h2{font-size:60px;line-height:1.07;letter-spacing:-1px;font-weight:700;margin:18px 0;}
 .ases-top .sub{font-size:20px;font-weight:350;color:rgba(255,255,255,.74);}
 .d-corta{display:none;}
+.demo{padding:80px 0;background:var(--paper);}
+.demo h2,.funcs h2{font-size:38px;color:var(--ink);font-weight:800;letter-spacing:-.8px;margin:10px 0 24px;}
+.dtabs{display:flex;gap:8px;margin-bottom:22px;flex-wrap:wrap;}
+.dtabs button{height:44px;padding:0 20px;border-radius:50px;border:1px solid var(--line);background:#fff;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;color:var(--ink);cursor:pointer;}
+.dtabs button.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+.dbody{display:grid;grid-template-columns:1fr 330px;gap:28px;align-items:start;}
+.dshot{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(21,33,62,.18);border:1px solid var(--line);background:#fff;}
+.dshot img{display:block;width:100%;height:auto;}
+.dpin{position:absolute;width:30px;height:30px;margin:-4px 0 0 -4px;border-radius:50%;border:2px solid #fff;background:var(--sky);color:var(--ink);font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s;}
+.dpin.on{background:var(--ink);color:#fff;transform:scale(1.18);box-shadow:0 0 0 6px rgba(91,194,234,.45);}
+.dpasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.dpasos li{display:flex;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent;transition:background .15s;}
+.dpasos li.on{background:#fff;border-color:var(--line);box-shadow:0 6px 18px rgba(21,33,62,.08);}
+.dpasos .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--sky);color:var(--ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;}
+.dpasos li.on .n{background:var(--ink);color:#fff;}
+.dpasos b{font-family:'Sora',system-ui,sans-serif;font-size:15.5px;color:var(--ink);display:block;margin-bottom:3px;}
+.dpasos p{font-size:14px;line-height:1.45;margin:0;}
+.dpasos .dnota{cursor:default;align-items:center;font-size:12.5px;color:#8a93a3;padding-top:4px;}
+.dpasos .dnota img{width:30px;height:auto;}
+.funcs{padding:80px 0;background:#fff;}
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:stretch;}
+.fcol{padding:18px 18px 20px;border:1px solid var(--line);border-radius:16px;background:#fff;}
+.funcs-top{padding-bottom:64px;}
+.dpasos .dmas{cursor:default;padding-top:0;}
+.dpasos .dmas a{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:15px;color:var(--skydeep);text-decoration:none;}
+.navsel{display:none;position:relative;margin-right:auto;}
+.navsel>button{height:44px;display:flex;align-items:center;gap:8px;background:none;border:0;color:#fff;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:14px;cursor:pointer;padding:0 4px;white-space:nowrap;}
+.navsel .ham{font-size:18px;color:var(--sky);}
+.navsel-menu{position:absolute;top:50px;left:0;min-width:200px;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.35);display:flex;flex-direction:column;}
+.navsel-menu a{display:flex;align-items:center;min-height:44px;padding:0 14px;border-radius:8px;color:#c8d2e0;text-decoration:none;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;}
+.navsel-menu a.on{color:#fff;background:rgba(91,194,234,.16);}
+.fhead{background:var(--paper);border-radius:12px;padding:12px 16px;font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:var(--ink);margin-bottom:12px;}
+.fcol ul{list-style:none;margin:0;padding:0;}
+.fcol li{display:grid;grid-template-columns:26px 1fr;column-gap:10px;align-items:center;min-height:44px;font-size:15px;color:var(--ink);padding:4px 0;}
+.fcol li .fic{width:26px;text-align:center;font-size:18px;}
+.fcol li.pronto{color:#8a93a3;}
+.fcol li.pronto .fic{filter:grayscale(1);opacity:.6;}
+.fcol li em{font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--skydeep);background:rgba(91,194,234,.15);border-radius:20px;padding:2px 8px;grid-column:2;justify-self:start;margin-top:2px;}
 .ases-top .sub .solo{display:block;margin-top:14px;font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:24px;color:var(--sky);letter-spacing:-.3px;}
 .ases-top .pasos{margin-bottom:0;}
 .equipo{padding-top:70px;border-top:1px solid rgba(255,255,255,.06);}
@@ -235,15 +273,16 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
 @media(max-width:1000px){.sgrid,.pgrid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:820px){.brd{display:none;}nav .wrap{height:56px;gap:12px;}nav img{height:28px;}.navtabs{margin:0 auto 0 4px;gap:14px;align-self:stretch;}.navtabs a{font-size:13.5px;display:flex;align-items:center;padding:0;white-space:nowrap;}.navactions{gap:8px;}.btn-link{font-size:13.5px;padding:6px 2px;min-height:44px;}.d-larga{display:none;}.d-corta{display:inline;}.navactions .btn-sky{position:relative;}.navactions .btn-sky::after{content:'';position:absolute;inset:-6px -2px;}.sgrid,.pgrid{grid-template-columns:1fr;}.servicios h2,.faq h2,.principios h2{font-size:28px;}.pcita{font-size:18px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:820px){.brd{display:none;}nav .wrap{height:56px;gap:12px;}nav img{height:28px;}.navtabs{margin:0 auto 0 4px;gap:14px;align-self:stretch;}.navtabs a{font-size:13.5px;display:flex;align-items:center;padding:0;white-space:nowrap;}.navactions{gap:8px;}.btn-link{font-size:13.5px;padding:6px 2px;min-height:44px;}.d-larga{display:none;}.d-corta{display:inline;}.navactions .btn-sky{position:relative;}.navactions .btn-sky::after{content:'';position:absolute;inset:-6px 0;}.sgrid,.pgrid{grid-template-columns:1fr;}.servicios h2,.faq h2,.principios h2{font-size:28px;}.pcita{font-size:18px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
   .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:8px 14px;font-size:13px;white-space:nowrap;}
   .diff .wrap{grid-template-columns:1fr;} .diff .circle{display:none;}
   .insight .wrap{flex-direction:column;align-items:flex-start;gap:10px;}
-  .diff p{font-size:28px;} .cta h2{font-size:30px;} .hero h1,.ases-top h2{font-size:32px;} .ases-top .sub{font-size:17px;} .ases-top .sub .solo{font-size:20px;}
+  .diff p{font-size:28px;} .cta h2{font-size:30px;} .hero h1,.ases-top h2{font-size:32px;} .dbody{grid-template-columns:1fr;} .fgrid{grid-template-columns:1fr 1fr;} .navtabs{display:none!important;} .navsel{display:block;} .demo h2,.funcs h2{font-size:28px;} .dpin{width:24px;height:24px;font-size:11px;border-width:1.5px;} .dtabs{flex-wrap:nowrap;overflow-x:auto;margin-right:-16px;padding-right:16px;scrollbar-width:none;} .dtabs button{flex:none;padding:0 16px;font-size:14px;} .ases-top .sub{font-size:17px;} .ases-top .sub .solo{font-size:20px;}
 }
-@media(max-width:380px){.hero h1,.ases-top h2{font-size:30px;}}`;
+@media(max-width:560px){.fgrid{grid-template-columns:1fr;}}
+@media(max-width:380px){.hero h1,.ases-top h2{font-size:30px;} nav .wrap{gap:8px;} .navsel>button{font-size:13px;gap:6px;} .btn-link{font-size:13px;}}`;
 
 const marqueeChips = [
   "Costos reales por plato", "Política de precios que se sostiene", "Ingeniería de menú",
@@ -269,6 +308,14 @@ const logosClientes = [
   { nm: 'Comercio', src: LOGO_CO },
   { nm: 'MigaGO', src: LOGO_MG },
   { nm: 'Llévalo Listo', src: LOGO_LL },
+];
+
+// Funcionalidades al estilo del menú de Yurest (Diego 15/11/2026). «pronto» = próximamente.
+const funcionalidades = [
+  { g: 'Rentabilidad', it: [['📊', 'Food cost y costo mix'], ['🍽️', 'Ingeniería de menú'], ['🧾', 'Recetas y costos'], ['🏷️', 'Política de precios'], ['🧺', 'Tu canasta (inflación propia)'], ['📈', 'Resultados y proyección']] },
+  { g: 'Administración', it: [['🛒', 'Compras y gastos'], ['📦', 'Proveedores y cuenta corriente'], ['📝', 'Notas de pedido', 1], ['🚚', 'Recepción de mercadería', 1], ['🏦', 'Conciliación bancaria'], ['🤖', 'Escáner IA de facturas', 1]] },
+  { g: 'Operación y calidad', it: [['📺', 'Tableros de cocina'], ['📖', 'Menú y fichas de receta'], ['🍳', 'Carga de producción', 1], ['🏷', 'Trazabilidad y etiquetado', 1], ['🛠️', 'Bienes de uso y mantenimiento', 1]] },
+  { g: 'RRHH', it: [['🗓️', 'Cronogramas y turnos'], ['💵', 'Liquidación de sueldos', 1], ['👥', 'Equipo y permisos'], ['⏱️', 'Fichajes', 1], ['🌴', 'Gestión de vacaciones', 1]] },
 ];
 
 // Integraciones: con qué se conecta. Estados a confirmar.
@@ -338,6 +385,36 @@ const IAS = [
 const PRIORIDADES = ['Costos y precios', 'Rentabilidad', 'Operación y equipo', 'Proveedores', 'Menú', 'Personal y turnos'];
 
 // Modal de contacto: el pedido se guarda en el servidor y le llega por mail a los asesores.
+function Funcionalidades() {
+  return (
+    <>
+      <section className="asesores ases-top funcs-top">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Funcionalidades</div>
+          <h2>Todo tu restaurante,<br /><span>en un solo lugar.</span></h2>
+          <p className="sub">De gastronómicos para gastronómicos: cada módulo nace de un problema que tuvimos en nuestro propio restaurante.</p>
+        </div>
+      </section>
+      <section className="funcs" id="funcionalidades">
+        <div className="wrap">
+          <div className="fgrid">
+            {funcionalidades.map((c) => (
+              <div className="fcol" key={c.g}>
+                <div className="fhead">{c.g}</div>
+                <ul>
+                  {c.it.map(([ic, t, pronto]) => (
+                    <li key={t} className={pronto ? 'pronto' : ''}><span className="fic">{ic}</span><span>{t}</span>{pronto ? <em>Próximamente</em> : null}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
 function ContactModal({ onClose }) {
   const [form, setForm] = useState({ nombre: '', restaurante: '', contacto: '', prioridad: '', mensaje: '', web: '' });
   const [sent, setSent] = useState(false);
@@ -425,10 +502,14 @@ function ContactModal({ onClose }) {
 export default function LazarilloLanding() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  // Dos pestañas: El sistema (/) y Asesoría (/asesoria).
+  // Tres sectores: El sistema (/), Funcionalidades (/funcionalidades) y Asesoría (/asesoria).
   const enAsesoria = pathname.startsWith('/asesoria');
+  const enFuncs = pathname.startsWith('/funcionalidades');
+  const enSistema = !enAsesoria && !enFuncs;
+  const sectores = [['/', 'El sistema', enSistema], ['/funcionalidades', 'Funcionalidades', enFuncs], ['/asesoria', 'Asesoría', enAsesoria]];
   const [showModal, setShowModal] = useState(false);
-  React.useEffect(() => { window.scrollTo(0, 0); }, [enAsesoria]);
+  const [menu, setMenu] = useState(false);
+  React.useEffect(() => { window.scrollTo(0, 0); setMenu(false); }, [pathname]);
 
   const openModal = (e) => { e.preventDefault(); setShowModal(true); };
 
@@ -443,8 +524,16 @@ export default function LazarilloLanding() {
         <div className="wrap">
           <Link to="/" aria-label="Lazarillo"><img src={LOGO} alt="Lazarillo" /></Link>
           <div className="navtabs">
-            <Link to="/" className={enAsesoria ? '' : 'on'}>El sistema</Link>
-            <Link to="/asesoria" className={enAsesoria ? 'on' : ''}>Asesoría</Link>
+            {sectores.map(([to, t, on]) => <Link key={to} to={to} className={on ? 'on' : ''}>{t}</Link>)}
+          </div>
+          {/* Celular: ☰ con el sector actual para cambiar de sector (regla de la app). */}
+          <div className="navsel">
+            <button type="button" aria-expanded={menu} onClick={() => setMenu((m) => !m)}><span className="ham">☰</span>{sectores.find((x) => x[2])[1]}</button>
+            {menu && (
+              <div className="navsel-menu">
+                {sectores.map(([to, t, on]) => <Link key={to} to={to} className={on ? 'on' : ''}>{t}</Link>)}
+              </div>
+            )}
           </div>
           <div className="navactions">
             <button className="btn-link" onClick={() => navigate('/login')}>Ingresar</button>
@@ -453,7 +542,7 @@ export default function LazarilloLanding() {
         </div>
       </nav>
 
-      {!enAsesoria && (
+      {enSistema && (
         <>
       {/* HERO */}
       <header className="hero">
@@ -567,6 +656,7 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+
       {/* MARCAS: clientes en banda oscura que se mueve */}
       <section className="marca">
         <div className="t">Ya lo usan</div>
@@ -651,6 +741,8 @@ export default function LazarilloLanding() {
 
         </>
       )}
+
+      {enFuncs && <Funcionalidades />}
 
       {enAsesoria && (
         <>
