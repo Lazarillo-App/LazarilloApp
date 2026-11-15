@@ -46,19 +46,35 @@ const segmentoDe = (c, hoy) => {
   return 'ocasional';
 };
 
+// f = tipo de filtro estilo Excel (Diego 14/11): texto (contiene), num (mín–máx), fecha (desde–hasta),
+// lista (tildar valores).
 const COLS = [
-  { k: 'nombre', l: 'Cliente', izq: true },
-  { k: 'email', l: 'Email', izq: true },
-  { k: 'compras', l: 'Compras' },
-  { k: 'total', l: 'Total' },
-  { k: 'ticket', l: 'Ticket prom.' },
-  { k: 'primera', l: 'Primera' },
-  { k: 'ultima', l: 'Última' },
-  { k: 'sin', l: 'Días sin venir' },
-  { k: 'medio', l: 'Medio' },
-  { k: 'suc', l: 'Sucursal' },
-  { k: 'seg', l: 'Segmento' },
+  { k: 'nombre', l: 'Cliente', izq: true, f: 'texto' },
+  { k: 'email', l: 'Email', izq: true, f: 'texto' },
+  { k: 'compras', l: 'Compras', f: 'num' },
+  { k: 'total', l: 'Total', f: 'num' },
+  { k: 'ticket', l: 'Ticket prom.', f: 'num' },
+  { k: 'primera', l: 'Primera', f: 'fecha' },
+  { k: 'ultima', l: 'Última', f: 'fecha' },
+  { k: 'sin', l: 'Días sin venir', f: 'num' },
+  { k: 'medio', l: 'Medio', f: 'lista' },
+  { k: 'suc', l: 'Sucursal', f: 'lista' },
+  { k: 'segL', l: 'Segmento', f: 'lista' },
 ];
+const textoDe = (c, k) => (k === 'nombre' ? `${c.nombre || ''} ${c.docTxt || ''}` : String(c[k] ?? ''));
+function pasaFiltro(c, k, f) {
+  if (!f) return true;
+  const v = c[k];
+  if (f.texto != null && f.texto !== '') return textoDe(c, k).toLowerCase().includes(f.texto.toLowerCase());
+  if (f.valores) return k === 'suc' ? String(v || '').split(', ').some((x) => f.valores.includes(x)) : f.valores.includes(String(v ?? ''));
+  if (f.min !== '' && f.min != null && !(Number(v) >= Number(f.min))) return false;
+  if (f.max !== '' && f.max != null && !(Number(v) <= Number(f.max))) return false;
+  if (f.desde && !(String(v || '') >= f.desde)) return false;
+  if (f.hasta && !(String(v || '') <= f.hasta)) return false;
+  return true;
+}
+const filtroActivo = (f) => !!f && ((f.texto != null && f.texto !== '') || !!f.valores || (f.min !== '' && f.min != null)
+  || (f.max !== '' && f.max != null) || !!f.desde || !!f.hasta);
 
 export default function Clientes() {
   const { activeBusinessId } = useBusiness() || {};
@@ -70,6 +86,9 @@ export default function Clientes() {
   const [buscar, setBuscar] = useState('');
   const [orden, setOrden] = useState({ k: 'total', asc: false });
   const [mostrar, setMostrar] = useState(300);
+  const [filtros, setFiltros] = useState({});
+  const [abierto, setAbierto] = useState(null); // { k, x, y } del menú de la columna
+  const ponerFiltro = (k, f) => { setFiltros((o) => ({ ...o, [k]: f })); setMostrar(300); };
 
   useEffect(() => {
     if (!bid) return undefined;
@@ -99,6 +118,7 @@ export default function Clientes() {
     ticket: c.compras ? c.total / c.compras : 0,
     sin: diasEntre(c.ultima, hoy),
     seg: segmentoDe(c, hoy),
+    segL: SEGMENTOS.find((s2) => s2.k === segmentoDe(c, hoy))?.uno || '',
     docTxt: fmtDoc(c.doc, c.doc_tipo),
     suc: (c.sucursales || []).map(nombreSuc).join(', '),
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,11 +134,12 @@ export default function Clientes() {
     const q = buscar.trim().toLowerCase();
     const qn = q.replace(/\D/g, '');
     const f = lista.filter((c) => (!seg || c.seg === seg)
-      && (!q || `${c.nombre || ''} ${c.email || ''}`.toLowerCase().includes(q) || (qn && String(c.doc || '').includes(qn))));
+      && (!q || `${c.nombre || ''} ${c.email || ''}`.toLowerCase().includes(q) || (qn && String(c.doc || '').includes(qn)))
+      && Object.entries(filtros).every(([k, fl]) => pasaFiltro(c, k, fl)));
     const k = orden.k;
     const val = (c) => (k === 'nombre' ? (c.nombre || '~').toLowerCase() : k === 'email' ? (c.email || '~') : c[k]);
     return f.sort((a, b) => { const x = val(a), y = val(b); const r = x < y ? -1 : x > y ? 1 : 0; return orden.asc ? r : -r; });
-  }, [lista, seg, buscar, orden]);
+  }, [lista, seg, buscar, orden, filtros]);
 
   const tot = useMemo(() => {
     const n = lista.length;
@@ -144,7 +165,7 @@ export default function Clientes() {
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   };
 
-  const pagina = { maxWidth: 1240, margin: '0 auto', padding: '18px 22px 40px', fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt };
+  const pagina = { maxWidth: 1360, margin: '0 auto', padding: '18px 22px 40px', fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt };
   const tarjeta = { background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12 };
   const chip = (on, c) => ({
     fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -183,21 +204,32 @@ export default function Clientes() {
     { l: 'Ticket promedio', v: pesos(tot.ticket), s: 'por compra' },
     { l: 'Nuevos (30 días)', v: tot.nuevos.toLocaleString('es-AR'), s: 'primera compra' },
   ];
-  const th = { padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#fff', fontWeight: 700, position: 'sticky', top: 0, zIndex: 1, background: 'var(--color-primary, #2492C8)', textAlign: 'center', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' };
-  const td = { padding: '7px 10px', fontSize: 13, borderBottom: `1px solid ${T.line2}`, textAlign: 'center', whiteSpace: 'nowrap' };
+  // borderRadius/boxShadow 0: el estilo global de thead th les pone esquinas redondeadas (dejaban
+  // «piquitos» blancos entre columnas).
+  const th = { padding: '8px 8px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#fff', fontWeight: 700, position: 'sticky', top: 0, zIndex: 1, background: 'var(--color-primary, #2492C8)', textAlign: 'center', whiteSpace: 'nowrap', userSelect: 'none', borderRadius: 0, boxShadow: 'none' };
+  const td = { padding: '7px 8px', fontSize: 13, borderBottom: `1px solid ${T.line2}`, textAlign: 'center', whiteSpace: 'nowrap' };
+  const abrirMenu = (e, k) => {
+    // La app tiene zoom en #root: el rectángulo viene escalado y el menú fijo se vuelve a escalar.
+    const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
+    const r = e.currentTarget.getBoundingClientRect();
+    setAbierto(abierto?.k === k ? null : { k, x: Math.min(r.left / z, window.innerWidth / z - 270), y: r.bottom / z + 4 });
+  };
   const segInfo = Object.fromEntries(SEGMENTOS.map((s) => [s.k, s]));
 
   return (
     <div style={pagina}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-        <div style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 14 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Clientes</h1>
           <div style={{ color: T.txt2, fontSize: 13.5, marginTop: 4 }}>
             Los que te pagaron por Mercado Pago, en todas las sucursales · del {dma(datos.desde)} al {dma(datos.hasta)}
+            {datos.propios?.length ? ' · sin contar tus propias cuentas' : ''}
           </div>
         </div>
+        <input type="search" value={buscar} onChange={(e) => { setBuscar(e.target.value); setMostrar(300); }} placeholder="Buscar cliente, email o CUIT"
+          style={{ marginLeft: 'auto', fontFamily: 'inherit', fontSize: 13.5, height: 36, boxSizing: 'border-box', padding: '0 12px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)', width: 260, flexShrink: 1, minWidth: 160 }} />
         <button type="button" onClick={exportar}
-          style={{ marginLeft: 'auto', fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           Exportar a Excel ({visibles.length.toLocaleString('es-AR')})
         </button>
       </div>
@@ -226,32 +258,45 @@ export default function Clientes() {
               {verSinContacto ? '← Volver a los clientes' : `Sin datos de contacto ${nSinContacto.toLocaleString('es-AR')}`}
             </button>
           )}
-          <input type="search" value={buscar} onChange={(e) => { setBuscar(e.target.value); setMostrar(300); }} placeholder="Buscar nombre, email o documento"
-            style={{ fontFamily: 'inherit', fontSize: 13.5, height: 34, boxSizing: 'border-box', padding: '0 10px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)', flex: '1 1 220px', minWidth: 180, marginLeft: 'auto' }} />
+          {Object.values(filtros).some(filtroActivo) && (
+            <button type="button" onClick={() => setFiltros({})} style={{ ...chip(true, T.celeste), marginLeft: 'auto' }}>
+              {Object.values(filtros).filter(filtroActivo).length} filtro{Object.values(filtros).filter(filtroActivo).length === 1 ? '' : 's'} por columna · Limpiar ✕
+            </button>
+          )}
         </div>
         {!conSegmentos && (
           <div style={{ padding: '6px 14px', fontSize: 12.5, color: T.txt3, borderBottom: `1px solid ${T.line2}` }}>
             Los segmentos (frecuentes, en riesgo, nuevos…) aparecen con 60 días de historia.
           </div>
         )}
-        <div style={{ maxHeight: 620, overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ maxHeight: 620, overflow: 'auto' }} onScroll={() => setAbierto(null)}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', borderSpacing: 0 }}>
             <thead><tr>
-              {COLS.filter((c) => c.k !== 'seg' || conSegmentos).map((c) => (
-                <th key={c.k} onClick={() => setOrden((o) => ({ k: c.k === 'suc' || c.k === 'seg' ? o.k : c.k, asc: o.k === c.k ? !o.asc : c.izq }))}
-                  style={c.izq ? { ...th, textAlign: 'left' } : th}>
-                  {c.l}{orden.k === c.k ? (orden.asc ? ' ▲' : ' ▼') : ''}
-                </th>
-              ))}
+              {COLS.filter((c) => c.k !== 'segL' || conSegmentos).map((c) => {
+                const act = filtroActivo(filtros[c.k]);
+                const ord = orden.k === c.k || (c.k === 'segL' && orden.k === 'seg');
+                return (
+                  <th key={c.k} style={c.izq ? { ...th, textAlign: 'left' } : th}>
+                    <button type="button" onClick={(e) => abrirMenu(e, c.k)} title="Ordenar y filtrar"
+                      style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {c.l}
+                      <span style={{ fontSize: 9, opacity: act || ord ? 1 : 0.6, width: 16, height: 16, borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        background: act ? '#fff' : 'transparent', color: act ? 'var(--color-primary, #2492C8)' : '#fff' }}>
+                        {act ? '▼' : ord ? (orden.asc ? '▲' : '▼') : '▾'}
+                      </span>
+                    </button>
+                  </th>
+                );
+              })}
             </tr></thead>
             <tbody>
               {visibles.slice(0, mostrar).map((c) => (
                 <tr key={c.id}>
-                  <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal', minWidth: 170, maxWidth: 260, lineHeight: 1.3 }}>
+                  <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal', minWidth: 150, maxWidth: 220, lineHeight: 1.3 }}>
                     {c.nombre ? <span>{c.nombre}</span> : <span style={{ color: T.txt3 }}>sin nombre</span>}
                     {c.docTxt ? <span style={{ display: 'block', color: T.txt3, fontSize: 12 }}>{c.docTxt}</span> : null}
                   </td>
-                  <td style={{ ...td, textAlign: 'left', color: c.email ? T.txt : T.txt3, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.email || ''}>{c.email || '—'}</td>
+                  <td style={{ ...td, textAlign: 'left', color: c.email ? T.txt : T.txt3, maxWidth: 210, overflow: 'hidden', textOverflow: 'ellipsis' }} title={c.email || ''}>{c.email || '—'}</td>
                   <td style={{ ...td, fontWeight: 700 }}>{c.compras}</td>
                   <td style={{ ...td, fontFamily: "'Sora', sans-serif", fontWeight: 600 }}>{pesos(c.total)}</td>
                   <td style={{ ...td, color: T.txt2 }}>{pesos(c.ticket)}</td>
@@ -279,6 +324,86 @@ export default function Clientes() {
           {!visibles.length && <div style={{ padding: 16, fontSize: 13, color: T.txt3, textAlign: 'center' }}>Nada coincide con los filtros.</div>}
         </div>
       </div>
+      {abierto && (
+        <MenuColumna col={COLS.find((c) => c.k === abierto.k)} pos={abierto} lista={lista} filtro={filtros[abierto.k]}
+          onFiltro={(f) => ponerFiltro(abierto.k, f)} onOrden={(asc) => { setOrden({ k: abierto.k === 'segL' ? 'seg' : abierto.k, asc }); setAbierto(null); }}
+          onCerrar={() => setAbierto(null)} />
+      )}
     </div>
+  );
+}
+
+// Menú de cada columna, estilo Excel: ordenar y filtrar.
+function MenuColumna({ col, pos, lista, filtro, onFiltro, onOrden, onCerrar }) {
+  const [busca, setBusca] = useState('');
+  const f = filtro || {};
+  const campo = { fontFamily: 'inherit', fontSize: 13, height: 32, boxSizing: 'border-box', padding: '0 8px', borderRadius: 6, border: '1px solid rgba(21,33,62,.18)', width: '100%' };
+  const fila = { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: 'none', border: 'none', width: '100%', textAlign: 'left', fontFamily: 'inherit', color: T.txt };
+  const valores = useMemo(() => {
+    if (col.f !== 'lista') return [];
+    const n = {};
+    lista.forEach((c) => {
+      const vs = col.k === 'suc' ? String(c.suc || '').split(', ') : [String(c[col.k] ?? '')];
+      vs.forEach((v) => { n[v] = (n[v] || 0) + 1; });
+    });
+    return Object.entries(n).sort((a, b) => b[1] - a[1]);
+  }, [col, lista]);
+  const elegidos = f.valores ? new Set(f.valores) : null;
+  const alternar = (v) => {
+    const set = new Set(elegidos || valores.map(([x]) => x));
+    if (set.has(v)) set.delete(v); else set.add(v);
+    onFiltro(set.size === valores.length ? null : { valores: [...set] });
+  };
+  const az = col.f === 'num' || col.f === 'fecha' ? ['Menor a mayor', 'Mayor a menor'] : ['A → Z', 'Z → A'];
+  return (
+    <>
+      <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
+      <div style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 1301, width: 260, background: '#fff', border: `1px solid ${T.line}`, borderRadius: 10, boxShadow: '0 10px 30px rgba(21,33,62,.18)', padding: 6, fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt }}>
+        <button type="button" style={fila} onClick={() => onOrden(true)}>↑ {az[0]}</button>
+        <button type="button" style={fila} onClick={() => onOrden(false)}>↓ {az[1]}</button>
+        <div style={{ height: 1, background: T.line, margin: '6px 4px' }} />
+        <div style={{ padding: '2px 10px 6px', fontSize: 11.5, fontWeight: 700, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.4px' }}>Filtrar {col.l}</div>
+        <div style={{ padding: '0 10px 8px' }}>
+          {col.f === 'texto' && (
+            <input autoFocus type="search" value={f.texto || ''} placeholder="Contiene…" style={campo}
+              onChange={(e) => onFiltro(e.target.value ? { texto: e.target.value } : null)} />
+          )}
+          {col.f === 'num' && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="number" value={f.min ?? ''} placeholder="Desde" style={campo} onChange={(e) => onFiltro({ ...f, min: e.target.value })} />
+              <span style={{ color: T.txt3 }}>a</span>
+              <input type="number" value={f.max ?? ''} placeholder="Hasta" style={campo} onChange={(e) => onFiltro({ ...f, max: e.target.value })} />
+            </div>
+          )}
+          {col.f === 'fecha' && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <input type="date" value={f.desde || ''} style={campo} onChange={(e) => onFiltro({ ...f, desde: e.target.value })} />
+              <input type="date" value={f.hasta || ''} style={campo} onChange={(e) => onFiltro({ ...f, hasta: e.target.value })} />
+            </div>
+          )}
+          {col.f === 'lista' && (
+            <>
+              {valores.length > 8 && <input type="search" value={busca} placeholder="Buscar…" style={{ ...campo, marginBottom: 6 }} onChange={(e) => setBusca(e.target.value)} />}
+              <label style={{ ...fila, padding: '4px 2px', fontWeight: 700 }}>
+                <input type="checkbox" checked={!elegidos} onChange={() => onFiltro(elegidos ? null : { valores: [] })} />
+                (Seleccionar todo)
+              </label>
+              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                {valores.filter(([v]) => !busca || v.toLowerCase().includes(busca.toLowerCase())).map(([v, n]) => (
+                  <label key={v} style={{ ...fila, padding: '4px 2px' }}>
+                    <input type="checkbox" checked={!elegidos || elegidos.has(v)} onChange={() => alternar(v)} />
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '(vacío)'}</span>
+                    <span style={{ color: T.txt3, fontSize: 12 }}>{n.toLocaleString('es-AR')}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {filtroActivo(filtro) && (
+          <button type="button" style={{ ...fila, color: T.rojo }} onClick={() => { onFiltro(null); onCerrar(); }}>✕ Quitar filtro de {col.l}</button>
+        )}
+      </div>
+    </>
   );
 }
