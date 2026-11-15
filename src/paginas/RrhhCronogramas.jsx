@@ -831,9 +831,11 @@ export default function RrhhCronogramas() {
   ].filter((p) => !cel || ['dias', 'fila', 'agregar'].includes(p.k)); // celu: la barra es otra, solo la grilla
   // Arranca solo mientras el negocio no cargó ningún cronograma propio (Diego 14/11/2026).
   const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
-    !cargando && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel
+    !cargando && !cargandoSemana && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel
       && !(sinHistoria && !semanaExiste && !ejemploVisto && !cargandoSemana), // con el EJEMPLO en pantalla, después de «Armar la semana»
-    { sinDatos: sinHistoria && !semanaExiste });
+    // «Datos propios» = alguna semana guardada en el negocio (índice que llega junto con la config).
+    // Antes miraba la semana en pantalla, que carga después: la guía aparecía y se cerraba sola.
+    { sinDatos: sinHistoria && !semanasIdx.length });
   const pasoTour = pasosTour[recCrono.paso - 1];
   const primerTurno = (espacio?.turnos || []).find((t) => !minimizados[`${espacioId}:${t.id}`])?.id;
   const primeraFila = filas.find((f) => f.turnoId === primerTurno)?.key;
