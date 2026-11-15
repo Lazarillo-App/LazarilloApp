@@ -192,7 +192,7 @@ function DetallePedido({ id, onCerrar, catalogo }) {
       const r = await SuperAPI.crearTarea({
         titulo: tituloPedido(p).slice(0, 200),
         detalle: `Pedido #${p.id} de ${p.usuario_nombre || p.usuario_email || 'un cliente'}${pant ? ` · pantalla ${pant}` : ''}.\n\n${p.mensaje || ''}`,
-        modulo, business_id: p.business_id || null, pedido_id: p.id, prioridad: 'normal',
+        modulo, business_id: p.business_id || null, pedido_id: p.id, prioridad: 'normal', solicitante_id: p.user_id || null,
       });
       if (p.estado === 'nuevo' || p.estado === 'revision') await cambiar({ estado: 'desarrollo' });
       setP((x) => ({ ...x, tarea_id: r.tarea.id }));

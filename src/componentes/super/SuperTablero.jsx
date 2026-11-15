@@ -134,7 +134,7 @@ const ChipEstado = ({ estado, onClick }) => {
 };
 
 /* ───────── grilla de la lista ───────── */
-const COLS = '78px minmax(0,1fr) 168px 52px 104px 52px';
+const COLS = '78px minmax(0,1fr) 156px 84px 44px 104px 52px';
 const COLS_MOVIL = '62px minmax(0,1fr) 30px';
 const titulo = { fontFamily: FB, fontSize: 11, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' };
 
@@ -161,6 +161,10 @@ function Fila({ t, movil, onAbrir, onCambio }) {
         ) : null}
       </div>
       {!movil && <div style={{ textAlign: 'center', minWidth: 0 }}><ChipNegocio nombre={t.negocio} /></div>}
+      {!movil && (
+        <div title={t.solicitante_nombre || ''} style={{ textAlign: 'center', fontFamily: FB, fontSize: 12.5, fontWeight: 600, color: T.text2,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{primerNombre(t.solicitante_nombre) || '—'}</div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'center' }}><Avatar nombre={t.asignado_nombre} /></div>
       {!movil && <div style={{ display: 'flex', justifyContent: 'center' }}><ChipEstado estado={t.estado} onClick={() => onCambio(t, { estado: SIGUIENTE[t.estado] })} /></div>}
       {!movil && (
@@ -298,10 +302,17 @@ function Detalle({ id, equipo, yo, negocios, onCerrar, onCambio, onBorrada }) {
           <CamposClasificacion modulo={t.modulo} negocio={t.business_id} prioridad={t.prioridad} negocios={negocios}
             deshabilitado={guardando} onCambio={cambiar} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
             <div>
-              <div style={seccion}>Estado</div>
-              <Segmentos lleno opciones={ESTADOS.map((e) => [e.k, e.l])} valor={t.estado} deshabilitado={guardando} onCambio={(k) => cambiar({ estado: k })} />
+              <div style={seccion}>Lo pidió</div>
+              <select value={t.solicitante_id || ''} disabled={guardando} onChange={(e) => cambiar({ solicitante_id: e.target.value ? Number(e.target.value) : null })}
+                style={{ ...campo, cursor: 'pointer' }}>
+                <option value="">—</option>
+                {t.solicitante_id && !equipo.some((u) => String(u.id) === String(t.solicitante_id)) && (
+                  <option value={t.solicitante_id}>{t.solicitante_nombre || `Usuario ${t.solicitante_id}`} (cliente)</option>
+                )}
+                {equipo.map((u) => <option key={u.id} value={u.id}>{primerNombre(u.display_name || u.name || u.email)}</option>)}
+              </select>
             </div>
             <div>
               <div style={seccion}>Quién lo hace</div>
@@ -313,6 +324,10 @@ function Detalle({ id, equipo, yo, negocios, onCerrar, onCambio, onBorrada }) {
                 ))}
               </select>
             </div>
+          </div>
+          <div>
+            <div style={seccion}>Estado</div>
+            <Segmentos lleno opciones={ESTADOS.map((e) => [e.k, e.l])} valor={t.estado} deshabilitado={guardando} onCambio={(k) => cambiar({ estado: k })} />
           </div>
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 12 }}>
             Creado por {primerNombre(t.creado_nombre) || '—'} el {fecha(t.created_at)}
@@ -429,7 +444,7 @@ export default function SuperTablero({ tareaInicial = null }) {
           <option value="todos">Solo «Todos» (Lazarillo)</option>
           {negociosUsados.map((n) => <option key={n.id} value={String(n.id)}>{n.name}</option>)}
         </Selector>
-        <Selector valor={quien} onCambio={setQuien} ancho={112} title="Quién lo hace">
+        <Selector valor={quien} onCambio={setQuien} ancho={112} title="Quién lo hace (las mías = asignadas a vos)">
           {QUIEN.map(([k, l]) => <option key={k || 'todos'} value={k}>{l}</option>)}
         </Selector>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar…" style={{ ...campo, flex: '1 1 140px', minWidth: 110, width: 'auto' }} />
@@ -447,7 +462,8 @@ export default function SuperTablero({ tareaInicial = null }) {
               <span style={titulo}>Prioridad</span>
               <span style={{ ...titulo, textAlign: 'left' }}>Pendiente</span>
               <span style={titulo}>Negocio</span>
-              <span style={titulo}>Quién</span>
+              <span style={titulo}>Pidió</span>
+              <span style={titulo} title="Quién lo hace">Hace</span>
               <span style={titulo}>Estado</span>
               <span style={titulo}>Act.</span>
             </div>
