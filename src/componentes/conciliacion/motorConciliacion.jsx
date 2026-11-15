@@ -54,7 +54,7 @@ export const fmtFecha = (iso) => { const m = String(iso || "").match(/^(\d{4})-(
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
 // Normaliza nombre de cliente para agrupar (minúsculas, sin acentos, sin "na", sin puntuación)
 export const normCli = (s) => String(s || "").toLowerCase()
-  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
   .replace(/\bna\b/g, "").replace(/[^a-z0-9 ]/g, " ")
   .replace(/\s+/g, " ").trim();
 // Clave de agrupación por cliente: primeros 2 tokens del nombre normalizado.
@@ -607,7 +607,7 @@ export function conciliar(ingresos, banco, tolDias, autoVal = 0, autoTipo = "pct
 export const FUENTES = [
   {
     key: "ventas", titulo: "Ventas detalladas", subtitulo: "Informe 22 · ventas no efectivo",
-    emoji: "🧾", parser: parseVentas,
+    emoji: "\\uD83E\\uDDFE", parser: parseVentas,
     // columnas imprescindibles para conciliar (cada entrada acepta alternativas de nombre)
     reqCols: [["IMPORTE"], ["FECHA"], ["COBRO"]],
     instructivo: {
@@ -627,7 +627,7 @@ export const FUENTES = [
   },
   {
     key: "pagos", titulo: "Cobranzas de cuenta corriente", subtitulo: "Informe 72 · cta cte por comprobante",
-    emoji: "💳", parser: parsePagos,
+    emoji: "\\uD83D\\uDCB3", parser: parsePagos,
     nota: "Este informe trae la forma de cobro. Solo se usan las cobranzas MercadoPago (las que entran al banco MP).",
     reqCols: [["COBRANZA"], ["FECHACOB"], ["IMPORTE"]],
     // si el archivo trae estas columnas, es el informe VIEJO ("Cobranzas por
@@ -659,7 +659,7 @@ export const FUENTES = [
   {
     key: "banco", titulo: "Movimientos del banco", subtitulo: "Settlement / extracto (Mercado Pago)",
     nota: "Necesita las columnas: Tipo de operación · Valor de la compra · Fecha de origen. No importa el orden en que vengan.",
-    emoji: "🏦", parser: parseBanco,
+    emoji: "\\uD83C\\uDFE6", parser: parseBanco,
     reqCols: [["TIPO DE OPERACIÓN", "TIPO DE OPERACION"], ["VALOR DE LA COMPRA"], ["FECHA DE ORIGEN"]],
     instructivo: {
       titulo: "Movimientos del banco (Mercado Pago)",
