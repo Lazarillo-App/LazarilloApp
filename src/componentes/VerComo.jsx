@@ -9,6 +9,8 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import { useAccess } from '@/context/AccessContext';
 import { RolesAPI } from '@/servicios/apiRoles';
+import { listMembers, efectivosAcceso } from '@/servicios/apiTeam';
+import { useBusiness } from '@/context/BusinessContext';
 
 // Opciones de "Ver como" dentro del desplegable del perfil (solo el dueño real).
 // Hereda los colores del desplegable (fondo del negocio).
@@ -16,6 +18,45 @@ export function VerComoItems({ onElegido }) {
   const { rolReal, verComo, setVerComo } = useAccess() || {};
   const navigate = useNavigate();
   const [opciones, setOpciones] = useState(null);
+  // Personas (Diego 15/11/2026): ver como una persona puntual = su rol + sus ajustes propios.
+  const { activeId } = useBusiness() || {};
+  const [personas, setPersonas] = useState([]);
+  const [cargandoId, setCargandoId] = useState(null);
+  const yoId = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null')?.id ?? null; } catch { return null; } })();
+
+  useEffect(() => {
+    if (rolReal !== 'owner') return;
+    let vivo = true;
+    listMembers().then((rows) => {
+      if (!vivo) return;
+      const porPersona = new Map();
+      for (const r of rows || []) {
+        if (!r.id || !['admin', 'staff'].includes(r.role) || Number(r.user_id) === Number(yoId) || r.account_status === 'invited') continue;
+        // Se prefiere el acceso del negocio activo.
+        const esDeAca = r.scope_type === 'business' && Number(r.scope_id) === Number(activeId);
+        const previo = porPersona.get(r.user_id);
+        if (!previo || (esDeAca && !previo.esDeAca)) porPersona.set(r.user_id, { ...r, esDeAca });
+      }
+      setPersonas([...porPersona.values()]
+        .map((r) => ({ id: `persona:${r.id}`, assignmentId: r.id, nombre: r.alias || r.name || r.email, rol: r.role,
+          rolNombre: r.custom_role_nombre || (r.role === 'staff' ? 'Staff' : 'Administración') }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    }).catch(() => { if (vivo) setPersonas([]); });
+    return () => { vivo = false; };
+  }, [rolReal, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const elegirPersona = async (pers) => {
+    setCargandoId(pers.id);
+    try {
+      const e = await efectivosAcceso(pers.assignmentId);
+      onElegido?.();
+      setVerComo(e.tipo === 'staff'
+        ? { id: pers.id, nombre: pers.nombre, rol: 'staff', subrol: pers.rolNombre !== 'Staff' ? pers.rolNombre : null, permisos: null, permisosStaff: e.permisos || {} }
+        : { id: pers.id, nombre: pers.nombre, rol: 'admin', subrol: null, permisos: { secciones: e.secciones || {}, ocultos: e.ocultos || [] }, permisosStaff: null });
+      navigate('/inicio');
+    } catch { /* si falla, se queda el menú abierto */ }
+    finally { setCargandoId(null); }
+  };
 
   useEffect(() => {
     if (rolReal !== 'owner') return;
@@ -61,6 +102,27 @@ export function VerComoItems({ onElegido }) {
           </Box>
         );
       })}
+      {opciones && personas.length > 0 && (
+        <>
+          <Box sx={{ px: 2, pt: 1, pb: 0.25, fontSize: '0.66rem', fontWeight: 700, letterSpacing: '.05em', opacity: 0.6 }}>PERSONAS</Box>
+          <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
+            {personas.map((pe) => {
+              const activo = verComo?.id === pe.id;
+              return (
+                <Box key={pe.id} role="menuitem" onClick={() => elegirPersona(pe)}
+                  sx={{ px: 2, minHeight: 32, display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', fontSize: '0.875rem',
+                    fontWeight: activo ? 700 : 400, '&:hover': { bgcolor: 'color-mix(in srgb, var(--on-primary, #000) 10%, transparent)' } }}>
+                  <Box sx={{ width: 16, display: 'flex' }}>
+                    {cargandoId === pe.id ? <CircularProgress size={12} sx={{ color: 'inherit' }} /> : activo && <CheckIcon sx={{ fontSize: 16 }} />}
+                  </Box>
+                  <Box component="span" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pe.nombre}</Box>
+                  <Box component="span" sx={{ fontSize: '0.7rem', opacity: 0.6, whiteSpace: 'nowrap' }}>{pe.rolNombre}</Box>
+                </Box>
+              );
+            })}
+          </Box>
+        </>
+      )}
     </Box>
   );
 }
