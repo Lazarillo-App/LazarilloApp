@@ -112,8 +112,22 @@ function SpotlightTourContenido({
     if (!el) return;
     // Si el elemento quedó fuera de la vista (pestañas que no entran a 1100 px), se lo trae.
     const r0 = el.getBoundingClientRect();
+    // Solo se corren los contenedores con scroll propio (las pestañas): scrollIntoView corría la
+    // página entera de costado cuando el header no entra (Cronogramas a 1100 px).
     if (r0.right > window.innerWidth || r0.left < 0 || r0.bottom > window.innerHeight || r0.top < 0) {
-      try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* sin scroll */ }
+      for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        const pr = p.getBoundingClientRect();
+        const er = el.getBoundingClientRect();
+        if (/(auto|scroll)/.test(cs.overflowX) && p.scrollWidth > p.clientWidth) {
+          if (er.right > pr.right) p.scrollLeft += er.right - pr.right + 16;
+          else if (er.left < pr.left) p.scrollLeft -= pr.left - er.left + 16;
+        }
+        if (/(auto|scroll)/.test(cs.overflowY) && p.scrollHeight > p.clientHeight) {
+          if (er.bottom > pr.bottom) p.scrollTop += er.bottom - pr.bottom + 16;
+          else if (er.top < pr.top) p.scrollTop -= pr.top - er.top + 16;
+        }
+      }
     }
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
@@ -153,8 +167,9 @@ function SpotlightTourContenido({
     );
   }
 
-  const holeTop = rect.top - padding;
-  const holeLeft = rect.left - padding;
+  // Pegado al borde de la ventana (el header, la pestañita de módulos) el recuadro se cortaba.
+  const holeTop = Math.max(2, rect.top - padding);
+  const holeLeft = Math.max(2, rect.left - padding);
   const holeRight = rect.left + rect.width + padding;
   const holeBottom = rect.top + rect.height + padding;
   const holeHeight = holeBottom - holeTop;

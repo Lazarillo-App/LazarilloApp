@@ -324,7 +324,7 @@ export default function Navbar() {
                 )}
               </Box>
               {/* Staff: sin pulso de datos (es info de administración, usuaria 10/11). */}
-              {!isAppAdmin && !isStaff && <PulsoDatos puedeActualizar />}
+              {!isAppAdmin && !isStaff && <Box component="span" data-tour="hdr-pulso" sx={{ display: 'inline-flex' }}><PulsoDatos puedeActualizar /></Box>}
             </Box>
 
             {/* Mobile – hamburguesa */}
@@ -401,7 +401,7 @@ export default function Navbar() {
 
 {/* Desktop – links */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 1, py: 0.75 }}>
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Box data-tour="hdr-botonera" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               {(() => {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
@@ -568,13 +568,13 @@ export default function Navbar() {
             {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú y el Panel de
                 Gestión — Diego 10/11/2026: «le falta el selector de sucursal igual que en recetas»). */}
             {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos') || location.pathname === '/gestion') && (
-              <Box sx={{ pl: 1, pb: 0.25 }}>
+              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
                 <SucursalesChips />
               </Box>
             )}
             {/* Cronogramas: cada sucursal tiene su calendario (Diego, 07/11) → sin "Todas". */}
             {!isAppAdmin && location.pathname.startsWith('/rrhh/cronogramas') && (
-              <Box sx={{ pl: 1, pb: 0.25 }}>
+              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
                 <SucursalesChips sinTodas ayuda={
                   <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
                     <b>Sucursales</b><br />
@@ -589,7 +589,7 @@ export default function Navbar() {
             {/* Selector negocio/división */}
 
             {!isAppAdmin && logged && (
-              <Box sx={{ ml: 1, flexShrink: 0 }}>
+              <Box data-tour="hdr-negocio" sx={{ ml: 1, flexShrink: 0 }}>
                 <BusinessDivisionSelector canCreate={!!isOwner} />
               </Box>
             )}
@@ -598,7 +598,7 @@ export default function Navbar() {
                 matemática de posición cruzando el zoom global: al vivir en el
                 mismo contenedor que el avatar (position:relative acá al lado),
                 cae directamente debajo sin ningún cálculo. */}
-            <Box sx={{ flexGrow: 0, ml: 0.5, position: 'relative' }}>
+            <Box data-tour="hdr-perfil" sx={{ flexGrow: 0, ml: 0.5, position: 'relative' }}>
               <Tooltip title={userMenuOpen ? "" : "Perfil"}>
                 <IconButton
                   onClick={() => setUserMenuOpen((v) => !v)}
@@ -655,13 +655,13 @@ export default function Navbar() {
             {conPendientes && <MisPendientesDrawer open={verPendientes} onClose={() => setVerPendientes(false)} />}
             {/* 🔔 Notificaciones (no en el asistente de alta: todavía no hay negocio; pedido de la usuaria 09/11). */}
             {!isAppAdmin && logged && !enAlta && (
-              <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <Box data-tour="hdr-campana" sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <NotificationsPanel businessId={activeBusinessId} />
               </Box>
             )}
             {/* ⚙ Configuración, a la derecha de la campana (pedido de Diego, 06/11). */}
             {!isAppAdmin && !isStaff && logged && !enAlta && (puedeVer('configuracion') || puedeVer('conexiones')) && (
-              <Box sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <Box data-tour="hdr-config" sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <Tooltip title="Configuración">
                   <IconButton
                     color="inherit"
@@ -727,6 +727,7 @@ export default function Navbar() {
           <Box
             component="button"
             onClick={() => setModulosOpen(true)}
+            data-tour="hdr-modulos"
             aria-label="Abrir módulos"
             sx={{
               position: 'fixed',

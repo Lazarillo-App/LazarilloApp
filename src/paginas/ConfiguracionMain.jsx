@@ -59,6 +59,7 @@ import '../css/global.css';
 import '../css/theme-layout.css';
 import { downwardMenuProps } from '@/utils/menuProps';
 import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosHeader } from '@/componentes/asistente/pasosHeader';
 import { useRecorrido } from '@/hooks/useRecorrido';
 
 export { getRedondeoConfig, saveRedondeoConfig };
@@ -501,6 +502,7 @@ export default function ConfiguracionMain() {
 
   /* ── Recorrido de Anthony la primera vez (10/11): una frase por pestaña, solo las que se ven. ── */
   const refsTabs = { art: useRef(null), ins: useRef(null), gral: useRef(null), org: useRef(null), con: useRef(null), hist: useRef(null), sect: useRef(null), aprob: useRef(null) };
+  const pasosHeaderConfig = usePasosHeader();
   const pasosTabs = [
     { k: 'art', t: <><b>Artículos y ventas</b>: tus artículos, las listas de precios, el redondeo y la importación de ventas y del paso a paso de las recetas.</> },
     { k: 'ins', t: <><b>Insumos y compras</b>: tus insumos, rubros y la importación de compras. También las alertas, por ejemplo cuando un insumo pasa semanas sin compra.</> },
@@ -512,6 +514,8 @@ export default function ConfiguracionMain() {
       { k: 'sect', t: <><b>Sectores</b>: armá sectores como Barra, Cocina o Salón para que cada persona del staff vea solo las recetas de su sector.</> },
       { k: 'aprob', t: <><b>Aprobaciones</b>: los cambios que propone tu staff, como una receta o discontinuar algo. Los aprobás o rechazás desde acá.</> },
     ] : []),
+    // Botones del header (Diego 14/11/2026), solo los que se ven.
+    ...pasosHeaderConfig,
   ];
   const recConfig = useRecorrido('configuracion', pasosTabs.length,
     !configLoading && !soloConexiones && !showNuevoArticulo && !showNuevoInsumo && !showUploadInsumos && !showUploadArticulos && !showCreate);
@@ -526,7 +530,7 @@ export default function ConfiguracionMain() {
         <Typography variant="h5" fontWeight={800}>Configuración</Typography>
       </Stack>
       {recConfig.visible && pasoTab && (
-        <SpotlightTour key={pasoTab.k} targetRef={refsTabs[pasoTab.k]} pose={recConfig.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
+        <SpotlightTour key={pasoTab.k} targetRef={pasoTab.ref || refsTabs[pasoTab.k]} pose={recConfig.paso === 1 ? 'presenta' : 'senala'} placement="bottom"
           text={pasoTab.t} {...recConfig.props(recConfig.paso)} />
       )}
 

@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
 import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
 import SpotlightTour from '../componentes/SpotlightTour';
+import { usePasosHeader } from '../componentes/asistente/pasosHeader';
 import { useRecorrido } from '../hooks/useRecorrido';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CloseFullscreenIcon from '@mui/icons-material/CloseFullscreen';
@@ -820,6 +821,7 @@ export default function RrhhCronogramas() {
   /* ── Recorrido de Anthony la primera vez (10/11): solo con nómina (si no, la grilla no está). ── */
   // Paso a paso de lo más importante (Diego 14/11/2026: «primera vez por acá, te muestro»).
   const refsTour = { semana: useRef(null), dias: useRef(null), fila: useRef(null), agregar: useRef(null), puestos: useRef(null), grilla: useRef(null), copiar: useRef(null), exportar: useRef(null) };
+  const pasosHeaderCrono = usePasosHeader();
   const pasosTour = [
     { k: 'semana', t: <>Elegí la <b>semana</b> que querés armar o mirar.</> },
     { k: 'dias', t: <>Tocá un día para marcar un <b>feriado</b>, un <b>cierre</b> o un <b>evento</b>. Cargalos con anticipación: con ellos Lazarillo entiende por qué un día se vende distinto y <b>proyecta mejor las ventas del mes</b>.</> },
@@ -828,7 +830,9 @@ export default function RrhhCronogramas() {
     { k: 'puestos', t: <>Tus <b>puestos</b>: tocá uno para editarlo o borrarlo, y con <b>+ Puesto</b> agregás otro.</>, abajo: true },
     { k: 'copiar', t: <><b>+ Semana</b> crea la semana siguiente copiando esta, así no la armás de cero.</> },
     { k: 'exportar', t: <>Arma la <b>imagen</b> del cronograma y de los francos y la mandás por <b>WhatsApp</b> al equipo.</> },
-  ].filter((p) => !cel || ['dias', 'fila', 'agregar'].includes(p.k)); // celu: la barra es otra, solo la grilla
+  ].filter((p) => !cel || ['dias', 'fila', 'agregar'].includes(p.k)) // celu: la barra es otra, solo la grilla
+    // Botones del header (Diego 14/11/2026), solo los que se ven.
+    .concat(cel ? [] : pasosHeaderCrono);
   // Arranca solo mientras el negocio no cargó ningún cronograma propio (Diego 14/11/2026).
   const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
     !cargando && !cargandoSemana && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel
@@ -872,7 +876,7 @@ export default function RrhhCronogramas() {
         </div>
       )}
       {recCrono.visible && pasoTour && (
-        <SpotlightTour key={pasoTour.k} targetRef={refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement={pasoTour.abajo ? 'top' : 'bottom'}
+        <SpotlightTour key={pasoTour.k} targetRef={pasoTour.ref || refsTour[pasoTour.k]} pose={recCrono.paso === 1 ? 'presenta' : 'senala'} placement={pasoTour.abajo ? 'top' : 'bottom'}
           text={pasoTour.t} {...recCrono.props(recCrono.paso)} />
       )}
       {/* barra del celular: una sola fila; lo que se usa poco va en ⋯ */}
