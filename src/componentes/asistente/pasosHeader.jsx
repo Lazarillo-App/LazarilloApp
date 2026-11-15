@@ -38,6 +38,7 @@ const visible = (clave) => {
 function textoBotonera(path) {
   if (path.startsWith('/gestion')) return <><b>Conceptos de caja</b> ordena en qué se agrupan tus gastos, <b>Insumos</b> te lleva a tus insumos y <b>Proveedores</b> abre la cuenta corriente de cada proveedor.</>;
   if (path.startsWith('/rrhh')) return <><b>Cronogramas</b> arma la semana de cada sucursal y <b>Nómina</b> es tu equipo. Liquidación y Fichaje llegan pronto.</>;
+  if (path.startsWith('/tableros')) return <>Cada pestaña es una <b>plaza</b> de despacho (un sector de la cocina o de la barra). Con <b>+</b> creás otra.</>;
   if (path.startsWith('/menu') || path.startsWith('/insumos')) return <>Arriba cambiás de pantalla: <b>Artículos</b> (tu carta con costos y precios), <b>Insumos</b> (lo que comprás) y <b>Menú</b> (la carta lista para imprimir).</>;
   return null;
 }
@@ -56,7 +57,9 @@ const HEADER = [
   { k: 'hdr-botonera', t: (path) => textoBotonera(path) },
   { k: 'hdr-sucursales', t: (path) => (path.startsWith('/rrhh')
     ? <>Cada sucursal tiene su propio cronograma: elegí cuál ves. Con <b>+</b> sumás una sucursal.</>
-    : <>Elegís de qué <b>sucursal</b> ves los datos; <b>Todas</b> las suma. Con <b>+</b> sumás una sucursal y el <b>?</b> te explica cómo funcionan.</>) },
+    : path.startsWith('/conciliacion') || path.startsWith('/movimientos-bancarios')
+      ? <>Cada sucursal cobra en su propia cuenta de <b>Mercado Pago</b>: acá elegís cuál conciliás.</>
+      : <>Elegís de qué <b>sucursal</b> ves los datos; <b>Todas</b> las suma. Con <b>+</b> sumás una sucursal y el <b>?</b> te explica cómo funcionan.</>) },
   { k: 'hdr-negocio', t: () => <>Si manejás más de un <b>negocio</b>, acá pasás de uno a otro.</> },
   { k: 'hdr-perfil', t: () => <>Tu <b>perfil</b>: tus datos, tu equipo y tus pendientes (el número rojo).</> },
   { k: 'hdr-campana', t: () => <>Los <b>avisos</b>: cada alta, baja o cambio que hace tu equipo queda acá.</> },
@@ -83,4 +86,29 @@ export function usePasosHeader({ conBarra = false } = {}) {
     const p = [...BARRA, ...HEADER].find((x) => x.k === k);
     return { k, ref: refTour(k), t: p.t(pathname), s: BARRA.some((b) => b.k === k) ? 'barra' : 'header' };
   });
+}
+
+/** De una lista de pasos [{ k, tour?, … }], los que hoy están en pantalla (el elemento
+ *  [data-tour=tour||k] existe y tiene tamaño). Así una guía no señala lo que esa pantalla no
+ *  tiene (sin datos, sin permiso, otra vista). Se vuelve a mirar cuando cambia «clave» y un rato
+ *  después, porque las tablas llegan después. Devuelve los pasos con su ref. */
+export function usePasosPresentes(lista, clave) {
+  const [claves, setClaves] = useState([]);
+  const listaRef = React.useRef(lista);
+  listaRef.current = lista;
+  useEffect(() => {
+    const medir = () => {
+      const l = listaRef.current.filter((p) => {
+        const el = document.querySelector(`[data-tour="${p.tour || p.k}"]`);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      }).map((p) => p.k);
+      setClaves((prev) => (prev.join() === l.join() ? prev : l));
+    };
+    medir();
+    const ts = [150, 600, 1500, 3000].map((ms) => setTimeout(medir, ms));
+    return () => ts.forEach(clearTimeout);
+  }, [clave]);
+  return lista.filter((p) => claves.includes(p.k)).map((p) => ({ ...p, ref: p.ref || refTour(p.tour || p.k) }));
 }

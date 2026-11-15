@@ -2,6 +2,7 @@
 // Guías de cada sección (Diego 14/11/2026): el recorrido de Anthony arranca solo mientras la sección
 // no tiene datos propios del negocio, y además se puede ver cuando uno quiera desde un lugar común:
 // la pestaña «Guías» del chat de Anthony (soporte). Cada guía es un recorrido de useRecorrido.
+// soloGestion: la pantalla es solo de dueño y admin; el staff no la ve en Guías.
 // 14/11/2026 (Diego): están las 10, agrupadas por módulo. Las que viven en un modal o menú se abren
 // solas al tocar «Ver» (useAbrirGuia en la pantalla que abre ese modal).
 import { useEffect, useRef, useState } from 'react';
@@ -14,19 +15,22 @@ export const GUIAS = [
   { id: 'menu_accion', grupo: 'Recetas', titulo: 'Acciones de un artículo', detalle: 'Editar, mover, armar una promo o discontinuar', ruta: '/menu' },
   { id: 'crear_articulo', grupo: 'Recetas', titulo: 'Crear un artículo', detalle: 'Dar de alta un artículo a mano', ruta: '/menu' },
   { id: 'receta', grupo: 'Recetas', titulo: 'Receta de un artículo', detalle: 'Ingredientes, rendimiento, promo, vincular, foto y paso a paso', ruta: '/menu', sectores: ['datos', 'ingredientes', 'encabezado', 'pie'] },
+  { id: 'tableros', grupo: 'Operación', titulo: 'Tableros de la cocina', detalle: 'Plazas, la lámina de cada producto y la TV', ruta: '/tableros', sectores: ['tablero', 'header'] },
   { id: 'gestion_panel', grupo: 'Resultados', titulo: 'Panel de gestión', detalle: 'Ventas, gastos y resultados del mes', ruta: '/gestion', sectores: ['filtros', 'tabla', 'header'] },
   { id: 'carga_gastos', grupo: 'Resultados', titulo: 'Cargar una factura o gasto', detalle: 'Factura, gasto vario o pago a empleados', ruta: '/gestion' },
+  { id: 'conciliacion', grupo: 'Administración', titulo: 'Conciliación bancaria', detalle: 'Cruzar tus ventas con lo que entró al banco', ruta: '/conciliacion', sectores: ['fuentes', 'conciliar', 'header'], soloGestion: true },
+  { id: 'rrhh_nomina', grupo: 'RRHH', titulo: 'Nómina', detalle: 'Tu equipo: altas, bajas y quién va en cronogramas', ruta: '/rrhh/nomina', sectores: ['barra', 'tabla', 'header'], soloGestion: true },
   { id: 'rrhh_cronogramas', grupo: 'RRHH', titulo: 'Cronogramas', detalle: 'Armar la semana, feriados, puestos y mandarla por WhatsApp', ruta: '/rrhh/cronogramas', sectores: ['cronograma', 'header'] },
   { id: 'perfil_equipo', grupo: 'Equipo y ajustes', titulo: 'Tu equipo', detalle: 'Invitar gente y el QR para el staff', ruta: '/equipo' },
   { id: 'configuracion', grupo: 'Equipo y ajustes', titulo: 'Configuración', detalle: 'Datos del negocio, conexiones y ajustes', ruta: '/configuracion', sectores: ['pestanas', 'header'] },
 ];
-export const GRUPOS_GUIAS = ['Recetas', 'Resultados', 'RRHH', 'Equipo y ajustes'];
+export const GRUPOS_GUIAS = ['Recetas', 'Operación', 'Resultados', 'Administración', 'RRHH', 'Equipo y ajustes'];
 
 // Sectores de cada pantalla (Diego 15/11/2026: «apertura por sectores dentro de cada módulo; el header
 // es uno de ellos, pero con todos»). «Ver» muestra la guía entera; cada sector, solo sus pasos.
 export const NOMBRE_SECTOR = {
   lateral: 'Lateral', tabla: 'Tabla', barra: 'Barra', header: 'Header', filtros: 'Filtros',
-  cronograma: 'Cronograma', pestanas: 'Pestañas', datos: 'Datos', ingredientes: 'Ingredientes', encabezado: 'Encabezado', pie: 'Pie',
+  cronograma: 'Cronograma', pestanas: 'Pestañas', tablero: 'Tablero', fuentes: 'Fuentes', conciliar: 'Conciliar', datos: 'Datos', ingredientes: 'Ingredientes', encabezado: 'Encabezado', pie: 'Pie',
 };
 
 /** Al terminar una guía, Anthony ofrece hacerlo ahora con su ayuda (Diego 14/11/2026): abre la guía
@@ -54,7 +58,9 @@ function leer() {
 /** Pide ver una guía: si ya estás en su pantalla arranca ahí; si no, va a la pantalla y arranca al llegar. */
 export function pedirGuia(guia, navigate, sector = null) {
   try { sessionStorage.setItem(CLAVE, JSON.stringify({ id: guia.id, t: Date.now(), sector })); } catch { /* sin storage */ }
-  if (window.location.pathname === guia.ruta) window.dispatchEvent(new CustomEvent(VER_GUIA, { detail: guia.id }));
+  // Tableros vive en /tableros/:id: si ya estás en una plaza, arranca ahí.
+  const aca = window.location.pathname === guia.ruta || (guia.ruta === '/tableros' && window.location.pathname.startsWith('/tableros/'));
+  if (aca) window.dispatchEvent(new CustomEvent(VER_GUIA, { detail: guia.id }));
   else {
     navigate(guia.ruta);
     // Lo que no se vuelve a montar al navegar (la barra de Recetas es la misma en Artículos e
