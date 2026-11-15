@@ -39,6 +39,10 @@ export const MercadoPagoAPI = {
   // Qué cuenta define el CUIT de la sucursal (15/11).
   cuitSucursal: (bid, suc, cuenta) => http(`${mpBase(bid)}/cuit-sucursal${q(suc)}`, { method: 'POST', body: { cuenta } }),
   desconectar: (bid, suc, cuenta) => http(`${mpBase(bid)}${q(suc, cuenta ? `&cuenta=${encodeURIComponent(cuenta)}` : '')}`, { method: 'DELETE' }),
+  // Lo que descuenta MP, al tablero (15/11): resumen del mes, proveedor/concepto por tipo y encendido.
+  cargos: (bid, mes) => http(`${mpBase(bid)}/cargos?mes=${encodeURIComponent(mes || '')}`, { cache: false, timeoutMs: 60000 }),
+  cargosConfig: (bid, body) => http(`${mpBase(bid)}/cargos/config`, { method: 'POST', body }),
+  cargosActivar: (bid, body) => http(`${mpBase(bid)}/cargos/activar`, { method: 'POST', body }),
   sincronizar: (bid, suc, desde, hasta) =>
     http(`${mpBase(bid)}/sincronizar${q(suc)}`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
   // Reporte de liberaciones (nombres de pagadores y egresos): MP lo arma en unos minutos.
