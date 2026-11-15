@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Button, CircularProgress } from '@mui/material';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import CheckIcon from '@mui/icons-material/Check';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
 import { useAccess } from '@/context/AccessContext';
 import { RolesAPI } from '@/servicios/apiRoles';
 import { listMembers, efectivosAcceso } from '@/servicios/apiTeam';
@@ -22,6 +24,8 @@ export function VerComoItems({ onElegido }) {
   const { activeId } = useBusiness() || {};
   const [personas, setPersonas] = useState([]);
   const [cargandoId, setCargandoId] = useState(null);
+  const [abierto, setAbierto] = useState(null); // 'roles' | 'personas' | null
+  const [filtro, setFiltro] = useState('');
   const yoId = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null')?.id ?? null; } catch { return null; } })();
 
   useEffect(() => {
@@ -84,12 +88,31 @@ export function VerComoItems({ onElegido }) {
     navigate('/inicio');
   };
 
+  // Acordeón (usuaria 15/11/2026): con un equipo largo la lista no tiene fin. "Ver como" (roles) y
+  // "Personas" se despliegan de a uno; al abrir uno se cierra el otro, así siempre se ve todo.
+  const viendoPersona = String(verComo?.id || '').startsWith('persona:');
+  const nombreRol = (opciones || []).find((o) => o.id === verComo?.id)?.nombre?.replace(/^└\s*/, '');
+  const filtradas = filtro.trim()
+    ? personas.filter((p) => `${p.nombre} ${p.rolNombre}`.toLowerCase().includes(filtro.trim().toLowerCase()))
+    : personas;
+  const fila = { px: 2, minHeight: 32, display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', fontSize: '0.875rem',
+    '&:hover': { bgcolor: 'color-mix(in srgb, var(--on-primary, #000) 10%, transparent)' } };
+  const Cabecera = ({ id, icono, titulo, resumen }) => (
+    <Box role="button" aria-expanded={abierto === id} onClick={() => setAbierto((a) => (a === id ? null : id))}
+      sx={{ ...fila, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.05em' }}>
+      <Box sx={{ display: 'flex', opacity: 0.75 }}>{icono}</Box>
+      <Box component="span" sx={{ opacity: 0.75 }}>{titulo}</Box>
+      <Box component="span" sx={{ flex: 1, minWidth: 0, textAlign: 'right', fontWeight: 600, letterSpacing: 0, fontSize: '0.75rem', opacity: 0.7,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resumen}</Box>
+      <ExpandMoreIcon sx={{ fontSize: 18, opacity: 0.7, transition: 'transform .15s', transform: abierto === id ? 'rotate(180deg)' : 'none' }} />
+    </Box>
+  );
+
   return (
     <Box sx={{ py: 0.5 }}>
-      <Box sx={{ px: 2, py: 0.5, display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '.05em', opacity: 0.75 }}>
-        <VisibilityOutlinedIcon sx={{ fontSize: 14 }} /> VER COMO
-      </Box>
-      {!opciones ? (
+      <Cabecera id="roles" icono={<VisibilityOutlinedIcon sx={{ fontSize: 14 }} />} titulo="VER COMO"
+        resumen={!verComo ? 'Yo (Dueño)' : viendoPersona ? '' : (nombreRol || verComo.nombre)} />
+      {abierto === 'roles' && (!opciones ? (
         <Box sx={{ py: 1, display: 'flex', justifyContent: 'center' }}><CircularProgress size={16} sx={{ color: 'inherit' }} /></Box>
       ) : [{ id: null, nombre: 'Yo (Dueño)' }, ...opciones].map((o) => {
         const activo = (verComo?.id ?? null) === o.id;
@@ -101,12 +124,22 @@ export function VerComoItems({ onElegido }) {
             {o.nombre}
           </Box>
         );
-      })}
+      }))}
       {opciones && personas.length > 0 && (
         <>
-          <Box sx={{ px: 2, pt: 1, pb: 0.25, fontSize: '0.66rem', fontWeight: 700, letterSpacing: '.05em', opacity: 0.6 }}>PERSONAS</Box>
-          <Box sx={{ maxHeight: 200, overflowY: 'auto' }}>
-            {personas.map((pe) => {
+          <Cabecera id="personas" icono={<PeopleOutlineIcon sx={{ fontSize: 14 }} />} titulo="PERSONAS"
+            resumen={viendoPersona ? verComo.nombre : `${personas.length}`} />
+          {abierto === 'personas' && personas.length > 8 && (
+            <Box sx={{ px: 2, pb: 0.5 }} onClick={(e) => e.stopPropagation()}>
+              <input value={filtro} onChange={(e) => setFiltro(e.target.value)} placeholder="Buscar persona…" autoFocus
+                style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 13, padding: '5px 8px', borderRadius: 8,
+                  border: '1px solid color-mix(in srgb, var(--on-primary, #000) 25%, transparent)', background: 'transparent', color: 'inherit', outline: 'none' }} />
+            </Box>
+          )}
+          {abierto === 'personas' && (
+          <Box sx={{ maxHeight: 240, overflowY: 'auto' }}>
+            {!filtradas.length && <Box sx={{ px: 2, py: 0.75, fontSize: '0.8rem', opacity: 0.6 }}>Nadie con ese nombre</Box>}
+            {filtradas.map((pe) => {
               const activo = verComo?.id === pe.id;
               return (
                 <Box key={pe.id} role="menuitem" onClick={() => elegirPersona(pe)}
@@ -121,6 +154,7 @@ export function VerComoItems({ onElegido }) {
               );
             })}
           </Box>
+          )}
         </>
       )}
     </Box>
