@@ -5,7 +5,8 @@
 // de la app (Navbar) — acá solo va la toolbar del módulo.
 // Barra completa del mockup v31: Exportar imagen (2 PNG: cronograma + francos,
 // Canvas en modo día), + Semana (crea la siguiente copiando esta), Vaciar,
-// calendario de semanas. "Próximamente": ⚙ Configuración; después demanda.
+// calendario de semanas (y lista de fechas especiales del año). Espacios y turnos se editan
+// en la pantalla (✎ / + junto a las pestañas, clic en el turno). Después: demanda.
 // La nómina se sincroniza sola con MaxiRest (GET /config) y se edita en
 // RRHH › Nómina (botonera del header).
 // Sucursales (Diego, 07/11): cada sucursal tiene su cronograma (espacios y
@@ -72,6 +73,7 @@ import {
   ModalVaciar,
   ModalCalendario,
   ModalTurno,
+  ModalEspacio,
   ModalAsignar,
 } from './RrhhCronogramasModales';
 
@@ -126,7 +128,8 @@ export default function RrhhCronogramas() {
     return () => window.removeEventListener('keydown', onKey);
   }, [maximizado]);
   const [eligiendoNomina, setEligiendoNomina] = useState(false);
-  const [turnoSel, setTurnoSel] = useState(null);         // turno en edición
+  const [turnoSel, setTurnoSel] = useState(null);         // turno en edición ({ turnoId } o { nuevo: true })
+  const [espacioSel, setEspacioSel] = useState(null);     // espacio en edición ({ id } o { nuevo: true })
   const [destelloHoy, setDestelloHoy] = useState(false);  // al apretar HOY la columna se ilumina un momento
   const hoyIso = isoDe(new Date());
   const cargaSeq = useRef(0);                            // descarta respuestas de una carga vieja
@@ -674,21 +677,63 @@ export default function RrhhCronogramas() {
     }));
   };
 
-  /* ── editar turno (nombre / hora de entrada) ── */
-  const guardarTurno = async ({ nombre, entrada }) => {
-    const { turnoId } = turnoSel;
-    const espacios = (config?.espacios || []).map((e) => ({
-      id: e.id, nombre: e.nombre, sectorNomina: e.sectorNomina,
-      turnos: (e.turnos || []).map((t) => (t.id === turnoId ? { id: t.id, nombre, entrada } : { id: t.id, nombre: t.nombre, entrada: t.entrada })),
-    }));
+  /* ── espacios y turnos (Diego 15/11/2026: sin ⚙ Configuración, se editan en la pantalla) ── */
+  // PUT /config con la colección completa de espacios de la sucursal; lo que tiene días
+  // cargados no se borra (el back lo avisa en `avisos`).
+  const espaciosActuales = () => (config?.espacios || []).map((e) => ({
+    id: e.id, nombre: e.nombre, sectorNomina: e.sectorNomina,
+    turnos: (e.turnos || []).map((t) => ({ id: t.id, nombre: t.nombre, entrada: t.entrada })),
+  }));
+  const guardarEspacios = async (espacios, msj) => {
     try {
+      await Promise.resolve(flushRef.current?.()); // lo pendiente de la semana se guarda antes
       const r = await RrhhAPI.putConfig({ espacios }, sucursalId);
-      if (r?.config) setConfig(r.config);
-      setTurnoSel(null);
-      avisar(r?.avisos?.length ? r.avisos.join(' ') : `Turno ${nombre} guardado ✓`, r?.avisos?.length ? 'error' : 'ok');
+      if (r?.config) {
+        setConfig(r.config);
+        setEspacioId((prev) => (r.config.espacios.some((e) => e.id === prev) ? prev : r.config.espacios[0]?.id || null));
+      }
+      avisar(r?.avisos?.length ? r.avisos.join(' ') : msj, r?.avisos?.length ? 'error' : 'ok');
+      return r?.config || null;
     } catch (e) {
-      avisar(e?.data?.message || e.message || 'No se pudo guardar el turno.', 'error');
+      avisar(e?.data?.message || e.message || 'No se pudo guardar.', 'error');
+      return null;
     }
+  };
+  const guardarTurno = async ({ nombre, entrada }) => {
+    const nuevo = !!turnoSel?.nuevo;
+    const espacios = espaciosActuales().map((e) => (e.id !== espacioId ? e : {
+      ...e,
+      // un turno nuevo se ubica por su hora de entrada (Mediodía entre Día y Noche)
+      turnos: nuevo
+        ? (() => { const i = e.turnos.findIndex((t) => entrada && t.entrada && t.entrada > entrada); const n = { nombre, entrada }; return i < 0 ? [...e.turnos, n] : [...e.turnos.slice(0, i), n, ...e.turnos.slice(i)]; })()
+        : e.turnos.map((t) => (t.id === turnoSel.turnoId ? { ...t, nombre, entrada } : t)),
+    }));
+    if (await guardarEspacios(espacios, nuevo ? `Turno ${nombre} agregado ✓` : `Turno ${nombre} guardado ✓`)) setTurnoSel(null);
+  };
+  const quitarTurno = async () => {
+    const espacios = espaciosActuales().map((e) => (e.id !== espacioId ? e : { ...e, turnos: e.turnos.filter((t) => t.id !== turnoSel.turnoId) }));
+    if (espacios.find((e) => e.id === espacioId)?.turnos.length === 0) { avisar('El espacio tiene que quedar con al menos un turno.', 'error'); return; }
+    const t = (espacio?.turnos || []).find((x) => x.id === turnoSel.turnoId);
+    if (await guardarEspacios(espacios, `Turno ${t?.nombre || ''} quitado ✓`)) setTurnoSel(null);
+  };
+  const guardarEspacio = async (nombre) => {
+    const nuevo = !!espacioSel?.nuevo;
+    const clave = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+    if ((config?.espacios || []).some((e) => e.id !== espacioSel?.id && clave(e.nombre) === clave(nombre))) {
+      avisar(`Ya hay un espacio «${nombre}».`, 'error');
+      return;
+    }
+    const espacios = nuevo ? [...espaciosActuales(), { nombre, turnos: [] }]
+      : espaciosActuales().map((e) => (e.id === espacioSel.id ? { ...e, nombre } : e));
+    const cfg = await guardarEspacios(espacios, nuevo ? `Espacio ${nombre} agregado ✓` : `Espacio ${nombre} guardado ✓`);
+    if (!cfg) return;
+    setEspacioSel(null);
+    if (nuevo) { const n = cfg.espacios.find((e) => e.nombre === nombre && !(config?.espacios || []).some((x) => x.id === e.id)); if (n) setEspacioId(n.id); }
+  };
+  const quitarEspacio = async () => {
+    if ((config?.espacios || []).length <= 1) { avisar('Tiene que quedar al menos un espacio.', 'error'); return; }
+    const e = (config?.espacios || []).find((x) => x.id === espacioSel.id);
+    if (await guardarEspacios(espaciosActuales().filter((x) => x.id !== espacioSel.id), `Espacio ${e?.nombre || ''} quitado ✓`)) setEspacioSel(null);
   };
 
   /* ── fechas especiales (PUT /config manda la colección completa) ── */
@@ -835,7 +880,7 @@ export default function RrhhCronogramas() {
     .concat(cel ? [] : pasosHeaderCrono);
   // Arranca solo mientras el negocio no cargó ningún cronograma propio (Diego 14/11/2026).
   const recCrono = useRecorrido('rrhh_cronogramas', pasosTour.length,
-    !cargando && !cargandoSemana && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel
+    !cargando && !cargandoSemana && !errorCarga && !!(config?.empleados || []).length && !exportOpen && !vaciarOpen && !calOpen && !nuevaSem && !celdaSel && !fechaSel && !turnoSel && !espacioSel
       && !(sinHistoria && !semanaExiste && !ejemploVisto && !cargandoSemana), // con el EJEMPLO en pantalla, después de «Armar la semana»
     // «Datos propios» = alguna semana guardada en el negocio (índice que llega junto con la config).
     // Antes miraba la semana en pantalla, que carga después: la guía aparecía y se cerraba sola.
@@ -895,12 +940,17 @@ export default function RrhhCronogramas() {
           <Boton onClick={() => setSemanaId((s) => s + 1)} title="Semana siguiente">›</Boton>
           <Boton onClick={() => { setSemanaId(idDeSemana(domingoDeHoy())); setDestelloHoy(true); setTimeout(() => setDestelloHoy(false), 1600); }}>HOY</Boton>
           <div style={{ flex: 1 }} />
-          <span title={guardado === 'error' ? 'Sin guardar' : 'Guardado'} style={{ width: 8, height: 8, borderRadius: 4, background: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }} />
+          {/* Se guarda solo: el indicador aparece mientras guarda y, sobre todo, si algo falla (Diego 15/11/2026) */}
+          {(guardado === 'error' || guardado === 'guardando' || guardado === 'pendiente') && (
+            <span title={guardado === 'error' ? 'Sin guardar' : 'Guardando…'} style={{ width: 8, height: 8, borderRadius: 4, background: guardado === 'error' ? T.bad : T.text3 }} />
+          )}
           <Boton activo deshabilitado={sinNomina || !espacio} onClick={() => setExportOpen(true)} title="Imagen para WhatsApp">🖼</Boton>
           <Boton onClick={() => setMenuCel((v) => !v)} title="Más">⋯</Boton>
           {menuCel && (
             <div onClick={() => setMenuCel(false)} style={{ position: 'absolute', right: 0, top: 40, zIndex: 20, background: T.band, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: T.sombra, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
               <Boton deshabilitado={sinNomina} onClick={() => setPuestosCel(true)}>✎ Puestos</Boton>
+              {espacio && <Boton onClick={() => setEspacioSel({ id: espacio.id })}>✎ {espacio.nombre}</Boton>}
+              <Boton onClick={() => setEspacioSel({ nuevo: true })}>+ Espacio</Boton>
               <Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana}>+ Semana</Boton>
               <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)}>Vaciar</Boton>
             </div>
@@ -925,11 +975,13 @@ export default function RrhhCronogramas() {
         {(config?.espacios || []).map((e) => (
           <Boton key={e.id} activo={e.id === espacioId} onClick={() => setEspacioId(e.id)}>{e.nombre}</Boton>
         ))}
+        {espacio && <Boton onClick={() => setEspacioSel({ id: espacio.id })} title={`Renombrar o quitar ${espacio.nombre}`}>✎</Boton>}
+        <Boton onClick={() => setEspacioSel({ nuevo: true })} title="Agregar un espacio (Canchas, Barra…)">+</Boton>
         <div style={{ flex: 1 }} />
-        <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginRight: 4, color: guardado === 'error' ? T.bad : guardado === 'ok' ? T.ok : T.text3 }}>
-          {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : semanaExiste ? 'Guardado ✓' : ''}
+        {/* Se guarda solo: sin «Guardado ✓» fijo; aparece mientras guarda y si algo falla (Diego 15/11/2026) */}
+        <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginRight: 4, color: guardado === 'error' ? T.bad : T.text3 }}>
+          {guardado === 'guardando' || guardado === 'pendiente' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar ⚠' : ''}
         </span>
-        <Boton prox onClick={() => avisar('Llega en la próxima tanda.')}>⚙ Configuración</Boton>
         <Boton onClick={() => setMaximizado((v) => !v)} title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
           <span style={{ display: 'inline-flex', alignItems: 'center', verticalAlign: 'top', height: 14.5 }}>
             {maximizado ? <CloseFullscreenIcon sx={{ fontSize: 14 }} /> : <OpenInFullIcon sx={{ fontSize: 14 }} />}
@@ -1045,7 +1097,7 @@ export default function RrhhCronogramas() {
                         <td colSpan={cel ? 8 : 14} onClick={() => setMinimizados((m) => ({ ...m, [kMin]: !m[kMin] }))} title={minim ? 'Mostrar el turno' : 'Minimizar el turno'}
                           style={{ padding: '6px 12px', fontFamily: FT, fontWeight: 700, fontSize: 12, color: T.accentTxt, background: T.head, borderBottom: `1px solid ${T.border}`, borderTop: `1px solid ${T.border}`, textTransform: 'uppercase', letterSpacing: 1, position: 'sticky', top: cel ? 26 : 50, zIndex: 2, cursor: 'pointer', userSelect: 'none', ...(cel ? { padding: '3px 8px', fontSize: 11 } : {}) }}>
                           <span style={{ display: 'inline-block', width: 18 }}>{minim ? '▸' : '▾'}</span>
-                          <span onClick={(e) => { e.stopPropagation(); setTurnoSel({ turnoId: t.id }); }} title="Editar el turno (nombre y hora de entrada)" style={{ cursor: 'pointer' }}>
+                          <span onClick={(e) => { e.stopPropagation(); setTurnoSel({ turnoId: t.id }); }} title="Editar, agregar o quitar turnos" style={{ cursor: 'pointer' }}>
                             {t.nombre}
                             {t.entrada && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: T.text3 }}> · entra {t.entrada}</span>}
                             <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: T.text3, marginLeft: 6, fontSize: 11 }}>✎</span>
@@ -1220,15 +1272,28 @@ export default function RrhhCronogramas() {
           creadas={semanasCreadas}
           fechasMap={fechasMap}
           onElegir={(id) => { setCalOpen(false); setSemanaId(id); }}
+          onFecha={(iso) => { setCalOpen(false); setFechaSel(iso); }}
           onCerrar={() => setCalOpen(false)}
         />
       )}
       {turnoSel && espacio && (
         <ModalTurno
-          turno={(espacio.turnos || []).find((x) => x.id === turnoSel.turnoId) || {}}
+          key={turnoSel.nuevo ? 'nuevo' : turnoSel.turnoId}
+          turno={turnoSel.nuevo ? {} : (espacio.turnos || []).find((x) => x.id === turnoSel.turnoId) || {}}
+          nuevo={!!turnoSel.nuevo}
           espacioNombre={espacio.nombre}
           onGuardar={guardarTurno}
+          onQuitar={quitarTurno}
+          onNuevo={() => setTurnoSel({ nuevo: true })}
           onCerrar={() => setTurnoSel(null)}
+        />
+      )}
+      {espacioSel && (
+        <ModalEspacio
+          espacio={espacioSel.nuevo ? null : (config?.espacios || []).find((x) => x.id === espacioSel.id) || null}
+          onGuardar={guardarEspacio}
+          onQuitar={quitarEspacio}
+          onCerrar={() => setEspacioSel(null)}
         />
       )}
       {fechaSel && (
