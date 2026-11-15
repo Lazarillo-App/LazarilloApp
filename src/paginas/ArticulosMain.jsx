@@ -2098,6 +2098,7 @@ export default function ArticulosMain(props) {
     }
     return visibleIds;
   }, [activeListId, activeListItems, visibleIds]);
+
   const focusArticle = useCallback(
     (rawId, preferGroupId = null) => {
       const id = Number(rawId);
