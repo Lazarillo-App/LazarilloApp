@@ -37,6 +37,7 @@ const GROUPS = [
     modules: [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: '/conciliacion' },
       { id: 'movimientos-bancarios', label: 'Movimientos bancarios', emoji: '🏦', desc: 'Todo lo que entra y sale de Mercado Pago.', to: '/movimientos-bancarios', soloAdmin: true },
+      { id: 'clientes', label: 'Clientes', emoji: '👥', desc: 'Quién te compra, cada cuánto y cuánto.', to: '/clientes', soloAdmin: true },
       { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
     ],
   },

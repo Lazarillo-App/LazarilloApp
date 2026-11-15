@@ -179,6 +179,7 @@ export default function Navbar() {
     if (p.startsWith('/rrhh')) return 'RRHH';
     if (p.startsWith('/tableros')) return 'Tableros';
     if (p.startsWith('/movimientos-bancarios')) return 'Movimientos bancarios';
+    if (p.startsWith('/clientes')) return 'Clientes';
     return null;
   })();
 
@@ -370,19 +371,19 @@ export default function Navbar() {
                     mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
                     <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
                   ] : null}
-                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/movimientos-bancarios') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
+                  {!enAlta && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/movimientos-bancarios') && !location.pathname.startsWith('/clientes') && !(!isAppAdmin && location.pathname.startsWith('/gestion')) && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && (
+                  {!enAlta && !isAppAdmin && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && !location.pathname.startsWith('/clientes') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && (
+                  {!enAlta && !isAppAdmin && veMenuDiseno && puedeVer('recetas') && !location.pathname.startsWith('/rrhh') && !location.pathname.startsWith('/gestion') && !location.pathname.startsWith('/movimientos-bancarios') && !location.pathname.startsWith('/clientes') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
@@ -430,6 +431,8 @@ export default function Navbar() {
                 if (path.startsWith('/tableros')) return <TablerosBotonera activeSx={activeSx} />;
                 // Administración › Movimientos bancarios (Diego 14/11/2026): los bancos conectados (hoy Mercado
                 // Pago) | CONECTÁ TU BANCO (las tarjetas de bancos: listos y próximamente).
+                // Administración › Clientes (14/11): sin botonera propia todavía.
+                if (path.startsWith('/clientes')) return null;
                 if (path.startsWith('/movimientos-bancarios')) {
                   const enBancos = mpConectado !== true || new URLSearchParams(location.search).get('vista') === 'bancos';
                   return (
