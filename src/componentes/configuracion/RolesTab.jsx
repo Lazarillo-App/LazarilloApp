@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Stack, Typography, Button, Switch, Checkbox, ToggleButton, ToggleButtonGroup, Chip, Divider, TextField, Alert, CircularProgress,
+  MenuItem, ListSubheader,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
@@ -13,38 +14,10 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { RolesAPI } from '@/servicios/apiRoles';
+import { efectivosAcceso } from '@/servicios/apiTeam';
 import { showConfirm } from '@/servicios/appConfirm';
 import { esOculto, alternarOculto } from '@/gestion/ocultosRol';
-
-// Catálogo de lo que se puede ocultar. Cada clave = un permiso (lo que no figura, se ve).
-const SECCIONES = [
-  {
-    id: 'resultados', nombre: 'Resultados', desc: 'Panel de gestión',
-    grupos: [
-      { nombre: 'Tarjetas del mes', items: [
-        ['tarjeta.ventas', 'Ventas'], ['tarjeta.equilibrio', 'Equilibrio'], ['tarjeta.resultado', 'Resultado'],
-        ['tarjeta.mix', 'Mix (food cost y personal)'], ['tarjeta.canasta', 'Tu canasta'],
-      ] },
-      { nombre: 'Tabla', items: [
-        ['tabla.totales_rubro', 'Totales por rubro'],
-        ['tabla.ing_egr', 'Ingresos, egresos, resultado y equilibrio'],
-        ['tabla.dif_caja', 'Flujo y diferencia de caja'], ['tabla.pct', 'Vista en % de ingresos'],
-        ['tabla.col_total', 'Columna Total (oculta salvo que la habilites)'],
-      ] },
-      { nombre: 'Pestañas y botones', items: [
-        ['tab.ventas', 'Pestaña Ventas'], ['tab.resultados', 'Pestaña Resultados'],
-        ['btn.impagas', 'Impagas'], ['btn.sin_carga', 'Sin carga'], ['btn.eco_fin', 'Switch Económica / Financiera'],
-      ] },
-    ],
-  },
-  { id: 'carga', nombre: 'Carga de gastos', desc: 'Facturas, gastos varios y sueldos', grupos: [] },
-  { id: 'recetas', nombre: 'Recetas', desc: 'Menú, insumos y costos', grupos: [] },
-  { id: 'rrhh', nombre: 'RRHH', desc: 'Cronogramas y nómina', grupos: [] },
-  { id: 'conceptos', nombre: 'Conceptos de caja', desc: 'Rubros y conceptos', grupos: [] },
-  { id: 'medios', nombre: 'Medios de pago', desc: 'Cuentas, tarjetas y cheques', grupos: [] },
-  { id: 'configuracion', nombre: 'Configuración', desc: 'Negocio, sucursales y sectores', grupos: [] },
-  { id: 'conexiones', nombre: 'Conexiones', desc: 'Vincular PC y bajar el instalador', grupos: [] },
-];
+import { SECCIONES, PERMISOS_STAFF } from './catalogoPermisos';
 
 function Card({ children, sx }) {
   return <Box sx={{ borderRadius: 2.5, overflow: 'hidden', border: '1px solid #e8eaf0', bgcolor: 'background.paper', ...sx }}>{children}</Box>;
@@ -64,21 +37,6 @@ function CardHeader({ icon, title, subtitle, action, tc }) {
 
 const TODAS = Object.fromEntries(SECCIONES.map((s) => [s.id, 'editar']));
 const DUENIO = { id: 'duenio', nombre: 'Dueño', fijo: true, nota: 'Ve y edita todo', secciones: TODAS, ocultos: [] };
-// Staff y sus subroles (Diego 11/11/2026): por defecto restringidos; el dueño habilita lo que quiera.
-// Las claves son las de AccessContext.staffPuede y las del back (services/auth/permisos.js).
-const PERMISOS_STAFF = [
-  { grupo: 'Recetas', items: [
-    ['ver_precio', 'Ver el precio de venta'],
-    ['ver_costo_pct', 'Ver el % de costo'],
-    ['ver_objetivo', 'Ver el costo objetivo'],
-    ['ver_sugerido', 'Ver el precio sugerido'],
-    ['mover_agrupacion', 'Mover de Sin agrupación a otras agrupaciones'],
-    ['ver_menu', 'Ver el Menú (vista diseño de la carta)'],
-  ] },
-  { grupo: 'Equipo', items: [
-    ['aprobar_equipo', 'Dar el OK a los cambios de su equipo (es el jefe de sus sectores)'],
-  ] },
-];
 const staffBaseDe = (permisos) => ({ id: 'staff', staff: true, esBase: true, nombre: 'Staff', nota: 'Vista operativa · por sectores',
   permisos: { ...(permisos || {}) }, secciones: {}, ocultos: [] });
 const subrolDe = (sr) => ({ id: `staff:${sr.id}`, staffId: sr.id, staff: true, nombre: sr.nombre, personas: sr.personas ?? 0,
@@ -118,7 +76,7 @@ const MENSAJES = {
 };
 const mensajeDe = (e) => MENSAJES[e?.response?.data?.error || e?.data?.error || e?.message] || e?.response?.data?.error || e?.message || 'No se pudo guardar';
 
-export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, onCambio }) {
+export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, onCambio, equipo = [] }) {
   const tc = themeColor;
   const [roles, setRoles] = useState([]);
   const [admin, setAdmin] = useState(adminDe(null));
@@ -128,6 +86,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
   const [borrador, setBorrador] = useState(null);   // copia editable del rol elegido
   const [seccionId, setSeccionId] = useState('resultados');
   const [guardando, setGuardando] = useState(false);
+  const [igualA, setIgualA] = useState(''); // "Igual a…" al crear: 'rol:<id>' | 'persona:<assignmentId>'
 
   const cargar = async (elegir) => {
     setCargando(true); setError(null);
@@ -148,6 +107,7 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
     const r = id === 'nuevo' ? NUEVO : id === 'staff:nuevo' ? SUBROL_NUEVO : [DUENIO, adm, ...sr, ...lista].find((x) => x.id === id);
     if (!r) return;
     setRolId(id);
+    setIgualA('');
     setBorrador({ ...r, secciones: { ...r.secciones }, ocultos: [...r.ocultos], ...(r.permisos ? { permisos: { ...r.permisos } } : {}) });
     setError(null);
   }
@@ -161,6 +121,31 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
   const cambiado = !!rol && JSON.stringify([rol.nombre, rol.secciones, [...rol.ocultos].sort(), normPerm(rol.permisos)]) !== JSON.stringify([original?.nombre, original?.secciones, [...(original?.ocultos || [])].sort(), normPerm(original?.permisos)]);
 
   const cambiar = (fn) => setBorrador((r) => fn(r));
+
+  // "Igual a…" (como el padrino de artículos, Diego 14/11/2026): el rol nuevo arranca con lo
+  // mismo que otro rol o que lo que ve hoy una persona (su rol + sus ajustes). Después se retoca.
+  const esNuevo = rolId === 'nuevo' || rolId === 'staff:nuevo';
+  const tipoNuevo = rolId === 'staff:nuevo' ? 'staff' : 'admin';
+  const rolesRef = tipoNuevo === 'staff' ? staffRoles : [admin, ...roles];
+  const personasRef = equipo.flatMap((m) => (m.negocios || [])
+    .filter((n) => n.assignmentId && n.role === tipoNuevo)
+    .slice(0, 1).map((n) => ({ key: `persona:${n.assignmentId}`, nombre: m.alias || m.email, rolNombre: n.customRoleNombre || (tipoNuevo === 'staff' ? 'Staff' : 'Administración') })))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const elegirIgualA = async (v) => {
+    setIgualA(v); setError(null);
+    try {
+      let src;
+      if (v.startsWith('rol:')) src = rolesRef.find((r) => `rol:${r.id}` === v);
+      else {
+        const e = await efectivosAcceso(Number(v.slice(8)));
+        src = e.tipo === 'staff' ? { permisos: e.permisos || {} } : { secciones: e.secciones || {}, ocultos: e.ocultos || [] };
+      }
+      if (!src) return;
+      cambiar((r) => (tipoNuevo === 'staff'
+        ? { ...r, permisos: { ...(src.permisos || {}) } }
+        : { ...r, secciones: { ...(src.secciones || {}) }, ocultos: [...(src.ocultos || [])] }));
+    } catch (e) { setError(mensajeDe(e)); }
+  };
   const toggleSeccion = (id) => cambiar((r) => {
     const s = { ...r.secciones };
     if (s[id]) delete s[id]; else s[id] = 'ver';
@@ -279,6 +264,23 @@ export default function RolesTab({ themeColor = '#0ea5e9', soloLectura = false, 
             </Stack>
           )} />
         {error && <Alert severity="error" sx={{ m: 2, mb: 0 }} onClose={() => setError(null)}>{error}</Alert>}
+        {esNuevo && editable && (
+          <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 2.5, pt: 1.5 }}>
+            <TextField select size="small" label="Igual a…" value={igualA} onChange={(e) => elegirIgualA(e.target.value)} sx={{ width: 280 }}>
+              <ListSubheader sx={{ lineHeight: '30px', fontSize: '0.7rem', fontWeight: 700 }}>ROLES</ListSubheader>
+              {rolesRef.map((r) => <MenuItem key={r.id} value={`rol:${r.id}`} sx={{ fontSize: '0.85rem' }}>{r.nombre}</MenuItem>)}
+              {personasRef.length > 0 && <ListSubheader sx={{ lineHeight: '30px', fontSize: '0.7rem', fontWeight: 700 }}>PERSONAS</ListSubheader>}
+              {personasRef.map((p) => (
+                <MenuItem key={p.key} value={p.key} sx={{ fontSize: '0.85rem' }}>
+                  {p.nombre}<Typography component="span" sx={{ fontSize: '0.72rem', color: 'text.secondary', ml: 0.75 }}>· {p.rolNombre}</Typography>
+                </MenuItem>
+              ))}
+            </TextField>
+            <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+              Arranca con lo mismo que ve ese rol o esa persona. Después destildás lo que cambie.
+            </Typography>
+          </Stack>
+        )}
 
         {rol.staff ? (
           <Box sx={{ py: 1.5, px: 2.5, minHeight: 480 }}>

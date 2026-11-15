@@ -163,7 +163,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   // El selector aplica siempre para admin, y también para Staff cuando quien
   // invita es owner — como owner siempre tiene acceso a todo, no tiene sentido
   // limitarlo al negocio activo (a un admin no-owner sí se lo deja fijo).
-  const mostrarSelector = (role === 'admin' || (role === 'staff' && isOwner))
+  const mostrarSelector = (role === 'admin' || role === 'owner' || (role === 'staff' && isOwner))
     && (organization || negociosSueltos.length > 1);
 
   // Negocios puntuales para los bloques de sector — el sector es por-negocio,
@@ -348,9 +348,16 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
             fullWidth
             size="small"
           >
+            {/* Co-dueño (Diego 14/11/2026): solo un Dueño suma otro Dueño. */}
+            {isOwner && <MenuItem value="owner">Dueño</MenuItem>}
             {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
             {puedeInvitarStaff && <MenuItem value="staff">Staff (operativo)</MenuItem>}
           </TextField>
+          {role === 'owner' && (
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+              Ve y edita todo, como vos. El titular de la cuenta sigue siendo uno solo.
+            </Typography>
+          )}
 
           {/* Selector de alcance (admin siempre; Staff también si quien invita es owner) */}
           {mostrarSelector ? (

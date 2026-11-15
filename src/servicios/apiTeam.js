@@ -77,9 +77,29 @@ export const TeamAPI = {
     // customRoleId solo viaja si se pasa (null = Administración completa).
     const body = { alias, role, sectorIds };
     if ('customRoleId' in resto) body.customRoleId = resto.customRoleId;
+    // Ajustes solo para esta persona (excepciones sobre el rol). {} = volver al rol.
+    if ('ajustes' in resto) body.ajustes = resto.ajustes;
     return http(`/team/assignments/${assignmentId}`, {
       method: 'PATCH',
       body,
+      withBusinessId: false,
+    });
+  },
+
+  /**
+   * Lo que ve hoy una persona por su rol (sin sus ajustes), para "Igual a…" y "Crear rol igual a…".
+   */
+  async efectivos(assignmentId) {
+    return http(`/team/assignments/${assignmentId}/efectivos`, { withBusinessId: false });
+  },
+
+  /**
+   * Pasa la titularidad de la cuenta a otro Dueño. yoQuedo: 'owner' | 'admin'.
+   */
+  async pasarTitularidad({ businessId, userId, yoQuedo }) {
+    return http('/team/titularidad', {
+      method: 'POST',
+      body: { businessId, userId, yoQuedo },
       withBusinessId: false,
     });
   },
@@ -116,3 +136,5 @@ export const updateAssignment     = TeamAPI.updateAssignment;
 export const revokeAssignment     = TeamAPI.revokeAssignment;
 export const acceptInvitation     = TeamAPI.acceptInvitation;
 export const listKnownPeople = TeamAPI.listKnownPeople;
+export const efectivosAcceso = TeamAPI.efectivos;
+export const pasarTitularidad = TeamAPI.pasarTitularidad;

@@ -14,6 +14,8 @@ import GroupsIcon from '@mui/icons-material/Groups';
 import AddIcon from '@mui/icons-material/Add';
 import BusinessIcon from '@mui/icons-material/Business';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import StarRoundedIcon from '@mui/icons-material/StarRounded';
+import { cantidadAjustes } from '@/componentes/configuracion/catalogoPermisos';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined';
@@ -177,6 +179,9 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           customRoleId: r.custom_role_id != null ? Number(r.custom_role_id) : null,
           customRoleNombre: r.custom_role_nombre || null,
           subrol: r.subrol || null,
+          // Co-dueño y ajustes solo para esta persona (Diego 14/11/2026).
+          esTitular: !!r.es_titular,
+          ajustes: r.ajustes && typeof r.ajustes === 'object' ? r.ajustes : {},
         });
       }
       // Rol más alto por persona (para el chip principal)
@@ -194,7 +199,10 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         const staffs = p.negocios.filter((n) => n.role === 'staff');
         const jefe = rolMasAlto === 'staff' && staffs.length && staffs.every((n) => n.customRoleNombre)
           ? [...new Set(staffs.map((n) => n.customRoleNombre))].join(' / ') : null;
-        return { ...p, rolMasAlto, rolNombre: medida || jefe || ROL_LABEL[rolMasAlto] || rolMasAlto };
+        // "+N": ajustes propios sobre el rol (el máximo entre sus accesos con el rol más alto).
+        const nAjustes = Math.max(0, ...p.negocios.filter((n) => n.role === rolMasAlto).map((n) => cantidadAjustes(n.ajustes)));
+        return { ...p, rolMasAlto, nAjustes, esTitular: p.negocios.some((n) => n.esTitular),
+          rolNombre: medida || jefe || ROL_LABEL[rolMasAlto] || rolMasAlto };
       });
       setMembers(lista);
     } catch (e) {
@@ -406,9 +414,12 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                       </TableCell>
                       <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                         <Chip
-                          label={m.rolNombre}
+                          label={m.nAjustes ? `${m.rolNombre} + ${m.nAjustes}` : m.rolNombre}
                           size="small"
-                          icon={<AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
+                          title={m.esTitular ? 'Titular de la cuenta' : (m.nAjustes ? `${m.nAjustes} ajuste${m.nAjustes !== 1 ? 's' : ''} solo para esta persona` : undefined)}
+                          icon={m.esTitular
+                            ? <StarRoundedIcon sx={{ fontSize: '0.95rem !important', color: '#f5b301 !important' }} />
+                            : <AdminPanelSettingsIcon sx={{ fontSize: '0.8rem !important' }} />}
                           sx={{ fontSize: '0.7rem', bgcolor: `${tc}15`, color: tc, fontWeight: 600 }}
                         />
                       </TableCell>
@@ -466,7 +477,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
                                     <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                                       {n.scopeName}
                                     </Typography>
-                                    <Chip label={n.customRoleNombre || ROL_LABEL[n.role] || n.role} size="small"
+                                    <Chip label={`${n.customRoleNombre || ROL_LABEL[n.role] || n.role}${cantidadAjustes(n.ajustes) ? ` + ${cantidadAjustes(n.ajustes)}` : ''}`} size="small"
                                       sx={{ height: 18, fontSize: '0.62rem', bgcolor: `${tc}12`, color: tc }} />
                                   </Stack>
                                 ))}
@@ -492,7 +503,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
         onClose={() => { setMenuAnchor(null); setMenuRow(null); }}
       >
         <MenuItem onClick={() => {
-          setEditandoPersona(menuRow);
+          setEditandoPersona(menuRow?.email);
           setMenuAnchor(null); setMenuRow(null);
         }}>
           <ManageAccountsOutlinedIcon fontSize="small" sx={{ mr: 1 }} />
@@ -510,7 +521,7 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
             Copiar enlace
           </MenuItem>
         )}
-        {menuRow?.rolMasAlto !== 'owner' && menuRow?.email !== propioEmail && (
+        {(menuRow?.rolMasAlto !== 'owner' || (isOwner && !menuRow?.esTitular)) && menuRow?.email !== propioEmail && (
           <MenuItem onClick={() => handleEliminarIntegrante(menuRow)} sx={{ color: 'error.main' }}>
             <DeleteOutlineIcon fontSize="small" sx={{ mr: 1 }} />
             Eliminar integrante
@@ -524,14 +535,17 @@ const [expandedEmail, setExpandedEmail] = useState(null); // fila expandida (det
           <ShieldOutlinedIcon sx={{ color: tc, fontSize: 20 }} /> Roles y permisos
         </DialogTitle>
         <DialogContent sx={{ pt: '4px !important' }}>
-          <RolesTab themeColor={tc} onCambio={fetchMembers} />
+          <RolesTab themeColor={tc} onCambio={fetchMembers} equipo={members} />
         </DialogContent>
       </Dialog>
 
       {/* Modal editar acceso */}
       <EditarAccesoModal
         open={!!editandoPersona}
-        persona={editandoPersona}
+        // Se busca en la lista viva: después de guardar, el modal muestra lo nuevo.
+        persona={members.find((x) => x.email === editandoPersona) || null}
+        equipo={members}
+        esYo={editandoPersona === propioEmail}
         onClose={() => setEditandoPersona(null)}
         onChanged={fetchMembers}
       />
