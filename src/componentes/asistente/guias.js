@@ -8,21 +8,21 @@
 import { useEffect, useRef, useState } from 'react';
 
 export const GUIAS = [
-  { id: 'tabla_articulos', grupo: 'Recetas', titulo: 'Artículos', detalle: 'Ventas, costo, precio, objetivo y nuevo precio', ruta: '/menu', sectores: ['lateral', 'tabla', 'barra', 'header'] },
-  { id: 'tabla_insumos', grupo: 'Recetas', titulo: 'Insumos', detalle: 'Agrupar, cargar y revisar los insumos', ruta: '/insumos', sectores: ['lateral', 'tabla', 'barra', 'header'] },
-  { id: 'food_cost', grupo: 'Recetas', titulo: 'Food cost', detalle: 'Qué es, cómo se calcula y cómo armarlo por área', ruta: '/menu' },
-  { id: 'crear_insumo', grupo: 'Recetas', titulo: 'Crear un insumo', detalle: 'Nombre, rubro, unidad y precio', ruta: '/insumos' },
-  { id: 'menu_accion', grupo: 'Recetas', titulo: 'Acciones de un artículo', detalle: 'Editar, mover, armar una promo o discontinuar', ruta: '/menu' },
-  { id: 'crear_articulo', grupo: 'Recetas', titulo: 'Crear un artículo', detalle: 'Dar de alta un artículo a mano', ruta: '/menu' },
-  { id: 'receta', grupo: 'Recetas', titulo: 'Receta de un artículo', detalle: 'Ingredientes, rendimiento, promo, vincular, foto y paso a paso', ruta: '/menu', sectores: ['datos', 'ingredientes', 'encabezado', 'pie'] },
-  { id: 'tableros', grupo: 'Operación', titulo: 'Tableros de la cocina', detalle: 'Plazas, la lámina de cada producto y la TV', ruta: '/tableros', sectores: ['tablero', 'header'] },
-  { id: 'gestion_panel', grupo: 'Resultados', titulo: 'Panel de gestión', detalle: 'Ventas, gastos y resultados del mes', ruta: '/gestion', sectores: ['filtros', 'tabla', 'header'] },
-  { id: 'carga_gastos', grupo: 'Resultados', titulo: 'Cargar una factura o gasto', detalle: 'Factura, gasto vario o pago a empleados', ruta: '/gestion' },
-  { id: 'conciliacion', grupo: 'Administración', titulo: 'Conciliación bancaria', detalle: 'Cruzar tus ventas con lo que entró al banco', ruta: '/conciliacion', sectores: ['fuentes', 'conciliar', 'header'], soloGestion: true },
-  { id: 'rrhh_nomina', grupo: 'RRHH', titulo: 'Nómina', detalle: 'Tu equipo: altas, bajas y quién va en cronogramas', ruta: '/rrhh/nomina', sectores: ['barra', 'tabla', 'header'], soloGestion: true },
-  { id: 'rrhh_cronogramas', grupo: 'RRHH', titulo: 'Cronogramas', detalle: 'Armar la semana, feriados, puestos y mandarla por WhatsApp', ruta: '/rrhh/cronogramas', sectores: ['cronograma', 'header'] },
-  { id: 'perfil_equipo', grupo: 'Equipo y ajustes', titulo: 'Tu equipo', detalle: 'Invitar gente y el QR para el staff', ruta: '/equipo' },
-  { id: 'configuracion', grupo: 'Equipo y ajustes', titulo: 'Configuración', detalle: 'Datos del negocio, conexiones y ajustes', ruta: '/configuracion', sectores: ['pestanas', 'header'] },
+  { id: 'tabla_articulos', grupo: 'Recetas', titulo: 'Artículos', detalle: 'Ventas, costo, precio, objetivo y nuevo precio', ruta: '/menu', sectores: ['lateral', 'tabla', 'barra', 'header'], claves: 'carta precios precio nuevo objetivo costo rentabilidad ventas agrupación rubro listas pendientes marcar columnas' },
+  { id: 'tabla_insumos', grupo: 'Recetas', titulo: 'Insumos', detalle: 'Agrupar, cargar y revisar los insumos', ruta: '/insumos', sectores: ['lateral', 'tabla', 'barra', 'header'], claves: 'compras mercadería elaborado marcar listas pendientes rubro unidad agrupar' },
+  { id: 'food_cost', grupo: 'Recetas', titulo: 'Food cost', detalle: 'Qué es, cómo se calcula y cómo armarlo por área', ruta: '/menu', claves: 'costo de mercadería porcentaje área bebidas comidas configurar compras ventas' },
+  { id: 'crear_insumo', grupo: 'Recetas', titulo: 'Crear un insumo', detalle: 'Nombre, rubro, unidad y precio', ruta: '/insumos', claves: 'alta insumo nuevo cargar producto precio unidad' },
+  { id: 'menu_accion', grupo: 'Recetas', titulo: 'Acciones de un artículo', detalle: 'Editar, mover, armar una promo o discontinuar', ruta: '/menu', claves: 'editar mover promo promoción combo discontinuar menú tres puntos' },
+  { id: 'crear_articulo', grupo: 'Recetas', titulo: 'Crear un artículo', detalle: 'Dar de alta un artículo a mano', ruta: '/menu', claves: 'alta artículo nuevo producto a mano' },
+  { id: 'receta', grupo: 'Recetas', titulo: 'Receta de un artículo', detalle: 'Ingredientes, rendimiento, promo, vincular, foto y paso a paso', ruta: '/menu', sectores: ['datos', 'ingredientes', 'encabezado', 'pie'], claves: 'ingredientes rendimiento merma promo vincular foto paso a paso cocina costo receta elaborado' },
+  { id: 'tableros', grupo: 'Operación', titulo: 'Tableros de la cocina', detalle: 'Plazas, la lámina de cada producto y la TV', ruta: '/tableros', sectores: ['tablero', 'header'], claves: 'plaza despacho cocina barra lámina tv pantalla armado' },
+  { id: 'gestion_panel', grupo: 'Resultados', titulo: 'Panel de gestión', detalle: 'Ventas, gastos y resultados del mes', ruta: '/gestion', sectores: ['filtros', 'tabla', 'header'], claves: 'resultados ganancia gastos ventas rubros económica financiera mes período balance' },
+  { id: 'carga_gastos', grupo: 'Resultados', titulo: 'Cargar una factura o gasto', detalle: 'Factura, gasto vario o pago a empleados', ruta: '/gestion', claves: 'factura gasto vario pago proveedor sueldos adelantos impaga ticket comprobante' },
+  { id: 'conciliacion', grupo: 'Administración', titulo: 'Conciliación bancaria', detalle: 'Cruzar tus ventas con lo que entró al banco', ruta: '/conciliacion', sectores: ['fuentes', 'conciliar', 'header'], soloGestion: true, claves: 'banco mercado pago cobros extracto conciliar cupón tarjeta cuenta corriente' },
+  { id: 'rrhh_nomina', grupo: 'RRHH', titulo: 'Nómina', detalle: 'Tu equipo: altas, bajas y quién va en cronogramas', ruta: '/rrhh/nomina', sectores: ['barra', 'tabla', 'header'], soloGestion: true, claves: 'empleados equipo alta baja personal dni no aplica' },
+  { id: 'rrhh_cronogramas', grupo: 'RRHH', titulo: 'Cronogramas', detalle: 'Armar la semana, feriados, puestos y mandarla por WhatsApp', ruta: '/rrhh/cronogramas', sectores: ['cronograma', 'header'], claves: 'turnos horarios semana francos feriados puestos whatsapp' },
+  { id: 'perfil_equipo', grupo: 'Equipo y ajustes', titulo: 'Tu equipo', detalle: 'Invitar gente y el QR para el staff', ruta: '/equipo', claves: 'invitar usuarios qr staff permisos roles' },
+  { id: 'configuracion', grupo: 'Equipo y ajustes', titulo: 'Configuración', detalle: 'Datos del negocio, conexiones y ajustes', ruta: '/configuracion', sectores: ['pestanas', 'header'], claves: 'ajustes conexiones punto de venta pos importar negocio sucursal datos' },
 ];
 export const GRUPOS_GUIAS = ['Recetas', 'Operación', 'Resultados', 'Administración', 'RRHH', 'Equipo y ajustes'];
 
@@ -32,6 +32,24 @@ export const NOMBRE_SECTOR = {
   lateral: 'Lateral', tabla: 'Tabla', barra: 'Barra', header: 'Header', filtros: 'Filtros',
   cronograma: 'Cronograma', pestanas: 'Pestañas', tablero: 'Tablero', fuentes: 'Fuentes', conciliar: 'Conciliar', datos: 'Datos', ingredientes: 'Ingredientes', encabezado: 'Encabezado', pie: 'Pie',
 };
+
+/** Link para compartir una guía (Diego 16/11/2026: «que cada guía tenga un link único»).
+ *  Abre la pantalla y arranca la guía sola; si no hay sesión, pasa por el login y vuelve. */
+export function linkGuia(g, sector = null) {
+  return `${window.location.origin}/guia/${g.id}${sector ? `/${sector}` : ''}`;
+}
+
+const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+/** Busca guías por título, detalle, módulo, sectores y palabras clave. Todas las palabras
+ *  tienen que aparecer (en cualquier orden). */
+export function buscarGuias(q, lista = GUIAS) {
+  const palabras = norm(q).split(/\s+/).filter(Boolean);
+  if (!palabras.length) return lista;
+  return lista.filter((g) => {
+    const texto = norm([g.titulo, g.detalle, g.grupo, g.claves, ...(g.sectores || []).map((x) => NOMBRE_SECTOR[x] || x)].join(' '));
+    return palabras.every((w) => texto.includes(w));
+  });
+}
 
 /** Al terminar una guía, Anthony ofrece hacerlo ahora con su ayuda (Diego 14/11/2026): abre la guía
  *  del modal que sigue sobre el formulario real, así el usuario carga el primero acompañado. */
