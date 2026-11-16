@@ -33,8 +33,10 @@ const ROLES_ARTICULOS = [
   { value: 'codigo', label: '✓ Código', color: '#166534', bg: '#dcfce7' },
   { value: 'nombre', label: '✓ Nombre', color: '#1e40af', bg: '#dbeafe' },
   { value: 'precio', label: '✓ Precio', color: '#7c3aed', bg: '#ede9fe' },
-  { value: 'rubro', label: '○ Cód. rubro', color: '#92400e', bg: '#fef3c7' },
-  { value: 'subrubro', label: '○ Cód. subrubro', color: '#065f46', bg: '#d1fae5' },
+  // Rubro / subrubro: código (MaxiRest, se cruza con el listado de rubros) o el nombre directo
+  // («Familia: BEBIDAS» de otros POS). El back distingue solo (usuaria 16/11/2026).
+  { value: 'rubro', label: '○ Rubro (código o nombre)', color: '#92400e', bg: '#fef3c7' },
+  { value: 'subrubro', label: '○ Subrubro (código o nombre)', color: '#065f46', bg: '#d1fae5' },
 ];
 function getRoles(tipo) {
   if (tipo === 'rubros') return ROLES_RUBROS;
@@ -57,10 +59,10 @@ function detectarRol(col, tipo) {
   }
   if (tipo === 'articulos') {
     if (['codigo', 'code', 'codarticulo', 'cod', 'id'].includes(c)) return 'codigo';
-    if (['nombre', 'name', 'descripcion'].includes(c)) return 'nombre';
+    if (['nombre', 'name', 'descripcion', 'denominacion'].includes(c)) return 'nombre';
     if (['precio1', 'precio', 'price', 'precioventa', 'precioref'].includes(c)) return 'precio';
-    if (['codrua', 'codru', 'rubro', 'codrubro'].includes(c)) return 'rubro';
-    if (['codsua', 'subrubro', 'codsubrubro'].includes(c)) return 'subrubro';
+    if (['codrua', 'codru', 'rubro', 'codrubro', 'familia', 'categoria'].includes(c)) return 'rubro';
+    if (['codsua', 'subrubro', 'codsubrubro', 'subfamilia', 'subcategoria'].includes(c)) return 'subrubro';
   }
   return 'ignorar';
 }
