@@ -7,6 +7,9 @@ import AuthLayout from '@/componentes/auth/AuthLayout';
 export default function ResetPassword() {
   const [params] = useSearchParams();
   const token = params.get('token') || '';
+  // El link de restablecer trae el mail de la cuenta: se muestra para saber de quién es la contraseña
+  // (usuaria 16/11/2026: un admin abre el link de otro usuario y no se veía a quién le cambiaba).
+  const email = (params.get('email') || '').trim();
   const nav = useNavigate();
   const [password, setPass] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -38,8 +41,15 @@ export default function ResetPassword() {
       <form className="auth-card compact" onSubmit={onSubmit} noValidate>
         <header className="auth-head">
           <h2 className="auth-title">Nueva contraseña</h2>
+          {email && (
+            <p className="auth-sub" style={{ marginBottom: 4 }}>
+              Para la cuenta <strong style={{ color: 'inherit', wordBreak: 'break-all' }}>{email}</strong>
+            </p>
+          )}
           <p className="auth-sub">{PASSWORD_REGLA}</p>
         </header>
+        {/* Para que el gestor de contraseñas del navegador la guarde con el usuario correcto. */}
+        {email && <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />}
         {msg ? <div className="auth-success" style={{ marginBottom: 10 }}>{msg}</div> : null}
         {err ? <div className="auth-error">{err}</div> : null}
 
