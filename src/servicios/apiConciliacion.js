@@ -33,7 +33,16 @@ export const MercadoPagoAPI = {
   clientes: (bid) => http(`${mpBase(bid)}/clientes`, { cache: false, timeoutMs: 60000 }),
   autorizar: (bid, suc) => http(`${mpBase(bid)}/autorizar${q(suc)}`, { cache: false }),
   conectar: (bid, code, state) => http(`${mpBase(bid)}/conectar`, { method: 'POST', timeoutMs: 60000, body: { code, state } }),
-  desconectar: (bid, suc) => http(`${mpBase(bid)}${q(suc)}`, { method: 'DELETE' }),
+  // Con varias cuentas en la sucursal (15/11) se dice cuál: `cuenta` = user_id de MP.
+  // Proveedor vinculado a la cuenta (15/11): a él van sus comisiones e impuestos.
+  proveedor: (bid, suc, cuenta, codPro) => http(`${mpBase(bid)}/proveedor${q(suc)}`, { method: 'POST', body: { cuenta, codPro } }),
+  // Qué cuenta define el CUIT de la sucursal (15/11).
+  cuitSucursal: (bid, suc, cuenta) => http(`${mpBase(bid)}/cuit-sucursal${q(suc)}`, { method: 'POST', body: { cuenta } }),
+  desconectar: (bid, suc, cuenta) => http(`${mpBase(bid)}${q(suc, cuenta ? `&cuenta=${encodeURIComponent(cuenta)}` : '')}`, { method: 'DELETE' }),
+  // Lo que descuenta MP, al tablero (15/11): resumen del mes, proveedor/concepto por tipo y encendido.
+  cargos: (bid, mes) => http(`${mpBase(bid)}/cargos?mes=${encodeURIComponent(mes || '')}`, { cache: false, timeoutMs: 60000 }),
+  cargosConfig: (bid, body) => http(`${mpBase(bid)}/cargos/config`, { method: 'POST', body }),
+  cargosActivar: (bid, body) => http(`${mpBase(bid)}/cargos/activar`, { method: 'POST', body }),
   sincronizar: (bid, suc, desde, hasta) =>
     http(`${mpBase(bid)}/sincronizar${q(suc)}`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
   // Reporte de liberaciones (nombres de pagadores y egresos): MP lo arma en unos minutos.

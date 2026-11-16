@@ -3,11 +3,18 @@
 // Botones de contacto abren un modal funcional
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 
 import LOGO from '@/assets/brand/logo.png';
 import { BASE } from '@/servicios/apiBase';
 import DOG from '@/assets/brand/anthony.png';
+import { DEMO_COSTOS } from '@/componentes/landing-demos/costos';
+import { DEMO_MOVIL } from '@/componentes/landing-demos/movil';
+import { DEMO_CLIENTES } from '@/componentes/landing-demos/clientes';
+import { DEMO_COBROS } from '@/componentes/landing-demos/cobros';
+import { DEMO_COCINA } from '@/componentes/landing-demos/cocina';
+import { DEMO_CONCILIACION } from '@/componentes/landing-demos/conciliacion';
+import { DEMO_EQUIPO } from '@/componentes/landing-demos/equipo';
 import { LOGO_CB, LOGO_FC, LOGO_CO, LOGO_MG, LOGO_LL, COLOR_CB, COLOR_CO, COLOR_FC, COLOR_MG, TABLERO_EJEMPLO } from '@/componentes/landing-logos';
 
 const css = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Archivo:wght@300;400;500;600;700;900&display=swap');
@@ -57,6 +64,14 @@ nav .btn-sky{padding:11px 22px;font-size:15px;}
 .vision p{font-size:18px;max-width:620px;margin:0 auto;}
 .chips{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .chip{font-size:15px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:50px;padding:10px 22px;background:#fff;}
+.ia{background:var(--navy);border-top:1px solid rgba(255,255,255,.08);padding:36px 0;}
+.ia .wrap{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;}
+.ia h3{font-size:20px;font-weight:700;color:#fff;letter-spacing:-.2px;}
+.ia h3 small{display:block;font-family:'Archivo',system-ui,sans-serif;font-size:14px;font-weight:400;color:rgba(255,255,255,.6);letter-spacing:0;margin-top:4px;}
+.ia-l{display:flex;gap:10px;flex-wrap:wrap;}
+.ia-l a{display:inline-flex;align-items:center;justify-content:center;height:44px;min-width:104px;padding:0 18px;border-radius:50px;background:transparent;border:1.5px solid rgba(255,255,255,.3);color:#fff;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:14px;text-decoration:none;transition:border-color .15s ease, transform .15s ease;}
+.ia-l a:hover{border-color:var(--sky);color:var(--sky);transform:translateY(-2px);}
+@media(max-width:700px){.ia .wrap{flex-direction:column;align-items:flex-start;}.ia-l{display:grid;grid-template-columns:repeat(3,1fr);width:100%;}.ia-l a{min-width:0;height:49px;padding:0 8px;}}
 .cta{background:var(--navy);color:#fff;padding:80px 0;text-align:center;border-top:1px solid rgba(255,255,255,.08);}
 .cta h2{font-size:42px;font-weight:700;letter-spacing:-.5px;margin-bottom:10px;}
 .cta .tag{font-family:'Sora',system-ui,sans-serif;letter-spacing:3px;text-transform:uppercase;font-size:14px;color:var(--sky);font-weight:600;margin-top:18px;}
@@ -171,6 +186,88 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .arol{font-size:15px;color:rgba(255,255,255,.8);}
 .aexp{font-size:14px;color:rgba(255,255,255,.55);margin-bottom:16px;}
 .aesp{margin-top:auto;font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:700;color:var(--sky);border:1px solid rgba(91,194,234,.45);border-radius:50px;padding:6px 14px;}
+.navtabs{display:flex;gap:30px;margin-left:44px;margin-right:auto;}
+.navtabs a{font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15.5px;color:#c8d2e0;text-decoration:none;padding:8px 0;transition:color .15s,box-shadow .15s;}
+.navtabs a:hover{color:#fff;}
+.navtabs a.on{color:#fff;box-shadow:inset 0 -2px 0 var(--sky);}
+.btn-link{background:none;border:0;color:#c8d2e0;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;padding:10px 6px;cursor:pointer;}
+.btn-link:hover{color:#fff;}
+.ases-top{padding:74px 0 56px;}
+.ases-top h2{font-size:60px;line-height:1.07;letter-spacing:-1px;font-weight:700;margin:18px 0;}
+.ases-top .sub{font-size:20px;font-weight:350;color:rgba(255,255,255,.74);}
+.d-corta{display:none;}
+.demo{padding:80px 0;background:var(--paper);}
+.demo h2,.funcs h2{font-size:38px;color:var(--ink);font-weight:800;letter-spacing:-.8px;margin:10px 0 24px;}
+.dtabs{display:flex;gap:8px;margin-bottom:22px;flex-wrap:wrap;}
+.dtabs button{height:44px;padding:0 20px;border-radius:50px;border:1px solid var(--line);background:#fff;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;color:var(--ink);cursor:pointer;}
+.dtabs button.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+.dbody{display:grid;grid-template-columns:1fr 330px;gap:28px;align-items:start;}
+.dshot{position:relative;border-radius:14px;overflow:hidden;box-shadow:0 18px 50px rgba(21,33,62,.18);border:1px solid var(--line);background:#fff;}
+.dshot img{display:block;width:100%;height:auto;}
+.dshot.movil .dpin{width:22px;height:22px;font-size:11px;}
+.dshot.movil{max-width:300px;margin:0 auto;border:10px solid var(--navy);border-radius:34px;box-shadow:0 22px 50px rgba(21,33,62,.28);}
+.dpin{position:absolute;width:26px;height:26px;transform:translate(-50%,-50%);border-radius:50%;border:2px solid #fff;background:var(--sky);color:var(--ink);font-family:'Sora',system-ui,sans-serif;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s;}
+.dpin.on{background:var(--ink);color:#fff;transform:translate(-50%,-50%) scale(1.18);box-shadow:0 0 0 6px rgba(91,194,234,.45);}
+.dpasos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+.dpasos li{display:flex;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer;border:1px solid transparent;transition:background .15s;}
+.dpasos li.on{background:#fff;border-color:var(--line);box-shadow:0 6px 18px rgba(21,33,62,.08);}
+.dpasos .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--sky);color:var(--ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;font-family:'Sora',system-ui,sans-serif;}
+.dpasos li.on .n{background:var(--ink);color:#fff;}
+.dpasos b{font-family:'Sora',system-ui,sans-serif;font-size:15.5px;color:var(--ink);display:block;margin-bottom:3px;}
+.dpasos p{font-size:14px;line-height:1.45;margin:0;}
+.dpasos .dnota{cursor:default;align-items:center;font-size:12.5px;color:#8a93a3;padding-top:4px;}
+.dpasos .dnota img{width:30px;height:auto;}
+.funcs{padding:80px 0;background:#fff;}
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:stretch;}
+.fcol{padding:18px 18px 20px;border:1px solid var(--line);border-radius:16px;background:#fff;}
+.funcs-top{padding-bottom:64px;}
+.dpasos .dmas{cursor:default;padding-top:0;}
+.dpasos .dmas a{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:15px;color:var(--skydeep);text-decoration:none;}
+.navsel{display:none;position:relative;margin-right:auto;}
+.navsel>button{height:44px;display:flex;align-items:center;gap:8px;background:none;border:0;color:#fff;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:14px;cursor:pointer;padding:0 4px;white-space:nowrap;}
+.navsel .ham{font-size:18px;color:var(--sky);}
+.navsel-menu{position:absolute;top:50px;left:0;min-width:200px;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.35);display:flex;flex-direction:column;}
+.navsel-menu a{display:flex;align-items:center;min-height:44px;padding:0 14px;border-radius:8px;color:#c8d2e0;text-decoration:none;font-family:'Sora',system-ui,sans-serif;font-weight:600;font-size:15px;}
+.navsel-menu a.on{color:#fff;background:rgba(91,194,234,.16);}
+.fhead{background:var(--paper);border-radius:12px;padding:12px 16px;font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:var(--ink);margin-bottom:12px;}
+.fcol ul{list-style:none;margin:0;padding:0;}
+.fcol li{display:grid;grid-template-columns:26px 1fr;column-gap:10px;align-items:center;min-height:44px;font-size:15px;color:var(--ink);padding:4px 0;}
+.fcol li .fic{width:26px;text-align:center;font-size:18px;}
+.fcol li.pronto{color:#8a93a3;}
+.fcol li.pronto .fic{filter:grayscale(1);opacity:.6;}
+.fcol li em{font-style:normal;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--skydeep);background:rgba(91,194,234,.15);border-radius:20px;padding:2px 8px;grid-column:2;justify-self:start;margin-top:2px;}
+.ases-top .sub .solo{display:block;margin-top:14px;font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:24px;color:var(--sky);letter-spacing:-.3px;}
+.ases-top .pasos{margin-bottom:0;}
+.equipo{padding-top:70px;border-top:1px solid rgba(255,255,255,.06);}
+.equipo h2{margin-bottom:30px!important;}
+.servicios{padding:60px 0 72px;background:var(--paper);}
+.servicios h2,.faq h2{font-size:38px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 36px;}
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+.scard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;}
+.sic{font-size:28px;width:52px;height:52px;border-radius:14px;background:rgba(91,194,234,.15);display:flex;align-items:center;justify-content:center;}
+.scard h3{font-family:'Sora',system-ui,sans-serif;font-size:19px;color:var(--ink);margin:16px 0 6px;}
+.scard p{font-size:15.5px;}
+.faq{padding:80px 0;background:#fff;}
+.faq-l{max-width:820px;}
+.faq details{border-bottom:1px solid var(--line);padding:18px 0;}
+.faq summary{font-family:'Sora',system-ui,sans-serif;font-weight:700;font-size:18px;color:var(--ink);cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;}
+.faq summary::-webkit-details-marker{display:none;}
+.faq summary::after{content:'+';color:var(--skydeep);font-size:24px;line-height:1;}
+.faq details[open] summary::after{content:'–';}
+.faq details p{margin-top:10px;font-size:16px;max-width:720px;}
+.puente{background:var(--navy2);color:#fff;padding:56px 0;}
+.puente .wrap{display:flex;align-items:center;justify-content:space-between;gap:30px;}
+.puente h3{font-family:'Sora',system-ui,sans-serif;font-size:30px;margin:8px 0 6px;}
+.puente p{color:rgba(255,255,255,.7);font-size:17px;max-width:620px;}
+.puente .btn{white-space:nowrap;text-decoration:none;}
+.principios{padding:64px 0 72px;background:#fff;}
+.principios h2{font-size:34px;color:var(--ink);font-weight:700;letter-spacing:-.5px;margin:10px 0 30px;max-width:820px;}
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.pcard{border-left:3px solid var(--sky);padding:6px 0 6px 18px;}
+.pcard h3{font-family:'Sora',system-ui,sans-serif;font-size:17px;color:var(--ink);margin-bottom:6px;}
+.pcard p{font-size:15px;}
+.pcita{margin:36px 0 0;font-family:'Sora',system-ui,sans-serif;font-size:22px;font-weight:600;color:var(--ink);line-height:1.4;max-width:820px;}
+.pcita span{display:block;margin-top:8px;font-size:14px;font-weight:600;color:var(--skydeep);}
 .vlbl{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:600;}
 .vchip{display:inline-flex;align-items:center;gap:6px;border-radius:50px;padding:7px 13px;font-size:13.5px;font-weight:700;}
 .vrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;font-size:13.5px;}
@@ -184,14 +281,17 @@ footer .c{font-size:14px;line-height:1.8;text-align:right;}
 .marca .lgm img{height:56px;width:auto;display:block;opacity:.7;transition:opacity .2s;}
 .marca .lgm:hover img{opacity:1;}
 .marca .lgm span{font-family:'Sora',system-ui,sans-serif;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.5px;white-space:nowrap;}
-@media(max-width:820px){.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
+@media(max-width:1000px){.sgrid,.pgrid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:820px){.brd{display:none;}nav .wrap{height:56px;gap:12px;}nav img{height:28px;}.navtabs{margin:0 auto 0 4px;gap:14px;align-self:stretch;}.navtabs a{font-size:13.5px;display:flex;align-items:center;padding:0;white-space:nowrap;}.navactions{gap:8px;}.btn-link{font-size:13.5px;padding:6px 2px;min-height:44px;}.d-larga{display:none;}.d-corta{display:inline;}.navactions .btn-sky{position:relative;}.navactions .btn-sky::after{content:'';position:absolute;inset:-6px 0;}.sgrid,.pgrid{grid-template-columns:1fr;}.servicios h2,.faq h2,.principios h2{font-size:28px;}.pcita{font-size:18px;}.puente .wrap{flex-direction:column;align-items:flex-start;}.puente h3{font-size:24px;}.pasos,.agrid{grid-template-columns:1fr;}.asesores h2{font-size:30px;}.rgrid{grid-template-columns:1fr;}.relato h2{font-size:32px;}}
 @media(max-width:820px){
   .hero .wrap{grid-template-columns:1fr;} .hero .dogwrap{display:none;}
-  .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:9px 14px;font-size:13px;}
+  .hero h1{font-size:42px;} .grid{grid-template-columns:1fr;} .navactions .btn{padding:8px 14px;font-size:13px;white-space:nowrap;}
   .diff .wrap{grid-template-columns:1fr;} .diff .circle{display:none;}
   .insight .wrap{flex-direction:column;align-items:flex-start;gap:10px;}
-  .diff p{font-size:28px;} .cta h2{font-size:30px;} .hero h1{font-size:38px;}
-}`;
+  .diff p{font-size:28px;} .cta h2{font-size:30px;} .hero h1,.ases-top h2{font-size:32px;} .dbody{grid-template-columns:1fr;} .fgrid{grid-template-columns:1fr 1fr;} .navtabs{display:none!important;} .navsel{display:block;} .demo h2,.funcs h2{font-size:28px;} .dpin{width:24px;height:24px;font-size:11px;border-width:1.5px;} .dtabs{flex-wrap:nowrap;overflow-x:auto;margin-right:-16px;padding-right:16px;scrollbar-width:none;} .dtabs button{flex:none;padding:0 16px;font-size:14px;} .ases-top .sub{font-size:17px;} .ases-top .sub .solo{font-size:20px;}
+}
+@media(max-width:560px){.fgrid{grid-template-columns:1fr;}}
+@media(max-width:380px){.hero h1,.ases-top h2{font-size:30px;} nav .wrap{gap:8px;} .navsel>button{font-size:13px;gap:6px;} .btn-link{font-size:13px;}}`;
 
 const marqueeChips = [
   "Costos reales por plato", "Política de precios que se sostiene", "Ingeniería de menú",
@@ -219,16 +319,103 @@ const logosClientes = [
   { nm: 'Llévalo Listo', src: LOGO_LL },
 ];
 
+// «Mirá cómo funciona» (Diego 15/11/2026): las guías de Anthony de la app, contadas como beneficio,
+// sobre capturas reales con números y nombres cambiados (no son datos de ningún cliente).
+// x / y = dónde va cada punto, en % de la imagen.
+const demos = [
+  { id: 'costos', tab: 'Costos y precios', img: DEMO_COSTOS, alt: 'Tabla de artículos con costo, precio y costo % contra el objetivo',
+    pasos: [
+      { x: 48.5, y: 8, t: 'Cuánto te cuesta cada plato', d: 'Sale de su receta y se actualiza con cada compra. Debajo, el precio que necesitás para llegar a tu objetivo.' },
+      { x: 70.0, y: 7, t: 'Qué parte del precio se va en costo', d: 'Contra tu objetivo, plato por plato. En rojo, lo que se pasó.' },
+      { x: 85.5, y: 3.5, t: 'El precio nuevo, de un toque', d: 'Si el sugerido supera tu precio, lo tomás con un clic. También podés subir un % a todo un rubro.' },
+    ] },
+  { id: 'movil', tab: 'En el celular', img: DEMO_MOVIL, movil: true, alt: 'Tablero de resultados del dueño en el celular',
+    nota: '100% web: lo abrís en el celular o en la compu, sin instalar nada.',
+    pasos: [
+      { x: 4, y: 22.5, t: 'Cómo vas a cerrar el mes', d: 'Ventas y gastos proyectados al cierre, con lo real hasta hoy.' },
+      { x: 4, y: 42, t: 'Food cost, personal y mix', d: 'Contra el mes anterior, y cuánta plata es la diferencia.' },
+      { x: 4, y: 80.5, t: 'Cada gasto, por rubro', d: 'Cuánto se lleva cada rubro de lo que vendés.' },
+    ] },
+  { id: 'clientes', tab: 'Clientes', img: DEMO_CLIENTES, alt: 'Clientes que pagaron por Mercado Pago, con segmentos y días sin venir',
+    pasos: [
+      { x: 40.5, y: 12.8, t: 'Quién vuelve y quién no', d: 'Los que te pagan por Mercado Pago: cuántos repiten y su ticket promedio.' },
+      { x: 20.5, y: 28.7, t: 'Clientes en riesgo', d: 'Frecuentes, nuevos, dormidos: sabés a quién llamar antes de perderlo.' },
+      { x: 62.0, y: 35, t: 'Hace cuánto no vienen', d: 'Los días sin venir de cada uno. Exportás la lista para tus campañas.' },
+    ] },
+  { id: 'cobros', tab: 'Cobros', img: DEMO_COBROS, alt: 'Movimientos de Mercado Pago con comisiones, impuestos y neto',
+    pasos: [
+      { x: 16.5, y: 24.4, t: 'Lo que te cuesta cobrar', d: 'Las comisiones de Mercado Pago, por medio de cobro.' },
+      { x: 31.5, y: 24.4, t: 'Impuestos y retenciones', d: 'Todo lo que te descuentan, sumado y en % de lo cobrado.' },
+      { x: 74.3, y: 52.5, t: 'Cada cobro, chequeado', d: 'Importe, comisión, impuestos y neto de cada operación. Se trae solo todos los días.' },
+    ] },
+  { id: 'conciliacion', tab: 'Conciliación', img: DEMO_CONCILIACION, alt: 'Conciliación de las ventas del POS con los cobros del banco',
+    pasos: [
+      { x: 2.5, y: 37.8, t: 'Tus ventas y tus cobros, lado a lado', d: 'Lo que vendiste en el POS de un lado y lo que entró al banco del otro.' },
+      { x: 11, y: 43.3, t: 'Se concilian solos', d: 'Por cupón, por importe o por hora: Lazarillo cruza cada venta con su cobro.' },
+      { x: 2.5, y: 22.9, t: 'Cuánto ya está chequeado', d: 'Los conciliados del período, con la diferencia de cada uno.' },
+      { x: 81, y: 22.9, t: 'Lo que falta, a la vista', d: 'Lo pendiente de cada lado y la diferencia, para resolverlo a mano.' },
+    ] },
+  { id: 'cocina', tab: 'Cocina', img: DEMO_COCINA, alt: 'Tablero de cocina en modo armar, con los platos y sus ingredientes por color',
+    pasos: [
+      { x: 83.0, y: 6.5, t: 'Elegís los platos', d: 'Con «+ Productos» armás la plaza: ensaladas, parrilla, postres.' },
+      { x: 2.5, y: 37, t: 'Los ordenás arrastrando', d: 'Cada ingrediente con su cantidad, en el orden en que se arma el plato.' },
+      { x: 18.0, y: 33, t: 'Colores que se ven de lejos', d: 'Tocás un color para cambiarlo: el equipo reconoce cada ingrediente de un vistazo.' },
+      { x: 78.0, y: 6.5, t: 'Directo a la TV de la cocina', d: 'La vinculás a la TV y se actualiza sola.' },
+    ] },
+  { id: 'equipo', tab: 'Equipo', img: DEMO_EQUIPO, alt: 'Cronograma semanal del salón con turnos, horas y francos',
+    pasos: [
+      { x: 22.0, y: 26, t: 'La semana armada en minutos', d: 'Cada persona en su turno, con puesto, horario y feriados.' },
+      { x: 72.5, y: 14.5, t: 'Días y horas de cada uno', d: 'En la semana y en el mes, para saber cuánto te cuesta abrir.' },
+      { x: 88.0, y: 3, t: 'Directo al WhatsApp del equipo', d: 'Lo exportás como imagen y lo mandás. Sin planillas.' },
+    ] },
+];
+
+// Funcionalidades al estilo del menú de Yurest (Diego 15/11/2026). «pronto» = próximamente.
+const funcionalidades = [
+  { g: 'Rentabilidad', it: [['📊', 'Food cost y costo mix'], ['🍽️', 'Ingeniería de menú'], ['🧾', 'Recetas y costos'], ['🏷️', 'Política de precios'], ['🧺', 'Tu canasta (inflación propia)'], ['📈', 'Resultados y proyección']] },
+  { g: 'Administración', it: [['🛒', 'Compras y gastos'], ['📦', 'Proveedores y cuenta corriente'], ['📝', 'Notas de pedido', 1], ['🚚', 'Recepción de mercadería', 1], ['🏦', 'Conciliación bancaria'], ['🤖', 'Escáner IA de facturas', 1]] },
+  { g: 'Operación y calidad', it: [['📺', 'Tableros de cocina'], ['📖', 'Menú y fichas de receta'], ['🍳', 'Carga de producción', 1], ['🏷', 'Trazabilidad y etiquetado', 1], ['🛠️', 'Bienes de uso y mantenimiento', 1]] },
+  { g: 'RRHH', it: [['🗓️', 'Cronogramas y turnos'], ['💵', 'Liquidación de sueldos', 1], ['👥', 'Equipo y permisos'], ['⏱️', 'Fichajes', 1], ['🌴', 'Gestión de vacaciones', 1]] },
+];
+
 // Integraciones: con qué se conecta. Estados a confirmar.
 const integraciones = [
   { mk: 'MX', t: 'MaxiRest', d: 'POS · ventas, compras y stock', st: 'on' },
   { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'on' },
   { mk: 'ML', t: 'Mercado Libre', d: 'Compras de insumos', st: 'on' },
+  { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'on' },
   { mk: 'WT', t: 'Waitry', d: 'POS y pedidos', st: 'soon' },
   { mk: 'FU', t: 'Fudo', d: 'POS', st: 'soon' },
-  { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
 ]
+
+// Asesoría: qué hacemos (propuesta inspirada en Plus Asesoría, sin hotelería; Diego la ajusta).
+const servicios = [
+  { ic: '📊', t: 'Rentabilidad y costos', d: 'Ordenamos costos fijos y variables, punto de equilibrio y food cost, para que sepas qué te queda.' },
+  { ic: '🏷️', t: 'Precios y menú', d: 'Una política de precios atada a tu canasta de costos e ingeniería de menú: qué empujar y qué revisar.' },
+  { ic: '🚀', t: 'Aperturas y productos nuevos', d: 'Abrís un local o sumás una línea: recetas, costos y precio antes de vender el primer plato.' },
+  { ic: '👨‍🍳', t: 'Equipos y capacitación', d: 'Recetas estándar, tableros para cocina y barra, y un equipo que sabe qué hacer y por qué.' },
+  { ic: '📅', t: 'Personal y turnos', d: 'Cronogramas según la demanda y cuánto te cuesta abrir cada jornada.' },
+  { ic: '🔎', t: 'Auditoría de la operación', d: 'Recorremos tu negocio como un cliente más y te devolvemos qué mejorar, con prioridades.' },
+];
+// Preguntas frecuentes de la asesoría (borrador para que Diego ajuste).
+const preguntas = [
+  ['¿Qué es el diagnóstico?', 'Una primera charla para entender tu dolor y definir un método de trabajo orientado a resultados: lo más importante es identificar el problema. Con un Lazarillo de respaldo miramos tus números y encontramos dónde se te va la rentabilidad. De ahí sale el plan de trabajo.'],
+  ['¿Tengo que cambiar mi sistema de ventas?', 'No. Lazarillo se apoya en el sistema que ya tenés y trabajamos sobre tus datos reales.'],
+  ['¿Cuánto dura el acompañamiento?', 'Depende de lo que haya que resolver: lo definimos juntos en el diagnóstico, con objetivos claros.'],
+  ['¿Qué pasa cuando termina?', 'Seguís solo: el proceso queda funcionando con tu equipo y con tu Lazarillo.'],
+  ['¿Con qué negocios trabajan?', 'Restaurantes, bares, cafeterías y buffets: cualquier negocio gastronómico que quiera saber dónde está parado.'],
+];
+
+// Cómo pensamos: del documento de valores que Diego usa con sus equipos.
+const principios = [
+  ['Tu cliente marca el rumbo', 'Hay dos formas de vender más: buscar clientes para tu producto o crear productos para tus clientes. Con Lazarillo ves cuál te conviene.'],
+  ['Lo más importante es identificar el problema', 'Con Lazarillo miramos tus números reales: sin el diagnóstico correcto no hay solución adecuada.'],
+  ['Lo primero que falla es la comunicación', 'Si quienes forman tu negocio, equipo o clientes, no están conectados a cada decisión, el resultado no va a ser el esperado. Lazarillo los conecta.'],
+  ['Prevenir antes que curar', 'Ayudamos a que tu equipo cambie de a poco la mentalidad y esté preparado para lo peor, siempre.'],
+  ['No afirmamos nada sin comprobarlo', 'Escuchamos todas las voces, validamos y decidimos en conjunto.'],
+  ['Lo que no se mueve, se muere', 'Muchas propuestas se instalan y después nadie las supervisa ni las mantiene. Sin retroalimentación y sin gente involucrada en el objetivo, se apagan. Un sistema de trabajo que los una en el objetivo común es la solución.'],
+];
 
 // Asesores (Florencia se suma cuando confirme).
 const asesores = [
@@ -240,10 +427,90 @@ const asesores = [
 const visionChips = ["Compras", "Recursos Humanos", "Stock", "Política de precios", "Resultados"];
 const WA = "https://wa.me/5491163989934";
 
+// «Preguntale a la IA qué es Lazarillo» (idea tomada de Yurest, 15/11/2026).
+// Cada botón abre esa IA con la pregunta ya escrita. La pregunta nombra la web para que no
+// lo confunda con el Lazarillo de Tormes; lo que contesta sale de lo que lee de lazarillo.com.ar
+// (y de /llms.txt). Gemini no acepta la pregunta por link: va por el modo IA de Google.
+const PREGUNTA_IA = 'Explicame qué es Lazarillo (www.lazarillo.com.ar), el ERP gastronómico argentino para restaurantes: qué hace, qué problemas le resuelve a un dueño de restaurante y para qué tipo de negocio sirve. Usá la información de www.lazarillo.com.ar y www.lazarillo.com.ar/llms.txt.';
+const IAS = [
+  ['ChatGPT', 'https://chatgpt.com/?q='],
+  ['Claude', 'https://claude.ai/new?q='],
+  ['Google IA', 'https://www.google.com/search?udm=50&q='],
+  ['Perplexity', 'https://www.perplexity.ai/search?q='],
+  ['Grok', 'https://grok.com/?q='],
+].map(([nm, url]) => ({ nm, href: url + encodeURIComponent(PREGUNTA_IA) }));
+
+
 // Prioridades para el pedido de demo (las mismas áreas del relato).
 const PRIORIDADES = ['Costos y precios', 'Rentabilidad', 'Operación y equipo', 'Proveedores', 'Menú', 'Personal y turnos'];
 
 // Modal de contacto: el pedido se guarda en el servidor y le llega por mail a los asesores.
+function ComoFunciona() {
+  const [tab, setTab] = useState(0);
+  const [paso, setPaso] = useState(0);
+  const d = demos[tab];
+  return (
+    <section className="demo" id="como-funciona">
+      <div className="wrap">
+        <div className="kick">Mirá cómo funciona</div>
+        <h2>Lo que ves todos los días con Lazarillo.</h2>
+        <div className="dtabs" role="tablist">
+          {demos.map((x, i) => (
+            <button key={x.id} role="tab" aria-selected={i === tab} className={i === tab ? 'on' : ''} onClick={() => { setTab(i); setPaso(0); }}>{x.tab}</button>
+          ))}
+        </div>
+        <div className="dbody">
+          <div className={'dshot' + (d.movil ? ' movil' : '')}>
+            <img src={d.img} alt={d.alt} loading="lazy" />
+            {d.pasos.map((p, i) => (
+              <button key={i} className={'dpin' + (i === paso ? ' on' : '')} style={{ left: p.x + '%', top: p.y + '%' }} onClick={() => setPaso(i)} aria-label={p.t}>{i + 1}</button>
+            ))}
+          </div>
+          <ol className="dpasos">
+            {d.pasos.map((p, i) => (
+              <li key={i} className={i === paso ? 'on' : ''} onMouseEnter={() => setPaso(i)} onClick={() => setPaso(i)}>
+                <span className="n">{i + 1}</span><div><b>{p.t}</b><p>{p.d}</p></div>
+              </li>
+            ))}
+            <li className="dnota"><img src={DOG} alt="" /> {d.nota ? <span>{d.nota}<br />Números y nombres de ejemplo.</span> : 'Números y nombres de ejemplo.'}</li>
+            <li className="dmas"><Link to="/funcionalidades">Ver todas las funcionalidades →</Link></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Funcionalidades() {
+  return (
+    <>
+      <section className="asesores ases-top funcs-top">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Funcionalidades</div>
+          <h2>Todo tu restaurante,<br /><span>en un solo lugar.</span></h2>
+          <p className="sub">De gastronómicos para gastronómicos: cada módulo nace de un problema que tuvimos en nuestro propio restaurante.</p>
+        </div>
+      </section>
+      <section className="funcs" id="funcionalidades">
+        <div className="wrap">
+          <div className="fgrid">
+            {funcionalidades.map((c) => (
+              <div className="fcol" key={c.g}>
+                <div className="fhead">{c.g}</div>
+                <ul>
+                  {c.it.map(([ic, t, pronto]) => (
+                    <li key={t} className={pronto ? 'pronto' : ''}><span className="fic">{ic}</span><span>{t}</span>{pronto ? <em>Próximamente</em> : null}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
 function ContactModal({ onClose }) {
   const [form, setForm] = useState({ nombre: '', restaurante: '', contacto: '', prioridad: '', mensaje: '', web: '' });
   const [sent, setSent] = useState(false);
@@ -330,7 +597,15 @@ function ContactModal({ onClose }) {
 
 export default function LazarilloLanding() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  // Tres sectores: El sistema (/), Funcionalidades (/funcionalidades) y Asesoría (/asesoria).
+  const enAsesoria = pathname.startsWith('/asesoria');
+  const enFuncs = pathname.startsWith('/funcionalidades');
+  const enSistema = !enAsesoria && !enFuncs;
+  const sectores = [['/', 'El sistema', enSistema], ['/funcionalidades', 'Funcionalidades', enFuncs], ['/asesoria', 'Asesoría', enAsesoria]];
   const [showModal, setShowModal] = useState(false);
+  const [menu, setMenu] = useState(false);
+  React.useEffect(() => { window.scrollTo(0, 0); setMenu(false); }, [pathname]);
 
   const openModal = (e) => { e.preventDefault(); setShowModal(true); };
 
@@ -343,14 +618,28 @@ export default function LazarilloLanding() {
       {/* NAV */}
       <nav>
         <div className="wrap">
-          <img src={LOGO} alt="Lazarillo" />
+          <Link to="/" aria-label="Lazarillo"><img src={LOGO} alt="Lazarillo" /></Link>
+          <div className="navtabs">
+            {sectores.map(([to, t, on]) => <Link key={to} to={to} className={on ? 'on' : ''}>{t}</Link>)}
+          </div>
+          {/* Celular: ☰ con el sector actual para cambiar de sector (regla de la app). */}
+          <div className="navsel">
+            <button type="button" aria-expanded={menu} onClick={() => setMenu((m) => !m)}><span className="ham">☰</span>{sectores.find((x) => x[2])[1]}</button>
+            {menu && (
+              <div className="navsel-menu">
+                {sectores.map(([to, t, on]) => <Link key={to} to={to} className={on ? 'on' : ''}>{t}</Link>)}
+              </div>
+            )}
+          </div>
           <div className="navactions">
-            <button className="btn btn-ghost" onClick={() => navigate('/login')}>Ingresar</button>
-            <button className="btn btn-sky" onClick={openModal}>Pedí una demo</button>
+            <button className="btn-link" onClick={() => navigate('/login')}>Ingresar</button>
+            <button className="btn btn-sky" onClick={openModal}><span className="d-larga">Pedí una demo</span><span className="d-corta">Demo</span></button>
           </div>
         </div>
       </nav>
 
+      {enSistema && (
+        <>
       {/* HERO */}
       <header className="hero">
         <div className="wrap">
@@ -360,7 +649,7 @@ export default function LazarilloLanding() {
             <p>Se apoya en el sistema que ya tenés y convierte los números de tu negocio en decisiones claras que todo tu equipo ve, entiende y ejecuta —todos los días.</p>
             <div className="actions">
               <button className="btn btn-sky" onClick={openModal}>Quiero verlo en mi restaurante</button>
-              <a className="btn btn-ghost" href="#que-hace">Cómo funciona</a>
+              <a className="btn btn-ghost" href="#como-funciona">Cómo funciona</a>
             </div>
           </div>
           <div className="dogwrap"><img src={DOG} alt="Anthony" /></div>
@@ -463,6 +752,8 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+      <ComoFunciona />
+
       {/* MARCAS: clientes en banda oscura que se mueve */}
       <section className="marca">
         <div className="t">Ya lo usan</div>
@@ -488,31 +779,6 @@ export default function LazarilloLanding() {
                 <div className="lbl">{c.lbl}</div>
                 {c.q && <q>{c.q}</q>}
                 {c.by && <div className="by">{c.by}</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ASESORES: el valor humano */}
-      <section className="asesores" id="asesores">
-        <div className="wrap">
-          <div className="kick" style={{ color: 'var(--sky)' }}>Asesoría · de gastronómicos para gastronómicos</div>
-          <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br />quién te acompaña.</span></h2>
-          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos. Después seguís solo, con tu Lazarillo.</p>
-          <div className="pasos">
-            {[['1', 'Diagnóstico', 'Identificamos dónde está tu dolor.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
-              <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
-            ))}
-          </div>
-          <div className="agrid">
-            {asesores.map((a) => (
-              <div className="acard" key={a.nm}>
-                <div className="aini">{a.ini}</div>
-                <div className="anm">{a.nm}</div>
-                <div className="arol">{a.rol}</div>
-                <div className="aexp">{a.exp}</div>
-                <div className="aesp">{a.esp}</div>
               </div>
             ))}
           </div>
@@ -548,6 +814,16 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+      {/* PUENTE a la asesoría */}
+      <section className="puente">
+        <div className="wrap">
+          <div><div className="kick" style={{ color: 'var(--sky)' }}>Asesoría</div>
+            <h3>¿Querés que te acompañemos en el proceso?</h3>
+            <p>Gastronómicos con oficio te ayudan a encontrar dónde está tu dolor y a resolverlo con tu Lazarillo.</p></div>
+          <Link className="btn btn-sky" to="/asesoria">Conocé la asesoría →</Link>
+        </div>
+      </section>
+
       {/* VISION */}
       <section className="vision">
         <div className="wrap">
@@ -560,16 +836,111 @@ export default function LazarilloLanding() {
         </div>
       </section>
 
+        </>
+      )}
+
+      {enFuncs && <Funcionalidades />}
+
+      {enAsesoria && (
+        <>
+      {/* ASESORES: el valor humano */}
+      <section className="asesores ases-top" id="asesores">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Asesoría · de gastronómicos para gastronómicos</div>
+          <h2>Software hay mucho.<br /><span>Lo que nos diferencia es<br className="brd" /> quién te acompaña.</span></h2>
+          <p className="sub">Nos respalda un método, un software y años de oficio: te acompañamos en el proceso, encontramos juntos dónde está tu dolor y lo resolvemos.<span className="solo">Después seguís solo, con tu Lazarillo.</span></p>
+          <div className="pasos">
+            {[['1', 'Diagnóstico', 'Identificamos el problema: bien descripto, ya tenés la mitad resuelto.'], ['2', 'Lo resolvemos juntos', 'Método, software y tu equipo, en la misma dirección.'], ['3', 'Seguís solo', 'Con tu Lazarillo y el proceso funcionando.']].map(([n, t, d]) => (
+              <div className="paso" key={n}><span className="paso-n">{n}</span><div><b>{t}</b><p>{d}</p></div></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* SERVICIOS */}
+      <section className="servicios">
+        <div className="wrap">
+          <div className="kick">Qué hacemos</div>
+          <h2>Vamos a donde más se mueve tu resultado.</h2>
+          <div className="sgrid">
+            {servicios.map((x) => (
+              <div className="scard" key={x.t}><div className="sic">{x.ic}</div><h3>{x.t}</h3><p>{x.d}</p></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CÓMO PENSAMOS */}
+      <section className="principios">
+        <div className="wrap">
+          <div className="kick">Nuestros principios</div>
+          <h2>Así tomamos decisiones.</h2>
+          <div className="pgrid">
+            {principios.map(([t, d]) => (
+              <div className="pcard" key={t}><h3>{t}</h3><p>{d}</p></div>
+            ))}
+          </div>
+          <blockquote className="pcita">«Hay que dejar de luchar solos como dueños de negocio y crear equipos interdependientes. Para eso hace falta una herramienta y un sistema que los conecte.»<span>Diego Sebastián Albo</span></blockquote>
+        </div>
+      </section>
+
+      {/* EQUIPO */}
+      <section className="asesores equipo">
+        <div className="wrap">
+          <div className="kick" style={{ color: 'var(--sky)' }}>Quiénes te acompañan</div>
+          <h2 style={{ fontSize: 34 }}>El equipo</h2>
+          <div className="agrid">
+            {asesores.map((a) => (
+              <div className="acard" key={a.nm}>
+                <div className="aini">{a.ini}</div>
+                <div className="anm">{a.nm}</div>
+                <div className="arol">{a.rol}</div>
+                <div className="aexp">{a.exp}</div>
+                <div className="aesp">{a.esp}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* PREGUNTAS FRECUENTES */}
+      <section className="faq">
+        <div className="wrap">
+          <div className="kick">Preguntas frecuentes</div>
+          <h2>Lo que nos preguntan antes de empezar.</h2>
+          <div className="faq-l">
+            {preguntas.map(([q, r]) => (
+              <details key={q}><summary>{q}</summary><p>{r}</p></details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+        </>
+      )}
+
       {/* CTA */}
       <section className="cta" id="contacto">
         <div className="wrap">
-          <h2>Empezá a ver lo que tu negocio te esconde.</h2>
-          <p style={{ color: "rgba(255,255,255,.7)", fontSize: "18px" }}>Escribinos y te mostramos Lazarillo funcionando sobre tu carta.</p>
+          <h2>{enAsesoria ? 'Empecemos por el diagnóstico.' : 'Empezá a ver lo que tu negocio te esconde.'}</h2>
+          <p style={{ color: "rgba(255,255,255,.7)", fontSize: "18px" }}>{enAsesoria ? 'Contanos tu prioridad y te contactamos para la primera charla.' : 'Escribinos y te mostramos Lazarillo funcionando sobre tu carta.'}</p>
           <div className="actions">
-            <button className="btn btn-sky" onClick={openModal}>Pedí tu demo gratuita</button>
+            <button className="btn btn-sky" onClick={openModal}>{enAsesoria ? 'Pedí tu diagnóstico' : 'Pedí tu demo gratuita'}</button>
             <a className="btn btn-ghost" href={WA} target="_blank" rel="noopener">WhatsApp directo</a>
           </div>
           <div className="tag">Conectamos con lo que no ves</div>
+        </div>
+      </section>
+
+      {/* PREGUNTALE A LA IA */}
+      <section className="ia">
+        <div className="wrap">
+          <h3>Preguntale a la IA qué es Lazarillo<small>Se abre con la pregunta ya escrita.</small></h3>
+          <div className="ia-l">
+            {IAS.map((ia) => (
+              <a key={ia.nm} href={ia.href} target="_blank" rel="noopener noreferrer">{ia.nm}</a>
+            ))}
+          </div>
         </div>
       </section>
 

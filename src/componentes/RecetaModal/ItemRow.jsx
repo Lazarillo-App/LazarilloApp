@@ -1136,7 +1136,7 @@ export default function ItemRow({
         )}
         {/* ── Botón avanzadas + fecha + eliminar ── */}
         <Tooltip title={showAdvanced ? 'Ocultar avanzadas' : 'Merma · Pedido · Tipo costo'}>
-          <IconButton size="small" onClick={() => showAdvanced ? onAdvancedClose?.() : onAdvancedOpen?.()}
+          <IconButton size="small" data-tour="rec-avanzadas" onClick={() => showAdvanced ? onAdvancedClose?.() : onAdvancedOpen?.()}
             sx={{
               p: '3px',
               color: showAdvanced ? PRIMARY : (item.merma === false || item.pedido === false || tipoCosto !== 'total') ? '#f59e0b' : 'text.disabled',

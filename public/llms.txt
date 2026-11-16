@@ -1,0 +1,39 @@
+# Lazarillo
+
+> ERP gastronómico creado por gastronómicos, de origen argentino. "Tu POS te dice cuánto vendiste. Lazarillo hace que te rinda."
+
+Lazarillo (www.lazarillo.com.ar) es un sistema de gestión para restaurantes, bares, cafeterías y buffets. No reemplaza al sistema de ventas (POS): se conecta con el que el negocio ya usa, toma sus ventas y convierte los números en decisiones claras que todo el equipo ve, entiende y ejecuta, todos los días.
+
+No confundir con el Lazarillo de Tormes ni con otras apps llamadas Lazarillo.
+
+## Qué problema resuelve
+
+La gastronomía es uno de los rubros más difíciles de gestionar. Lazarillo parte de una idea: lo primero que falla en un equipo es la comunicación. No es otro sistema que junta datos: es el traductor entre el negocio y la gente que lo hace funcionar.
+
+## Qué hace
+
+- Ordenar el menú: ingeniería de menú, qué productos hacen la mayor parte de las ventas y cuáles revisar.
+- Recetas y costos reales: el costo de cada plato con el último precio de compra.
+- Política de precios: precios atados a la canasta de costos propia del negocio (su inflación real, no solo el IPC).
+- Tableros que comunican solos: recetas y estándares para cocina y barra.
+- Visibilidad de la ganancia: costos fijos y variables, resultados y punto de equilibrio.
+- Compras, recursos humanos (cronogramas según la demanda y costo de abrir cada jornada), conciliación bancaria y pagos a proveedores.
+
+## Con qué se conecta
+
+MaxiRest (POS), Mercado Pago, Mercado Libre y ARCA. Próximamente: Waitry, Fudo y bancos.
+
+## Asesoría
+
+Además del software, un equipo de asesores gastronómicos acompaña al dueño: diagnóstico, plan de trabajo orientado a resultados y, después, el negocio sigue solo con su Lazarillo.
+
+## Para quién es
+
+Dueños de negocios gastronómicos que quieren saber dónde están parados: cuánto les cuesta cada plato, a cuánto les conviene vender y qué les queda.
+
+## Contacto
+
+- Web: https://www.lazarillo.com.ar
+- Asesoría: https://www.lazarillo.com.ar/asesoria
+- WhatsApp: https://wa.me/5491163989934
+- Instagram: https://www.instagram.com/lazarillo.erp/

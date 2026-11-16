@@ -10,6 +10,10 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { RrhhAPI } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
 import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
+import SpotlightTour from '../componentes/SpotlightTour';
+import { usePasosHeader, usePasosPresentes } from '../componentes/asistente/pasosHeader';
+import { useSectorGuia } from '../componentes/asistente/guias';
+import { useRecorrido } from '../hooks/useRecorrido';
 
 /* ───────── tema (el mismo de Cronogramas) ───────── */
 const T = {
@@ -408,6 +412,30 @@ export default function RrhhNomina() {
   const th = { padding: '9px 12px', fontFamily: FB, fontSize: 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left', borderBottom: `1px solid ${T.border2}`, background: T.head, position: 'sticky', top: 0, zIndex: 1 };
   const td = { padding: '8px 12px', fontFamily: FB, fontSize: 13, color: T.text, borderBottom: `1px solid ${T.border}` };
 
+  /* ── Guía de Anthony (Diego 15/11/2026: «RRHH no habla de nómina»). Arranca sola mientras la
+     nómina está vacía; con equipo cargado, se pide desde Guías. Sectores: Barra, Tabla y Header. ── */
+  const sinEquipo = !cargando && !errorCarga && !empleados.length;
+  const pasosNomina = usePasosPresentes([
+    { k: 'nom-ejemplo', s: 'tabla', t: <>Atrás tenés un <b>ejemplo</b> de cómo se va a ver tu nómina: cada fila es una persona, en qué puestos trabaja y de dónde vino.</> },
+    { k: 'nom-filtros', s: 'barra', t: <><b>Activos</b> son los que van en cronogramas; <b>No aplica</b>, los activos que no van (el contador, el dueño, usuarios del punto de venta); <b>Bajas</b>, los que ya no están. El número es cuántos hay en cada uno.</> },
+    { k: 'nom-nuevo', s: 'barra', t: <>Con <b>+ Nuevo empleado</b> das de alta a alguien: nombre, apellido, DNI y fecha de ingreso.</> },
+    { k: 'nom-origen', s: 'barra', t: sync === null
+      ? <>Este negocio no trae la nómina de un punto de venta: a tu equipo lo cargás acá, o usás la nómina de <b>otro negocio tuyo</b> y la comparten.</>
+      : <>Si tu punto de venta tiene la nómina, <b>entra sola</b> cada vez que abrís RRHH: las altas entran y las bajas se desactivan. Lo que edites acá no se pisa.</> },
+    { k: 'nom-buscar', s: 'tabla', t: <>Buscás a cualquiera por <b>nombre, código o sector</b>.</> },
+    { k: 'nom-col-crono', s: 'tabla', t: <><b>Cronogramas</b> se completa solo con los puestos donde lo pusiste en las últimas 8 semanas. Tocá el chip para marcarlo <b>No aplica</b> o darle la <b>baja</b>.</> },
+    { k: 'nom-col-origen', s: 'tabla', t: <>De dónde vino cada uno: de tu <b>punto de venta</b> o cargado <b>a mano</b>.</> },
+    { k: 'nom-col-estado', s: 'tabla', t: <><b>Activo</b> o <b>Inactivo</b>: tocalo para darle la baja (con fecha) o reactivarlo. Nadie se borra: queda con su historia.</> },
+    { k: 'nom-fila', s: 'tabla', t: <>Tocá cualquier fila para <b>editar</b> sus datos.</> },
+    { k: 'nom-primer-paso', s: 'tabla', t: <>Arrancá cargando a tu equipo con <b>+ Nuevo empleado</b>{sync === null ? <>, o usá la nómina de otro negocio tuyo</> : null}. Después lo ponés en los cronogramas.</> },
+  ], `${cargando}:${empleados.length}:${sync === null}:${filtro}`);
+  const pasosHeaderNom = usePasosHeader();
+  const sectorNom = useSectorGuia('rrhh_nomina');
+  const pasosTourNom = pasosNomina.concat(pasosHeaderNom).filter((p) => !sectorNom || p.s === sectorNom);
+  const recNom = useRecorrido('rrhh_nomina', pasosTourNom.length, !cargando && !errorCarga && !editando && !bajaDeQuien && !eligiendo && pasosNomina.length > 0,
+    { sinDatos: sinEquipo, siguiente: !sectorNom && empleados.length ? { id: 'rrhh_cronogramas', label: 'Seguir con Cronogramas' } : undefined });
+  const pasoNom = pasosTourNom[recNom.paso - 1];
+
   if (cargando) return <div style={{ padding: 32, fontFamily: FB, color: T.text2, background: T.bg, minHeight: '60vh' }}>Cargando la nómina…</div>;
   if (errorCarga) {
     return (
@@ -424,13 +452,16 @@ export default function RrhhNomina() {
         {/* barra: título + filtros + acción principal */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginRight: 6 }}>Nómina</div>
+          <span data-tour="nom-filtros" style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
           <Boton activo={filtro === 'activos'} onClick={() => setFiltro('activos')}>Activos · {cuenta.activos}</Boton>
           <Boton activo={filtro === 'noaplica'} onClick={() => setFiltro('noaplica')} title="Activos que no van en cronogramas (contador, dueño, usuarios del POS)">No aplica · {cuenta.noaplica}</Boton>
           <Boton activo={filtro === 'bajas'} onClick={() => setFiltro('bajas')}>Bajas · {cuenta.bajas}</Boton>
           <Boton activo={filtro === 'todos'} onClick={() => setFiltro('todos')}>Todos · {cuenta.todos}</Boton>
+          </span>
           <div style={{ flex: 1 }} />
-          <Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton>
+          <span data-tour="nom-nuevo" style={{ display: 'inline-flex' }}><Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton></span>
         </div>
+        <div data-tour="nom-origen">
         {compartidaCon ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontFamily: FB, fontSize: 12.5, color: T.accentTxt, background: T.accent + '18', border: `1px solid ${T.accent}66`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
             <span>Nómina compartida con <b>{compartidaCon.nombre}</b>: las altas, bajas y cambios se ven en los dos negocios.</span>
@@ -462,6 +493,7 @@ export default function RrhhNomina() {
             Se sincroniza sola con MaxiRest al abrir RRHH: las altas entran y las bajas se desactivan. Lo que edites acá no se pisa.
           </div>
         )}
+        </div>
 
         {empleados.length > 0 && (
           <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, margin: '-6px 0 12px' }}>
@@ -483,25 +515,25 @@ export default function RrhhNomina() {
 
         <div style={{ position: 'relative', background: T.band, border: `1px solid ${T.border}`, borderRadius: 14, overflow: 'hidden' }}>
           {/* buscador pegado a la lista (filtra solo esta tabla) */}
-          <div style={{ padding: 10, borderBottom: `1px solid ${T.border}` }}>
+          <div data-tour="nom-buscar" style={{ padding: 10, borderBottom: `1px solid ${T.border}` }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nombre, código o sector…"
               style={{ width: '100%', boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '8px 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.head }} />
           </div>
-          <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 250px)' }}>
+          <div data-tour={empleados.length ? undefined : 'nom-ejemplo'} style={{ overflow: 'auto', maxHeight: 'calc(100vh - 250px)' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
               <thead>
                 <tr>
                   <th style={th}>Empleado</th>
                   <th style={{ ...th, width: 90 }}>Código</th>
-                  <th style={{ ...th, width: 190 }}>Cronogramas</th>
-                  <th style={{ ...th, width: 110 }}>Origen</th>
-                  <th style={{ ...th, width: 220 }}>Estado</th>
+                  <th data-tour="nom-col-crono" style={{ ...th, width: 190 }}>Cronogramas</th>
+                  <th data-tour="nom-col-origen" style={{ ...th, width: 110 }}>Origen</th>
+                  <th data-tour="nom-col-estado" style={{ ...th, width: 220 }}>Estado</th>
                   <th style={{ ...th, width: 70 }} />
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((e) => (
-                  <tr key={e.id} onClick={() => setEditando(e)} style={{ cursor: 'pointer', opacity: e.activo === false ? 0.6 : 1 }} title="Editar">
+                {visibles.map((e, i) => (
+                  <tr key={e.id} data-tour={i === 0 ? 'nom-fila' : undefined} onClick={() => setEditando(e)} style={{ cursor: 'pointer', opacity: e.activo === false ? 0.6 : 1 }} title="Editar">
                     <td style={{ ...td, fontWeight: 700 }}>{nombreDe(e) || '—'}</td>
                     <td style={{ ...td, color: T.text3, fontSize: 12 }}>{e.codigoMaxi || '—'}</td>
                     <td style={{ ...td, maxWidth: 190 }}><ChipCrono empleado={e} onCambiar={cambiarNoAplica} onBaja={setBajaDeQuien} /></td>
@@ -537,7 +569,7 @@ export default function RrhhNomina() {
           {!empleados.length && (
             <>
               <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 16px 22px' }}>
-                <div style={{ width: 440, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 22, textAlign: 'center', boxSizing: 'border-box' }}>
+                <div data-tour="nom-primer-paso" style={{ width: 440, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 22, textAlign: 'center', boxSizing: 'border-box' }}>
                   <span style={{ display: 'inline-block', fontFamily: FB, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 7, padding: '2px 8px', marginBottom: 10 }}>ARRIBA, UN EJEMPLO</span>
                   <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 18, color: T.text, marginBottom: 6 }}>Cargá a tu equipo</div>
                   <div style={{ fontFamily: FB, fontSize: 13, color: T.text2, marginBottom: 16 }}>
@@ -556,6 +588,10 @@ export default function RrhhNomina() {
         </div>
       </div>
 
+      {recNom.visible && pasoNom && (
+        <SpotlightTour key={pasoNom.k} targetRef={pasoNom.ref} pose={recNom.paso === 1 ? 'presenta' : 'senala'}
+          placement={pasoNom.k === 'nom-primer-paso' ? 'top' : 'bottom'} text={pasoNom.t} {...recNom.props(recNom.paso)} />
+      )}
       {editando && (
         <ModalEmpleado
           empleado={editando === 'nuevo' ? null : editando}

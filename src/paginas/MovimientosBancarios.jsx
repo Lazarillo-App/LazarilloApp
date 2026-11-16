@@ -12,6 +12,9 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { ConciliacionAPI, MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
+import MenuColumna from '@/componentes/base/MenuColumna';
+import DescuentosMP from '@/componentes/bancos/DescuentosMP';
+import { pasaFiltro, filtroActivo } from '@/componentes/base/filtrosColumna';
 import logoMercadoPago from '@/assets/bancos/mercadopago.svg';
 import logoGalicia from '@/assets/bancos/galicia.svg';
 import logoBbva from '@/assets/bancos/bbva.svg';
@@ -59,7 +62,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
       neto: neto != null ? neto : bruto,
       ref: b.ref || '', doc: fmtDoc(b.doc, b.docTipo), acredita: b.acredita || '', cuotas: b.cuotas || null,
       op: String(b.op || b.mpId || ''), claveMx: b.claveMx || claveMx(b.mpId),
-      caja: b.caja || '', tarjeta: b.tarjeta || '',
+      caja: b.caja || '', tarjeta: b.tarjeta || '', cuenta: b.cuenta ? String(b.cuenta) : '', email: b.email || '',
     };
   });
   const dev = devoluciones.map((d) => ({
@@ -68,7 +71,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
     detalle: `${d.parcial ? 'parcial · ' : ''}cobro del ${dma(d.cobroFecha)} por ${pesos(d.cobro)}`,
     bruto: Number(d.imp) || 0, comision: 0, retenciones: null, neto: -(Number(d.imp) || 0), parcial: !!d.parcial,
     ref: d.ref || '', doc: '', acredita: '', cuotas: null, caja: '', tarjeta: '',
-    op: String(d.mpId || ''), claveMx: claveMx(d.mpId),
+    op: String(d.mpId || ''), claveMx: claveMx(d.mpId), cuenta: d.cuenta ? String(d.cuenta) : '',
   }));
   const sal = egresos.map((e) => {
     const imp = Math.abs(Number(e.imp) || 0);
@@ -77,7 +80,7 @@ function normalizar(banco = [], egresos = [], devoluciones = []) {
       tipo: e.tipo || 'Egreso', medio: e.medio || '—', quien: '', detalle: e.detalle || '',
       bruto: imp, comision: 0, retenciones: null, neto: -imp,
       ref: e.ref || '', doc: '', acredita: '', cuotas: null, caja: '', tarjeta: '',
-      op: /^\d+$/.test(String(e.mpId || '')) ? String(e.mpId) : '', claveMx: claveMx(e.mpId),
+      op: /^\d+$/.test(String(e.mpId || '')) ? String(e.mpId) : '', claveMx: claveMx(e.mpId), cuenta: e.cuenta ? String(e.cuenta) : '',
     };
   });
   return [...ent, ...sal, ...dev].sort((a, b) => `${b.fecha}${b.hora}`.localeCompare(`${a.fecha}${a.hora}`));
@@ -99,22 +102,24 @@ const LADOS = [{ k: 'todos', l: 'Todos' }, { k: 'entrada', l: 'Entradas' }, { k:
 
 // Columnas de la lista (Diego 14/11): las fijas y las que se suman desde «Columnas».
 const COLUMNAS = [
-  { k: 'fecha', l: 'Fecha', fija: true },
-  { k: 'hora', l: 'Hora' },
-  { k: 'tipo', l: 'Tipo', fija: true },
-  { k: 'pagador', l: 'Pagador', fija: true },
-  { k: 'detalle', l: 'Descripción' },
-  { k: 'medio', l: 'Medio' },
-  { k: 'op', l: 'Nº operación' },
-  { k: 'ref', l: 'Referencia externa' },
-  { k: 'acredita', l: 'Acreditación' },
-  { k: 'cuotas', l: 'Cuotas' },
-  { k: 'tarjeta', l: 'Tarjeta' },
-  { k: 'caja', l: 'Caja / QR' },
-  { k: 'importe', l: 'Importe', fija: true },
-  { k: 'comision', l: 'Comisión' },
-  { k: 'retenciones', l: 'Impuestos' },
-  { k: 'neto', l: 'Neto', fija: true },
+  { k: 'fecha', l: 'Fecha', fija: true, f: 'fecha' },
+  { k: 'hora', l: 'Hora', f: 'texto' },
+  { k: 'tipo', l: 'Tipo', fija: true, f: 'lista' },
+  { k: 'pagador', l: 'Pagador', fija: true, f: 'texto' },
+  { k: 'email', l: 'Email', f: 'texto' },
+  { k: 'detalle', l: 'Descripción', f: 'texto' },
+  { k: 'medio', l: 'Medio', f: 'lista' },
+  { k: 'op', l: 'Nº operación', f: 'texto' },
+  { k: 'ref', l: 'Referencia externa', f: 'texto' },
+  { k: 'acredita', l: 'Acreditación', f: 'fecha' },
+  { k: 'cuotas', l: 'Cuotas', f: 'lista' },
+  { k: 'tarjeta', l: 'Tarjeta', f: 'texto' },
+  { k: 'caja', l: 'Caja / QR', f: 'lista' },
+  { k: 'cuenta', l: 'Cuenta', f: 'lista' },
+  { k: 'importe', l: 'Importe', fija: true, f: 'num' },
+  { k: 'comision', l: 'Comisión', f: 'num' },
+  { k: 'retenciones', l: 'Impuestos', f: 'num' },
+  { k: 'neto', l: 'Neto', fija: true, f: 'num' },
 ];
 const COLS_DEFAULT = ['fecha', 'hora', 'tipo', 'pagador', 'medio', 'op', 'acredita', 'importe', 'comision', 'retenciones', 'neto'];
 const COLS_KEY = 'movimientos-bancarios:columnas-v2';
@@ -122,6 +127,8 @@ const leerCols = () => {
   try { const v = JSON.parse(localStorage.getItem(COLS_KEY) || 'null'); if (Array.isArray(v) && v.length) return v; } catch { /* sin storage */ }
   return COLS_DEFAULT;
 };
+
+const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 export default function MovimientosBancarios() {
   const { activeBusinessId } = useBusiness() || {};
@@ -138,9 +145,16 @@ export default function MovimientosBancarios() {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [lado, setLado] = useState('todos');
-  const [medio, setMedio] = useState('');
   const [buscar, setBuscar] = useState('');
-  const [caja, setCaja] = useState('');
+  // Títulos de la tabla estilo Excel (Diego 15/11/2026: «ordenarse en ambos sentidos y filtrarse»). Reemplazan
+  // los desplegables de medio, cuenta y caja, que hacían lo mismo.
+  const [filtros, setFiltros] = useState({});
+  const [orden, setOrden] = useState({ k: 'fecha', asc: false });
+  const [abierto, setAbierto] = useState(null); // { k, x, y }
+  const ponerFiltro = (k, f) => setFiltros((o) => ({ ...o, [k]: f }));
+  // El desglose por medio / por tipo arranca minimizado («así tengo más espacio para la tabla»); se recuerda.
+  const [verDetalle, setVerDetalle] = useState(() => { try { return localStorage.getItem('movimientos-bancarios:detalle') === '1'; } catch { return false; } });
+  const alternarDetalle = () => setVerDetalle((v) => { try { localStorage.setItem('movimientos-bancarios:detalle', v ? '0' : '1'); } catch { /* sin storage */ } return !v; });
   const [cols, setCols] = useState(leerCols);
   const [verCols, setVerCols] = useState(false);
   const [verComisiones, setVerComisiones] = useState(false);
@@ -149,12 +163,15 @@ export default function MovimientosBancarios() {
     try { localStorage.setItem(COLS_KEY, JSON.stringify(n)); } catch { /* sin storage */ }
     return n;
   });
-  const ve = (k) => cols.includes(k) || COLUMNAS.find((c) => c.k === k)?.fija;
+  const ve = (k) => cols.includes(k) || COLUMNAS.find((c) => c.k === k)?.fija || (k === 'cuenta' && (mp?.cuentas || []).length > 1);
   const [ver, setVer] = useState(0);            // sube al traer de Mercado Pago (relee lo guardado)
   const [aviso, setAviso] = useState('');
   const avisoT = useRef(null);
   const avisar = (t, ms = 5000) => { setAviso(t); clearTimeout(avisoT.current); if (ms) avisoT.current = setTimeout(() => setAviso(''), ms); };
-  const vistaBancos = new URLSearchParams(useLocation().search).get('vista') === 'bancos';
+  const busqueda = new URLSearchParams(useLocation().search);
+  const vistaBancos = busqueda.get('vista') === 'bancos';
+  // Pestaña «Lo que descuenta MP» (Diego 15/11/2026): los cargos de Mercado Pago, al tablero.
+  const vistaDescuentos = busqueda.get('tab') === 'descuentos';
 
   useEffect(() => {
     if (!bid || suc === null) return;
@@ -178,6 +195,15 @@ export default function MovimientosBancarios() {
     return () => { vivo = false; };
   }, [bid, suc, ver]);
 
+  // Cuenta recién conectada (Diego 15/11/2026: «se vinculó perfecto pero mirá…» y la lista estaba vacía): mientras
+  // alguna cuenta trae su historial, la pantalla lo dice y se vuelve a leer sola cada 30 s hasta que termina.
+  const trayendoCuentas = (mp?.cuentas || []).filter((c) => !c.historial_completo);
+  useEffect(() => {
+    if (!trayendoCuentas.length) return undefined;
+    const t = setTimeout(() => setVer((n) => n + 1), 30000);
+    return () => clearTimeout(t);
+  }, [mp]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const rango = useMemo(() => {
     const hoy = new Date();
     if (periodo === 'mes') return [isoLocal(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), isoLocal(hoy)];
@@ -190,15 +216,84 @@ export default function MovimientosBancarios() {
     () => (datos?.filas || []).filter((f) => f.fecha >= rango[0] && f.fecha <= rango[1]),
     [datos, rango],
   );
-  const medios = useMemo(() => [...new Set(delPeriodo.map((f) => f.medio))].sort(), [delPeriodo]);
-  const cajas = useMemo(() => [...new Set(delPeriodo.map((f) => f.caja).filter(Boolean))].sort(), [delPeriodo]);
-  const visibles = useMemo(() => {
+  const cuentasMp = mp?.cuentas || [];
+  const variasCuentas = cuentasMp.length > 1;
+  const nombreCuenta = (id) => cuentasMp.find((c) => String(c.user_id) === String(id))?.nickname || (id ? `#${id}` : '—');
+  // Qué compara cada columna (filtro y orden) y qué se busca en las de texto.
+  const valorDe = (f, k) => ({
+    fecha: f.fecha, hora: f.hora, tipo: f.tipo, pagador: f.lado === 'salida' ? f.detalle : f.quien, email: f.email,
+    detalle: f.detalle, medio: f.medio, op: f.op, ref: f.ref, acredita: f.acredita, cuotas: f.cuotas ? String(f.cuotas) : '',
+    tarjeta: f.tarjeta, caja: f.caja, cuenta: f.cuenta, importe: f.bruto, comision: f.comision || 0, retenciones: f.retenciones || 0, neto: f.neto,
+  }[k]);
+  const textoDe = (f, k) => (k === 'pagador' ? `${valorDe(f, k) || ''} ${f.doc || ''}` : valorDe(f, k));
+  const ordenDe = (f, k) => (k === 'fecha' ? `${f.fecha} ${f.hora || ''}` : valorDe(f, k) ?? '');
+  const base = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return delPeriodo.filter((f) => (lado === 'todos' || f.lado === lado)
-      && (!medio || f.medio === medio)
-      && (!caja || f.caja === caja)
-      && (!q || `${f.quien} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
-  }, [delPeriodo, lado, medio, caja, buscar]);
+      && (!q || `${f.quien} ${f.email || ''} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
+  }, [delPeriodo, lado, buscar]);
+  const visibles = useMemo(() => {
+    const ks = Object.keys(filtros).filter((k) => filtroActivo(filtros[k]));
+    const out = base.filter((f) => ks.every((k) => pasaFiltro(valorDe(f, k), textoDe(f, k), filtros[k])));
+    const COLS_NUM = { importe: 1, comision: 1, retenciones: 1, neto: 1 };
+    return out.sort((a, b) => {
+      const x = ordenDe(a, orden.k), y = ordenDe(b, orden.k);
+      const r = COLS_NUM[orden.k] ? (Number(x) || 0) - (Number(y) || 0) : String(x).localeCompare(String(y), 'es', { numeric: true });
+      return orden.asc ? r : -r;
+    });
+  }, [base, filtros, orden]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Valores posibles de una columna 'lista' (sobre lo filtrado por las OTRAS columnas, como Excel).
+  const valoresDe = (k) => {
+    const otras = Object.keys(filtros).filter((x) => x !== k && filtroActivo(filtros[x]));
+    const n = {};
+    base.filter((f) => otras.every((x) => pasaFiltro(valorDe(f, x), textoDe(f, x), filtros[x]))).forEach((f) => {
+      const v = String(valorDe(f, k) ?? ''); n[v] = (n[v] || 0) + 1;
+    });
+    return Object.entries(n).sort((a, b) => b[1] - a[1]).map(([v, c]) => [v, c, k === 'cuenta' ? nombreCuenta(v) : k === 'cuotas' && v ? `${v} cuotas` : v]);
+  };
+  const abrirMenu = (e, k) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
+    setAbierto(abierto?.k === k ? null : { k, x: Math.min(r.left / z, window.innerWidth / z - 270), y: r.bottom / z + 4 });
+  };
+  const hayFiltros = Object.values(filtros).some(filtroActivo);
+
+  // Exportar (Diego 15/11/2026: «exportar los movimientos bancarios del período seleccionado»): lo que se ve
+  // con el período y los filtros elegidos, TODOS (no solo los 1.500 de la lista) y con todas las columnas,
+  // los importes como números para sumar en Excel. La librería se carga recién al tocar el botón.
+  const [exportando, setExportando] = useState(false);
+  const exportar = async () => {
+    if (!visibles.length) return;
+    setExportando(true);
+    try {
+      const XLSX = await import('xlsx');
+      const n = (v) => (v ? Math.round(Number(v) * 100) / 100 : 0);
+      const filas = visibles.map((f) => ({
+        Fecha: f.fecha, Hora: f.hora || '', Tipo: f.tipo, 'Pagador / detalle': f.lado === 'salida' ? (f.detalle || '') : (f.quien || ''),
+        'CUIT / DNI': f.doc || '', Email: f.email || '', Descripción: f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '') : '', Medio: f.medio || '',
+        'Nº operación': f.op ? String(f.op) : '', 'Cupón (POS)': f.claveMx || '', 'Referencia externa': f.ref || '',
+        ...(variasCuentas ? { Cuenta: nombreCuenta(f.cuenta) } : {}),
+        Acreditación: f.acredita || '', Cuotas: f.cuotas || '', Tarjeta: f.tarjeta ? `•••• ${f.tarjeta}` : '', 'Caja / QR': f.caja || '',
+        Importe: n(f.bruto), Comisión: -n(f.comision), Impuestos: -n(f.retenciones),
+        // Igual que el KPI «Neto del período»: una devolución total no resta (MP ya sacó ese cobro de la
+        // lista); la parcial sí. Así la suma de esta columna da el mismo neto que la pantalla.
+        Neto: f.lado === 'devolucion' && !f.parcial ? 0 : n(f.neto),
+        Nota: f.lado === 'devolucion' ? (f.parcial ? 'Devolución parcial: resta del neto' : 'Devolución total: el cobro ya no figura, no resta otra vez') : '',
+      }));
+      const hoja = XLSX.utils.json_to_sheet(filas);
+      hoja['!cols'] = Object.keys(filas[0]).map((k) => ({ wch: Math.max(10, k.length + 2, ...filas.slice(0, 200).map((x) => String(x[k] ?? '').length + 1)) }));
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Movimientos');
+      const fechas = visibles.map((f) => f.fecha).sort();
+      const cuentaSel = filtros.cuenta?.valores?.length === 1 ? filtros.cuenta.valores[0] : '';
+      const cuenta = String((cuentaSel ? nombreCuenta(cuentaSel) : variasCuentas ? (sucNombre || 'mercadopago') : mp?.cuenta?.nickname) || 'mercadopago').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      XLSX.writeFile(libro, `movimientos-${cuenta}-${fechas[0]}_${fechas[fechas.length - 1]}.xlsx`);
+    } catch {
+      avisar('No pude armar el Excel. Probá de nuevo.');
+    } finally {
+      setExportando(false);
+    }
+  };
 
   const tot = useMemo(() => {
     const ent = delPeriodo.filter((f) => f.lado === 'entrada');
@@ -251,25 +346,51 @@ export default function MovimientosBancarios() {
   // Sin ningún banco conectado, la pantalla es «Conectá tu banco» (no hay movimientos que mostrar).
   if (vistaBancos || (mp && !mp.conectado)) return <ConectaTuBanco mp={mp} sucNombre={reales.length ? sucNombre : ''} />;
   if (error) return <div style={{ padding: 32, color: '#991b1b' }}>{error}</div>;
-  if (!datos) return <div style={{ padding: 32, color: '#64748b' }}>Cargando los movimientos…</div>;
+  if (!datos && !vistaDescuentos) return <div style={{ padding: 32, color: '#64748b' }}>Cargando los movimientos…</div>;
 
   const encabezado = (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
       <div style={{ minWidth: 0 }}>
         <h1 style={{ fontFamily: "'Sora', sans-serif", fontSize: 22, margin: 0 }}>Movimientos bancarios</h1>
         <div style={{ color: T.txt2, fontSize: 13.5, marginTop: 4 }}>
-          🏦 Mercado Pago{mp?.cuenta?.nickname ? ` · ${mp.cuenta.nickname}` : ''}{sucNombre && reales.length ? ` · ${sucNombre}` : ''}
-          {reales.length > 0 && (
-            <button type="button" onClick={() => setActiveBranch(null)}
-              style={{ border: 'none', background: 'none', color: T.celesteDeep, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, padding: '0 0 0 8px', textDecoration: 'underline' }}>
-              Cambiar de sucursal
-            </button>
-          )}
+          🏦 Mercado Pago{cuentasMp.length ? ` · ${cuentasMp.map((c) => c.nickname || c.email || `#${c.user_id}`).join(' + ')}` : ''}{sucNombre && reales.length ? ` · ${sucNombre}` : ''}
+        </div>
+        {trayendoCuentas.map((c) => (
+          <div key={c.user_id} style={{ marginTop: 8, marginRight: 8, display: 'inline-flex', alignItems: 'center', gap: 8, lineHeight: 1.35, fontSize: 13, color: '#12627F', background: '#5BC2EA1F', border: `1px solid ${T.celeste}`, borderRadius: 999, padding: '4px 12px' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.celeste, flexShrink: 0 }} />
+            <span>
+              Trayendo el historial de <b>{c.nickname || c.email}</b>
+              {c.historial_hasta ? ` · va por ${MESES_LARGO[Number(c.historial_hasta.slice(5, 7)) - 1]} ${c.historial_hasta.slice(0, 4)}` : ''}
+              {' '}· la lista se completa sola
+            </span>
+          </div>
+        ))}
+        <div role="tablist" style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          {[{ k: '', l: 'Movimientos' }, { k: 'descuentos', l: 'Lo que descuenta MP' }].map((t) => {
+            const on = (t.k === 'descuentos') === vistaDescuentos;
+            return (
+              <RouterLink key={t.k} role="tab" aria-selected={on} to={t.k ? '?tab=descuentos' : '?'} replace
+                style={{ display: 'inline-flex', alignItems: 'center', height: 34, padding: '0 14px', borderRadius: 999, fontSize: 13.5, fontWeight: 600, textDecoration: 'none',
+                  border: `1px solid ${on ? T.celeste : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: on ? '#12627F' : T.txt }}>
+                {t.l}
+              </RouterLink>
+            );
+          })}
         </div>
       </div>
     </div>
   );
-  const barra = <BarraTraerMP bid={bid} suc={suc} mp={mp} cubre={datos.filas.length ? { desde: datos.filas[datos.filas.length - 1].fecha, hasta: datos.filas[0].fecha, n: datos.filas.length } : null}
+  if (vistaDescuentos) {
+    return (
+      <div style={pagina}>
+        {encabezado}
+        {aviso ? <div style={{ position: 'fixed', left: 20, bottom: 20, zIndex: 1300, background: '#15213E', color: '#fff', borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)', maxWidth: 520 }}>{aviso}</div> : null}
+        <DescuentosMP bid={bid} avisar={avisar} />
+      </div>
+    );
+  }
+  const barra = <BarraTraerMP bid={bid} suc={suc} mp={mp} periodo={periodo} rango={rango}
+    cubre={datos.filas.length ? { desde: datos.filas[datos.filas.length - 1].fecha, hasta: datos.filas[0].fecha, n: datos.filas.length } : null}
     onTraido={() => setVer((n) => n + 1)} avisar={avisar} />;
   const toast = aviso ? (
     <div style={{ position: 'fixed', left: 20, bottom: 20, zIndex: 1300, background: '#15213E', color: '#fff', borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)', maxWidth: 520 }}>{aviso}</div>
@@ -288,7 +409,7 @@ export default function MovimientosBancarios() {
           </div>
           <div style={{ color: T.txt2, fontSize: 14, marginBottom: 14 }}>
             {mp?.conectado
-              ? `La cuenta ${mp.cuenta?.nickname || ''} está conectada. Elegí el período arriba y tocá «Traer».`
+              ? `${variasCuentas ? `Las cuentas ${cuentasMp.map((c) => c.nickname).join(' y ')} están conectadas` : `La cuenta ${mp.cuenta?.nickname || ''} está conectada`}. Se traen solas; si querés ya, tocá «Actualizar».`
               : 'Con la cuenta conectada, los cobros y lo que sale de Mercado Pago aparecen acá solos.'}
           </div>
           {!mp?.conectado && <RouterLink to="/configuracion?tab=7"
@@ -319,10 +440,9 @@ export default function MovimientosBancarios() {
     <div style={pagina}>
       {encabezado}
       {toast}
-      <div style={{ marginBottom: 14 }}>{barra}</div>
-
-      {/* Período */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+      {/* Período: una sola barra (Diego 15/11/2026: «esas acciones ¿no se duplican?»). Lo que se ve y lo
+          que se actualiza de Mercado Pago es el mismo período; el historial ya se trae solo. */}
+      <div style={{ ...tarjeta, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 14 }}>
         {PERIODOS.map((p) => <button key={p.k} type="button" onClick={() => setPeriodo(p.k)} style={chip(periodo === p.k)}>{p.l}</button>)}
         {periodo === 'fechas' && (
           <>
@@ -331,10 +451,10 @@ export default function MovimientosBancarios() {
             <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={campo} />
           </>
         )}
-      </div>
-      <div style={{ color: T.txt3, fontSize: 12.5, marginBottom: 14 }}>
-        {tot.desde ? `Mostrando del ${dma(tot.desde)} al ${dma(tot.hasta)}. ` : 'No hay movimientos en ese período. '}
-        Lo que se ve acá es lo que ya se trajo de Mercado Pago.
+        <span style={{ color: T.txt3, fontSize: 12.5, marginLeft: 6 }}>
+          {tot.desde ? `Del ${dma(tot.desde)} al ${dma(tot.hasta)}` : 'Sin movimientos en ese período'}
+        </span>
+        <span style={{ marginLeft: 'auto' }}>{barra}</span>
       </div>
 
       {/* Totales */}
@@ -393,13 +513,17 @@ export default function MovimientosBancarios() {
         </div>
       )}
 
-      {/* Desglose: por medio (entradas) y por tipo (salidas) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 10, marginBottom: 14 }}>
+      {/* Desglose: por medio (entradas) y por tipo (salidas). Minimizado; se abre a pedido. */}
+      <button type="button" onClick={alternarDetalle}
+        style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: T.celesteDeep, padding: '0 2px', margin: '0 0 10px' }}>
+        {verDetalle ? 'Ocultar detalle por medio y por tipo ▴' : `Ver detalle: ${tot.porMedio.length} medios de cobro y ${tot.porTipo.length} tipos de salida ▾`}
+      </button>
+      {verDetalle && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 10, marginBottom: 14 }}>
         <div style={{ ...tarjeta, padding: '10px 14px' }}>
           <div style={{ fontSize: 12, color: T.txt3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Entradas por medio</div>
           {tot.porMedio.length ? tot.porMedio.map(([m, v]) => (
-            <button key={m} type="button" onClick={() => { setLado('entrada'); setMedio(medio === m ? '' : m); }}
-              style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '5px 6px', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: T.txt, background: medio === m ? '#5BC2EA1F' : 'transparent' }}>
+            <button key={m} type="button" onClick={() => { const on = filtros.medio?.valores?.length === 1 && filtros.medio.valores[0] === m; setLado('entrada'); ponerFiltro('medio', on ? null : { valores: [m] }); }}
+              style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '5px 6px', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: T.txt, background: filtros.medio?.valores?.length === 1 && filtros.medio.valores[0] === m ? '#5BC2EA1F' : 'transparent' }}>
               <span style={{ flex: 1, textAlign: 'left' }}>{m} <span style={{ color: T.txt3 }}>· {v.n}</span></span>
               <span style={{ color: T.txt3, fontSize: 12 }}>comisión {pesos(v.comision)}</span>
               <b style={{ fontFamily: "'Sora', sans-serif", minWidth: 110, textAlign: 'right' }}>{pesos(v.bruto)}</b>
@@ -409,32 +533,29 @@ export default function MovimientosBancarios() {
         <div style={{ ...tarjeta, padding: '10px 14px' }}>
           <div style={{ fontSize: 12, color: T.txt3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 6 }}>Salidas por tipo</div>
           {tot.porTipo.length ? tot.porTipo.map(([t, v]) => (
-            <button key={t} type="button" onClick={() => { setLado('salida'); setMedio(''); setBuscar(t); }}
+            <button key={t} type="button" onClick={() => { setLado('salida'); ponerFiltro('tipo', { valores: [t] }); }}
               style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '5px 6px', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: T.txt, background: 'transparent' }}>
               <span style={{ flex: 1, textAlign: 'left' }}>{t} <span style={{ color: T.txt3 }}>· {v.n}</span></span>
               <b style={{ fontFamily: "'Sora', sans-serif", minWidth: 110, textAlign: 'right' }}>{pesos(v.total)}</b>
             </button>
           )) : <div style={{ fontSize: 13, color: T.txt3 }}>Sin salidas en el período. Retiros, impuestos y comisiones llegan con el reporte de Mercado Pago.</div>}
         </div>
-      </div>
+      </div>}
 
       {/* Lista */}
       <div style={{ ...tarjeta, overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '10px 12px', borderBottom: `1px solid ${T.line}` }}>
           {LADOS.map((x) => <button key={x.k} type="button" onClick={() => setLado(x.k)} style={chip(lado === x.k)}>{x.l}</button>)}
-          <select value={medio} onChange={(e) => setMedio(e.target.value)} style={{ ...campo, minWidth: 170 }}>
-            <option value="">Todos los medios</option>
-            {medios.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          {ve('caja') && cajas.length > 0 && (
-            <select value={caja} onChange={(e) => setCaja(e.target.value)} style={{ ...campo, minWidth: 140 }}>
-              <option value="">Todas las cajas</option>
-              {cajas.map((m) => <option key={m} value={m}>Caja {m}</option>)}
-            </select>
+          {hayFiltros && (
+            <button type="button" onClick={() => setFiltros({})} style={{ ...chip(false), color: T.rojo }}>✕ Quitar filtros de columnas</button>
           )}
-          <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, importe, Nº de operación o cupón de MaxiRest"
-            style={{ ...campo, flex: '1 1 220px', minWidth: 180 }} />
-          <span style={{ color: T.txt2, fontSize: 13, whiteSpace: 'nowrap' }}>{visibles.length.toLocaleString('es-AR')} movimientos</span>
+          <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="Buscar pagador, email, importe, Nº de operación o cupón del POS"
+            style={{ ...campo, flex: '1 1 0', minWidth: 180 }} />
+          <button type="button" onClick={exportar} disabled={!visibles.length || exportando} title="Bajar a Excel lo que se ve: período y filtros elegidos"
+            style={{ ...chip(false), fontWeight: 700, background: T.celeste, border: 'none', color: '#12111F', opacity: !visibles.length || exportando ? 0.5 : 1 }}>
+            {/* La cantidad va en el botón, como en Clientes: así entra la barra con varias cuentas. */}
+            {exportando ? 'Armando…' : `Exportar a Excel (${visibles.length.toLocaleString('es-AR')})`}
+          </button>
           <span style={{ position: 'relative' }}>
             <button type="button" onClick={() => setVerCols((v) => !v)} style={chip(verCols)} aria-expanded={verCols}>Columnas ▾</button>
             {verCols && (
@@ -453,12 +574,23 @@ export default function MovimientosBancarios() {
             )}
           </span>
         </div>
-        <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+        <div style={{ maxHeight: 620, overflow: 'auto' }} onScroll={() => setAbierto(null)}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              {COLUMNAS.filter((c) => ve(c.k)).map((c) => (
-                <th key={c.k} style={c.k === 'pagador' || c.k === 'detalle' ? { ...th, textAlign: 'left' } : th}>{c.l}</th>
-              ))}
+              {COLUMNAS.filter((c) => ve(c.k)).map((c) => {
+                const act = filtroActivo(filtros[c.k]);
+                const ord = orden.k === c.k;
+                return (
+                  <th key={c.k} style={{ ...(c.k === 'pagador' || c.k === 'detalle' || c.k === 'email' ? { ...th, textAlign: 'left' } : th), padding: 0 }}>
+                    <button type="button" onClick={(e) => abrirMenu(e, c.k)} title={`Ordenar o filtrar ${c.l}`}
+                      style={{ all: 'unset', boxSizing: 'border-box', width: '100%', padding: '8px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                        justifyContent: c.k === 'pagador' || c.k === 'detalle' || c.k === 'email' ? 'flex-start' : 'center', background: act ? 'rgba(255,255,255,.18)' : 'transparent' }}>
+                      {c.l}
+                      <span style={{ fontSize: 9, opacity: act || ord ? 1 : 0.6 }}>{act ? '⏷' : ord ? (orden.asc ? '▲' : '▼') : '▾'}</span>
+                    </button>
+                  </th>
+                );
+              })}
             </tr></thead>
             <tbody>
               {visibles.slice(0, 1500).map((f) => (
@@ -477,6 +609,7 @@ export default function MovimientosBancarios() {
                       </>
                     )}
                   </td>}
+                  {ve('email') && <td style={{ ...td, color: f.email ? T.txt2 : T.txt3, textAlign: 'left', fontSize: 12.5 }}>{f.email || '—'}</td>}
                   {ve('detalle') && <td style={{ ...td, color: T.txt3, whiteSpace: 'normal', maxWidth: 220, textAlign: 'left' }}>{f.lado === 'entrada' && f.detalle !== 'Varios' ? (f.detalle || '—') : '—'}</td>}
                   {ve('medio') && <td style={{ ...td, color: T.txt2 }}>{f.medio}</td>}
                   {ve('op') && <td title={f.claveMx ? `En MaxiRest (cupón del informe 22): ${f.claveMx}` : ''}
@@ -486,6 +619,7 @@ export default function MovimientosBancarios() {
                   {ve('cuotas') && <td style={{ ...td, color: T.txt2 }}>{f.cuotas ? `${f.cuotas} cuotas` : '—'}</td>}
                   {ve('tarjeta') && <td style={{ ...td, color: T.txt2 }}>{f.tarjeta ? `•••• ${f.tarjeta}` : '—'}</td>}
                   {ve('caja') && <td style={{ ...td, color: T.txt2 }}>{f.caja || '—'}</td>}
+                  {ve('cuenta') && <td style={{ ...td, color: T.txt2, fontSize: 12.5 }}>{f.cuenta ? nombreCuenta(f.cuenta) : '—'}</td>}
                   {ve('importe') && <td style={num}>{pesos(f.bruto)}</td>}
                   {ve('comision') && <td style={{ ...num, color: f.comision ? T.rojo : T.txt3, fontWeight: 500 }}>{f.comision ? pesos(-f.comision) : '—'}</td>}
                   {ve('retenciones') && <td style={{ ...num, color: f.retenciones ? T.ambar : T.txt3, fontWeight: 500 }}>{f.retenciones ? pesos(-f.retenciones) : '—'}</td>}
@@ -500,6 +634,12 @@ export default function MovimientosBancarios() {
           {!visibles.length && <div style={{ padding: 16, fontSize: 13, color: T.txt3, textAlign: 'center' }}>Nada coincide con los filtros.</div>}
         </div>
       </div>
+      {abierto && (
+        <MenuColumna col={COLUMNAS.find((c) => c.k === abierto.k)} pos={abierto} filtro={filtros[abierto.k]}
+          valores={COLUMNAS.find((c) => c.k === abierto.k)?.f === 'lista' ? valoresDe(abierto.k) : []}
+          onFiltro={(f) => ponerFiltro(abierto.k, f)} onOrden={(asc) => { setOrden({ k: abierto.k, asc }); setAbierto(null); }}
+          onCerrar={() => setAbierto(null)} />
+      )}
     </div>
   );
 }
@@ -524,17 +664,10 @@ function tramosPorMes(desde, hasta) {
   }
   return out;
 }
-const ATAJOS = [
-  { k: 'mes', l: 'Este mes' },
-  { k: '3m', l: 'Últimos 3 meses' },
-  { k: 'todo', l: 'Todo el historial' },
-  { k: 'fechas', l: 'Elegir fechas' },
-];
 
-function BarraTraerMP({ bid, suc, mp, cubre, onTraido, avisar }) {
-  const [opcion, setOpcion] = useState('mes');
-  const [desde, setDesde] = useState(() => hoyLocal().slice(0, 8) + '01');
-  const [hasta, setHasta] = useState(hoyLocal);
+// Actualizar de Mercado Pago (15/11/2026): ya no tiene sus propios atajos de período (se duplicaban con los
+// de la vista). Trae el mismo período que se está viendo; «Todo lo traído» = este mes. El historial se trae solo.
+function BarraTraerMP({ bid, suc, mp, cubre, periodo, rango, onTraido, avisar }) {
   const [avance, setAvance] = useState(null);
   const [esperando, setEsperando] = useState([]); // meses con el reporte de MP pendiente
   const cortar = useRef(false);
@@ -571,19 +704,18 @@ function BarraTraerMP({ bid, suc, mp, cubre, onTraido, avisar }) {
   const traer = async () => {
     const hoy = hoyLocal();
     let tramos;
-    if (opcion === 'mes') tramos = tramosPorMes(hoy.slice(0, 8) + '01', hoy);
-    else if (opcion === '3m') tramos = tramosPorMes(restarDias(hoy, 89), hoy);
-    else if (opcion === 'todo') tramos = tramosPorMes(restarDias(hoy.slice(0, 8) + '01', 1).slice(0, 8) + '01', hoy);
+    if (periodo === 'todo' || !rango || rango[0] === '0000') tramos = tramosPorMes(hoy.slice(0, 8) + '01', hoy);
     else {
-      if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
-      tramos = tramosPorMes(desde, hasta > hoy ? hoy : hasta);
+      const [d, h] = rango;
+      if (!d || !h || h === '9999' || d > h) { avisar('Elegí las dos fechas', 3000); return; }
+      tramos = tramosPorMes(d, h > hoy ? hoy : h);
     }
     cortar.current = false;
     let cobros = 0, vacios = 0, hechos = 0, masViejo = null, fallo = null;
     const pendientes = [];
     for (let i = 0; i < tramos.length; i++) {
       const t = tramos[i];
-      setAvance({ mes: nombreMes(t.desde), n: i + 1, de: opcion === 'todo' ? null : tramos.length });
+      setAvance({ mes: nombreMes(t.desde), n: i + 1, de: tramos.length });
       try {
         const r = await MercadoPagoAPI.sincronizar(bid, suc, t.desde, t.hasta);
         const c = Number(r?.cobros) || 0;
@@ -596,10 +728,6 @@ function BarraTraerMP({ bid, suc, mp, cubre, onTraido, avisar }) {
         break;
       }
       if (cortar.current) break;
-      if (opcion === 'todo' && i === tramos.length - 1 && vacios < 2 && tramos.length < 36) {
-        const ini = restarDias(t.desde, 1).slice(0, 8) + '01';
-        tramos.push({ desde: ini, hasta: restarDias(t.desde, 1) });
-      }
     }
     setAvance(null);
     if (hechos) onTraido();
@@ -610,46 +738,28 @@ function BarraTraerMP({ bid, suc, mp, cubre, onTraido, avisar }) {
   };
 
   const trayendo = !!avance;
-  const inp = { fontFamily: 'inherit', fontSize: 13.5, height: 34, boxSizing: 'border-box', padding: '0 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
-  const chip = (on) => ({
-    fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap',
-    border: `1px solid ${on ? T.celeste : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: on ? '#12627F' : T.txt,
-  });
+  const chip = { fontFamily: 'inherit', fontSize: 13, fontWeight: 600, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer', whiteSpace: 'nowrap', border: `1px solid ${T.celeste}`, background: '#fff', color: '#12627F' };
+  const queTrae = periodo === 'todo' || !rango || rango[0] === '0000' ? 'este mes' : 'el período elegido';
   return (
-    <div style={{ background: '#fff', border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5, color: T.txt }}>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <b>Traer de Mercado Pago</b>
-        <span style={{ color: T.txt3, fontSize: 12.5 }}>
-          {cubre?.n ? `En Lazarillo: del ${dma(cubre.desde)} al ${dma(cubre.hasta)} · ${cubre.n.toLocaleString('es-AR')} movimientos` : 'Todavía no se trajo nada'}
-          {' · se trae sola todos los días'}
-          {esperando.length ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}
-        </span>
-      </span>
-      <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        {trayendo ? (
-          <>
-            <span style={{ color: T.txt2 }}>Trayendo <b style={{ color: T.txt }}>{avance.mes}</b>{avance.de ? ` · ${avance.n} de ${avance.de}` : ` · mes ${avance.n}`}…</span>
-            <button type="button" onClick={() => { cortar.current = true; }} style={chip(false)}>Cortar</button>
-          </>
-        ) : (
-          <>
-            {ATAJOS.map((o) => <button key={o.k} type="button" onClick={() => setOpcion(o.k)} style={chip(opcion === o.k)}>{o.l}</button>)}
-            {opcion === 'fechas' && (
-              <>
-                <input type="date" value={desde} max={hoyLocal()} onChange={(e) => setDesde(e.target.value)} style={inp} />
-                <span>a</span>
-                <input type="date" value={hasta} max={hoyLocal()} onChange={(e) => setHasta(e.target.value)} style={inp} />
-              </>
-            )}
-            <button type="button" onClick={traer}
-              title="Trae los cobros y egresos de Mercado Pago de ese período, mes por mes, y reemplaza lo que había de esos días"
-              style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              Traer
-            </button>
-          </>
-        )}
-      </span>
-    </div>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', fontSize: 12.5, color: T.txt3 }}>
+      {trayendo ? (
+        <>
+          <span style={{ color: T.txt2 }}>Trayendo <b style={{ color: T.txt }}>{avance.mes}</b>{avance.de ? ` · ${avance.n} de ${avance.de}` : ''}…</span>
+          <button type="button" onClick={() => { cortar.current = true; }} style={chip}>Cortar</button>
+        </>
+      ) : (
+        <>
+          <span title={cubre?.n ? `En Lazarillo: del ${dma(cubre.desde)} al ${dma(cubre.hasta)} · ${cubre.n.toLocaleString('es-AR')} movimientos` : ''}>
+            Se trae sola todos los días{cubre?.hasta ? ` · al día hasta el ${dma(cubre.hasta)}` : ''}
+            {esperando.length ? <b style={{ color: '#C8912B' }}> · armando el reporte…</b> : null}
+          </span>
+          <button type="button" onClick={traer} style={chip}
+            title={`Vuelve a pedirle a Mercado Pago ${queTrae} y reemplaza lo que había de esos días`}>
+            ↻ Actualizar
+          </button>
+        </>
+      )}
+    </span>
   );
 }
 
@@ -679,7 +789,12 @@ function ConectaTuBanco({ mp, sucNombre }) {
           <div style={logoBox}><img src={logoMercadoPago} alt="" style={{ height: 40 }} /></div>
           <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16 }}>Mercado Pago</div>
           <div style={{ color: T.txt2, fontSize: 13, flex: 1 }}>
-            {conectado ? `Conectado con ${mp.cuenta?.nickname || mp.cuenta?.email || 'tu cuenta'}.` : 'Cobros, pagos, retiros, impuestos y comisiones de la cuenta.'}
+            {conectado
+              ? `Conectado con ${(mp.cuentas?.length ? mp.cuentas : [mp.cuenta]).map((c) => c?.nickname || c?.email || 'tu cuenta').join(' y ')}.`
+              : 'Cobros, pagos, retiros, impuestos y comisiones de la cuenta.'}
+            {conectado && <span style={{ display: 'block', marginTop: 6 }}>
+              <RouterLink to="/configuracion?tab=7" style={{ color: T.celesteDeep, fontWeight: 600 }}>+ Conectar otra cuenta de esta sucursal</RouterLink>
+            </span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={conectado ? pill('#1a9c6e1a', T.verde) : pill('#5BC2EA1F', '#12627F')}>{conectado ? '✓ Conectado' : 'Disponible'}</span>

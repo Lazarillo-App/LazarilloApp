@@ -27,6 +27,8 @@ const GROUPS = [
   {
     id: 'rentabilidad', label: 'Rentabilidad', icon: '📈',
     modules: [
+      // Resultados pasa a Rentabilidad (Diego 15/11/2026; antes estaba en Administración).
+      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
       { id: 'recetas', label: 'Recetas', emoji: '📖', desc: 'Artículos, insumos y costos.', to: '/menu' },
       { id: 'stock', label: 'Stock', emoji: '📦', desc: 'Movimientos e inventario.', to: null },
       { id: 'compras', label: 'Compras', emoji: '🛒', desc: 'Órdenes, proveedores y comprobantes.', to: null },
@@ -38,7 +40,6 @@ const GROUPS = [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', desc: 'Cruzá ventas y pagos con el banco.', to: '/conciliacion' },
       { id: 'movimientos-bancarios', label: 'Movimientos bancarios', emoji: '🏦', desc: 'Todo lo que entra y sale de Mercado Pago.', to: '/movimientos-bancarios', soloAdmin: true },
       { id: 'clientes', label: 'Clientes', emoji: '👥', desc: 'Quién te compra, cada cuánto y cuánto.', to: '/clientes', soloAdmin: true },
-      { id: 'resultados', label: 'Resultados', emoji: '📊', desc: 'Ingresos, egresos y evolución.', descCelular: 'Ventas, gastos y lo que falta cargar.', to: '/gestion', soloAdmin: true, destacado: true },
     ],
   },
 ];
@@ -132,7 +133,8 @@ function useAngosto(max = 760) {
   return v;
 }
 
-const ORDEN_CELULAR = ['administracion', 'operacion', 'rentabilidad'];
+// Rentabilidad primero: ahí está Resultados, lo más usado desde el celular (Diego 15/11/2026).
+const ORDEN_CELULAR = ['rentabilidad', 'administracion', 'operacion'];
 
 function InicioCelular({ grupos, userName, onSelect }) {
   const orden = [...grupos].sort((a, b) => ORDEN_CELULAR.indexOf(a.id) - ORDEN_CELULAR.indexOf(b.id));

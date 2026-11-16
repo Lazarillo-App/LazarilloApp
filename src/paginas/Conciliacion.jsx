@@ -13,6 +13,25 @@ import { Link as RouterLink } from 'react-router-dom';
 import ModuloConciliacion from '@/componentes/conciliacion/ModuloConciliacion';
 import { showConfirm } from '@/servicios/appConfirm';
 import { fuentesDesdeMaxi } from '@/componentes/conciliacion/desdeMaxi';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosHeader, usePasosPresentes } from '@/componentes/asistente/pasosHeader';
+import { useSectorGuia } from '@/componentes/asistente/guias';
+import { useRecorrido } from '@/hooks/useRecorrido';
+
+// Guía de Conciliación (Diego 15/11/2026: «conciliación no tiene guía»). Sectores: Fuentes (de
+// dónde salen los datos y el período), Conciliar (buscar, la barra y los dos lados) y Header.
+// Cada paso se muestra solo si esa parte está en pantalla (sin datos no hay tablas).
+const PASOS_CONC = [
+  { k: 'conc-elegir', s: 'fuentes', t: <>Cada sucursal cobra en su propia cuenta de <b>Mercado Pago</b>, así que se concilia por separado: elegí cuál.</> },
+  { k: 'conc-traer', s: 'fuentes', t: <>Tus fuentes: las <b>ventas</b> de tu punto de venta y los <b>cobros de Mercado Pago</b>. Elegís las fechas y con <b>Traer</b> los bajás, sin subir archivos.</> },
+  { k: 'conc-extras', s: 'fuentes', t: <>Acá ves la lista de lo que <b>entró al banco</b> y lo que <b>salió de Mercado Pago</b> (pagos, retiros, impuestos y comisiones).</> },
+  { k: 'conc-fuentes', s: 'fuentes', t: <>Lo que no se trae solo lo subís con su <b>archivo</b>: ventas no efectivo, cobranzas de cuenta corriente y movimientos del banco. Cada tarjeta tiene su instructivo.</> },
+  { k: 'conc-setup', s: 'fuentes', t: <>Con todo cargado, esto se achica: ves el período y la configuración, y lo tocás para cambiarlos. Con <b>Guardar</b> descargás tu trabajo y con <b>Cargar</b> lo volvés a abrir.</> },
+  { k: 'conc-periodo', s: 'fuentes', t: <>Elegí el <b>mes</b> o las fechas. <b>Tolerancia</b>: si el cobro puede caer un día después. Debajo de <b>Auto-conciliar</b> se concilia solo; hasta <b>Margen sugerencias</b> te lo propone para que lo revises.</> },
+  { k: 'conc-buscar', s: 'conciliar', t: <>Buscás un <b>comprobante o cliente</b> a la izquierda y un <b>pago por importe</b> o pagador a la derecha.</> },
+  { k: 'conc-barra', s: 'conciliar', t: <>La barra compara lo que <b>vendiste</b> con lo que <b>entró al banco</b>. Tildás filas de los dos lados y con <b>Conciliar</b> las cerrás a mano.</> },
+  { k: 'conc-paneles', s: 'conciliar', t: <>A la izquierda, tus <b>facturas y cobranzas</b>; a la derecha, el <b>banco</b>. Filtrás Todas, Conciliadas o Pendientes; en Pendientes vas día por día.</> },
+];
 
 const dm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : ''); // 2026-11-01 → 01/11
 
@@ -110,6 +129,20 @@ export default function Conciliacion() {
     catch { avisar('No se pudieron borrar. Probá de nuevo.', 6000); }
   };
 
+  // Guía (arranca sola mientras la sucursal no tiene nada cargado; si no, desde Guías).
+  const sinFuentes = !!inicial && !Object.values(inicial.fuentes || {}).some((a) => a?.length);
+  const pasosConc = usePasosPresentes(PASOS_CONC, `${suc}:${!!inicial}:${ver}:${verBanco}:${verEgresos}`);
+  const pasosHeaderConc = usePasosHeader();
+  const sectorConc = useSectorGuia('conciliacion');
+  const pasosTourConc = pasosConc.concat(pasosHeaderConc).filter((p) => !sectorConc || p.s === sectorConc);
+  const recConc = useRecorrido('conciliacion', pasosTourConc.length, !!bid && (suc === null || !!inicial) && pasosConc.length > 0,
+    { sinDatos: sinFuentes });
+  const pasoConc = pasosTourConc[recConc.paso - 1];
+  const guiaConc = recConc.visible && pasoConc ? (
+    <SpotlightTour key={pasoConc.k} targetRef={pasoConc.ref} pose={recConc.paso === 1 ? 'presenta' : 'senala'}
+      placement="bottom" text={pasoConc.t} {...recConc.props(recConc.paso)} />
+  ) : null;
+
   if (!bid) return <div style={{ padding: 32 }}>Elegí un negocio para conciliar.</div>;
 
   // "Todas" no se concilia junto: cada sucursal tiene su cuenta de Mercado Pago.
@@ -120,7 +153,8 @@ export default function Conciliacion() {
         <p style={{ color: '#5b6577', margin: '0 0 18px', fontSize: 14 }}>
           Cada sucursal se concilia por separado, porque cada una cobra en su propia cuenta de Mercado Pago.
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {guiaConc}
+        <div data-tour="conc-elegir" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {branches.map((b) => (
             <button key={b.id} type="button" onClick={() => setActiveBranch(b.id)}
               style={{ textAlign: 'left', padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(21,33,62,.16)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 15, fontWeight: 600, color: '#15213E' }}>
@@ -150,19 +184,11 @@ export default function Conciliacion() {
           borderRadius: 10, padding: '8px 14px', fontSize: 13, boxShadow: '0 6px 20px rgba(0,0,0,.25)',
         }}>{aviso}</div>
       )}
-      {reales.length > 0 && (
-        <div style={{ maxWidth: 1180, margin: '16px auto 0', padding: '0 22px', fontSize: 14, color: '#15213E', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span>Conciliando: <b>{sucNombre || 'Sucursal'}</b></span>
-          <button type="button" onClick={() => setActiveBranch(null)}
-            style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, padding: 0, textDecoration: 'underline' }}>
-            Cambiar de sucursal
-          </button>
-        </div>
-      )}
+      {guiaConc}
       <BarraTraer bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} maxi={maxi}
         guardadas={inicial.fuentes} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
       {(inicial.fuentes.banco?.length > 0 || inicial.egresos.length > 0) && (
-        <div style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <div data-tour="conc-extras" style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           {inicial.egresos.length > 0 && (
             <button type="button" onClick={() => setVerEgresos((v) => !v)}
               style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
@@ -355,7 +381,7 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
   const inp = { fontFamily: 'inherit', fontSize: 13.5, padding: '5px 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
   const fuente = { display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6577' };
   return (
-    <div style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
+    <div data-tour="conc-traer" style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={fuente}>
           <b style={{ color: '#15213E' }}>🧾 MaxiRest</b>
@@ -366,7 +392,7 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
         <span style={fuente}>
           <b style={{ color: '#15213E' }}>🏦 Mercado Pago</b>
           {conMp
-            ? <span>{mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
+            ? <span>{(mp.cuentas?.length ? mp.cuentas.map((c) => c.nickname || c.email).join(' + ') : null) || mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
                 {esperando ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}</span>
             : mp?.configurado
               ? <span>sin conectar{sucNombre ? ` en ${sucNombre}` : ''} · <RouterLink to="/configuracion?tab=7" style={{ fontWeight: 700 }}>Conectar</RouterLink></span>

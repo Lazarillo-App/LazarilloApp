@@ -41,7 +41,9 @@ const AYUDA = (
 // sinTodas: para pantallas donde "Todas" no tiene sentido (un cronograma es de
 // UNA sucursal): no se muestra y, si estaba elegida, se marca la principal.
 // ayuda: texto del "?" propio de esa pantalla.
-export default function SucursalesChips({ sinTodas = false, ayuda = null }) {
+// elegir: pantallas que al entrar piden elegir sucursal (Movimientos bancarios, Conciliación:
+// cada sucursal cobra en su propia cuenta). Mientras no se eligió, ninguna queda marcada.
+export default function SucursalesChips({ sinTodas = false, ayuda = null, elegir = false }) {
   const { branches, activeBranchId, setActiveBranch, loadBranches } = useBranch() || {};
   const { activeBusinessId } = useBusiness() || {};
   const { isStaff } = useAccess() || {};
@@ -71,7 +73,7 @@ export default function SucursalesChips({ sinTodas = false, ayuda = null }) {
           {lista.map((b, i) => {
             // Con una sola sucursal, esa es la que se ve siempre (queda marcada).
             const on = varias
-              ? (esTodas ? (sinTodas && i === 0) : String(activeBranchId) === String(b.id))
+              ? (esTodas ? (sinTodas && !elegir && i === 0) : String(activeBranchId) === String(b.id))
               : true;
             const color = b.color || (b.isMain ? 'var(--color-primary)' : '#1976d2');
             return (

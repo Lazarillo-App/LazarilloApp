@@ -2,9 +2,9 @@
 // que index.jsx entre en un envío al repo. No cambia la lógica: el estado sigue en index.jsx.
 //  - BotonesReceta: Borrar · Cancelar · Guardar. Con enPie (artículo) van en la misma franja
 //    que el pie de costos, apilados a la derecha (Diego, PR 2 del pie: se gana el renglón del footer).
-//  - RecorridoReceta: los 5 pasos del recorrido guiado.
+//  - usePasosReceta + RecorridoReceta: los pasos del recorrido guiado (ampliado el 15/11/2026, por sector).
 //  - DialogosReceta: confirmar romper recetas, borrar receta, deshacer promo y reemplazar insumo.
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Button, CircularProgress, Stack, Dialog, DialogTitle, DialogContent,
   DialogActions, DialogContentText,
@@ -12,6 +12,8 @@ import {
 import SaveIcon from '@mui/icons-material/Save';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import SpotlightTour from '@/componentes/SpotlightTour';
+import { refTour, seVe } from '@/componentes/asistente/pasosHeader';
+import { useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
 import { PRIMARY, ON_PRIMARY } from './helpers';
 
 export function BotonesReceta({ receta, promoMode, modoPromoNueva, saving, deleting, loading, hasDuplicates, onBorrar, onCancel, onSave, guardarRef, enPie = false }) {
@@ -82,30 +84,47 @@ export function BotonesReceta({ receta, promoMode, modoPromoNueva, saving, delet
   );
 }
 
-export function RecorridoReceta({ rec, recResumenRef, recAgregarRef, recIngredientesRef, recFotoRef, recGuardarRef }) {
+// Pasos de la guía de la receta (Diego 15/11/2026: «no habla de los paso a paso de las recetas y su foto,
+// las promociones, las vinculaciones…»). Sectores: Datos (arriba), Ingredientes, Encabezado y Pie.
+// Solo entran los que se ven (en una promo no hay rendimiento ni vincular; el staff no ve Marcar).
+export function usePasosReceta({ open, recResumenRef, recAgregarRef, recIngredientesRef, recFotoRef, recGuardarRef }) {
+  const sector = useSectorGuia('receta');
+  const TODOS = [
+    { k: 'resumen', s: 'pie', ref: recResumenRef, pose: 'presenta', t: <>Acá ves el <b>precio de venta</b>, cuánto te cuesta hacer el plato y qué parte del precio se lleva el costo, contra tu <b>costo objetivo</b>. El <b>precio sugerido</b> es el que necesitás para llegar a ese objetivo.</> },
+    { k: 'rec-tipo', s: 'datos', ref: refTour('rec-tipo'), t: <><b>Producto</b> es un plato o bebida con su receta. <b>Promoción</b> arma un combo con otros artículos: su costo suma el de cada uno.</> },
+    { k: 'rec-rendimiento', s: 'datos', ref: refTour('rec-rendimiento'), t: <><b>Rendimiento</b>: cuántas porciones (o kilos, litros) salen de esta receta. El costo de los ingredientes se reparte en eso.</> },
+    { k: 'rec-vincular', s: 'datos', ref: refTour('rec-vincular'), t: <><b>Vincular</b>: si otro artículo se hace igual (el mismo plato en otra carta o en el delivery), lo vinculás y usa esta misma receta.</> },
+    { k: 'agregar', s: 'ingredientes', ref: recAgregarRef, t: <>Tocá <b>Agregar ingrediente</b> y escribí el nombre del insumo. Si todavía no existe, lo creás desde acá mismo.</> },
+    { k: 'ingredientes', s: 'ingredientes', ref: recIngredientesRef, pose: 'investiga', t: <>En cada ingrediente poné <b>cuánto lleva</b> por porción y en qué <b>unidad</b> (gr, ml, unidad). El costo se calcula solo. En <b>Observaciones</b> dejás una nota para la cocina.</> },
+    { k: 'rec-avanzadas', s: 'ingredientes', ref: refTour('rec-avanzadas'), t: <>En el <b>⚙</b> de cada ingrediente cargás la <b>merma</b> (lo que se pierde al limpiarlo o cocinarlo), si va al <b>pedido</b> y qué <b>costo</b> usar.</> },
+    { k: 'foto', s: 'encabezado', ref: recFotoRef, pose: 'presenta', t: <>Tocando la <b>foto</b> abrís «Notas e imagen»: subís la foto del plato terminado y armás el <b>paso a paso</b> de la preparación (lo ordenás y lo separás en secciones, como Preparación o Cocción).</> },
+    { k: 'rec-marcar', s: 'encabezado', ref: refTour('rec-marcar'), t: <><b>Marcar</b>: tildás ingredientes y los mandás a <b>revisión</b> con una nota.</> },
+    { k: 'rec-cocina', s: 'encabezado', ref: refTour('rec-cocina'), t: <><b>Vista Cocina</b>: la receta como la ve la cocina, con la foto, los ingredientes y el paso a paso.</> },
+    { k: 'rec-buscar', s: 'encabezado', ref: refTour('rec-buscar'), t: <>Con la <b>lupa</b> buscás otro artículo y lo abrís sin cerrar este.</> },
+    { k: 'guardar', s: 'pie', ref: recGuardarRef, pose: 'saluda', t: <>Cuando termines, <b>guardá</b>. Si cambia el precio de un insumo, el costo de la receta se actualiza solo.</> },
+  ];
+  // Los pasos de refs propias (resumen, foto…) siempre van; los de data-tour, si se ven.
+  const [claves, setClaves] = useState(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const medir = () => {
+      const ok = TODOS.filter((p) => !p.k.startsWith('rec-') || seVe(document.querySelector(`[data-tour="${p.k}"]`))).map((p) => p.k);
+      setClaves((prev) => (prev && prev.join() === ok.join() ? prev : ok));
+    };
+    const t1 = setTimeout(medir, 300);
+    const t2 = setTimeout(medir, 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const lista = claves ? TODOS.filter((p) => claves.includes(p.k)) : TODOS.filter((p) => !p.k.startsWith('rec-'));
+  return pasosDelSector(lista, sector);
+}
+
+export function RecorridoReceta({ rec, pasos }) {
+  const paso = pasos[rec.paso - 1];
+  if (!rec.visible || !paso) return null;
   return (
-    <>
-    {rec.visible && rec.paso === 1 && (
-      <SpotlightTour targetRef={recResumenRef} pose="presenta" {...rec.props(1)}
-        text={<>Acá ves el <b>precio de venta</b>, cuánto te cuesta hacer el plato y qué porcentaje del precio se lleva el costo (<b>food cost</b>).</>} />
-    )}
-    {rec.visible && rec.paso === 2 && (
-      <SpotlightTour targetRef={recAgregarRef} pose="senala" {...rec.props(2)}
-        text={<>Tocá <b>Agregar ingrediente</b> y escribí el nombre del insumo. Si todavía no existe, lo creás desde acá mismo.</>} />
-    )}
-    {rec.visible && rec.paso === 3 && (
-      <SpotlightTour targetRef={recIngredientesRef} pose="investiga" {...rec.props(3)}
-        text={<>En cada ingrediente poné <b>cuánto lleva</b> por porción y en qué <b>unidad</b> (gr, ml, unidad). El costo se calcula solo.</>} />
-    )}
-    {rec.visible && rec.paso === 4 && (
-      <SpotlightTour targetRef={recFotoRef} pose="presenta" {...rec.props(4)}
-        text={<>Acá va la <b>foto</b> del plato terminado y el <b>paso a paso</b> de la preparación.</>} />
-    )}
-    {rec.visible && rec.paso === 5 && (
-      <SpotlightTour targetRef={recGuardarRef} pose="saluda" {...rec.props(5)}
-        text="Cuando termines, guardá. Si cambia el precio de un insumo, el costo de la receta se actualiza solo." />
-    )}
-    </>
+    <SpotlightTour key={paso.k} targetRef={paso.ref} pose={paso.pose || 'senala'} {...rec.props(rec.paso)} text={paso.t} />
   );
 }
 

@@ -241,6 +241,8 @@ export default function App() {
 
   if (!bootReady) return <div style={{ padding: 24 }}>Cargando…</div>;
   const enAppMovil = location.pathname === '/m';
+  // La pestaña Asesoría es la página pública: sin el menú ni los asistentes de la app aunque haya sesión.
+  const enPaginaPublica = location.pathname.startsWith('/asesoria') || location.pathname.startsWith('/funcionalidades');
   return (
     <ThemeProviderNegocio activeBizId={activeBusinessId}>
       <AppAlertModal />
@@ -249,15 +251,18 @@ export default function App() {
       <UpdateBanner />
       <ImpersonateBanner />
       {isLogged && <VerComoBanner />}
-      {isLogged && role !== 'app_admin' && !enAppMovil && <Navbar />}
-      {isLogged && role !== 'app_admin' && !enAppMovil && <AnthonyWidget />}
+      {isLogged && role !== 'app_admin' && !enAppMovil && !enPaginaPublica && <Navbar />}
+      {isLogged && role !== 'app_admin' && !enAppMovil && !enPaginaPublica && <AnthonyWidget />}
       {/* Chat "Que lo haga Lazarillo": también en el alta (ahí el widget no se muestra). */}
-      {isLogged && role !== 'app_admin' && <AnthonyChat />}
+      {isLogged && role !== 'app_admin' && !enPaginaPublica && <AnthonyChat />}
       {/* Ajuste a medida "aviso_cliente": mensaje del equipo para este cliente/negocio (13/11). */}
       {isLogged && role !== 'app_admin' && !enAppMovil && <AvisoAjuste />}
 
       <Routes>
         <Route path="/" element={isLogged ? <Navigate to="/inicio" replace /> : <LazarilloLanding />} />
+        {/* Pestaña Asesoría de la página pública: se ve con o sin sesión. */}
+        <Route path="/asesoria" element={<LazarilloLanding />} />
+        <Route path="/funcionalidades" element={<LazarilloLanding />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/activar" element={<Activar />} />

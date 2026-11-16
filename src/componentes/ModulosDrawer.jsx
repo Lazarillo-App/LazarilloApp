@@ -35,6 +35,8 @@ const GROUPS = [
   {
     id: 'rentabilidad', label: 'Rentabilidad',
     modules: [
+      // Resultados pasa a Rentabilidad (Diego 15/11/2026; antes estaba en Administración).
+      { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion', claves: 'panel gestion gastos compras ventas balance equilibrio facturas cargar pagos impagas proveedores sueldos' },
       { id: 'recetas', label: 'Recetas', emoji: '📖', to: '/menu', claves: 'menu articulos insumos costos food cost precios canasta' },
       { id: 'stock', label: 'Stock', emoji: '📦', to: null, claves: 'inventario existencias' },
       { id: 'compras', label: 'Compras', emoji: '🛒', to: null, claves: 'pedidos proveedores' },
@@ -46,8 +48,6 @@ const GROUPS = [
       { id: 'conciliacion', label: 'Conciliación', emoji: '⚖️', to: '/conciliacion', claves: 'banco mercado pago tarjetas cupones extracto' },
       { id: 'movimientos-bancarios', label: 'Movimientos bancarios', emoji: '🏦', to: '/movimientos-bancarios', soloAdmin: true, claves: 'banco cuenta extracto mercado pago' },
       { id: 'clientes', label: 'Clientes', emoji: '👥', to: '/clientes', soloAdmin: true, claves: 'cuenta corriente cobranzas' },
-      // El Panel de Gestión vive en Resultados (pedido de Diego, 05/11).
-      { id: 'resultados', label: 'Resultados', emoji: '📊', to: '/gestion', claves: 'panel gestion gastos compras ventas balance equilibrio facturas cargar pagos impagas proveedores sueldos' },
       // Conceptos de caja y Carga de gastos salen del menú (Diego 10/11/2026): Conceptos va en el
       // header del Panel de Gestión y la carga se hace desde el panel («Cargar Gastos»).
       // Sin "Versión celular" (usuaria 08/11/2026: se sigue desarrollando, pero no hace falta un botón

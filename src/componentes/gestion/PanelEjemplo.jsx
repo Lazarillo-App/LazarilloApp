@@ -25,7 +25,7 @@ const M = (v) => `$ ${v.toLocaleString('es-AR', { minimumFractionDigits: 1, maxi
 // Tarjeta del primer paso. soloVentas: ya hay gastos cargados pero ninguna venta (falta conectar el PDV).
 export function PrimerPaso({ onCargar, onConectar, puedeCargar, soloVentas = false }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: soloVentas ? 1.5 : 2, borderRadius: 3, border: '1px solid #5BC2EA', bgcolor: '#eef8fd' }}>
+    <Box data-tour="panel-primer-paso" sx={{ display: 'flex', alignItems: 'center', gap: 2, p: soloVentas ? 1.5 : 2, borderRadius: 3, border: '1px solid #5BC2EA', bgcolor: '#eef8fd' }}>
       <Box component="img" src={ANT.presenta} alt="" sx={{ height: soloVentas ? 52 : 76, width: 'auto', flexShrink: 0 }} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: soloVentas ? 14.5 : 16 }}>
@@ -54,7 +54,7 @@ export default function PanelEjemplo({ onCargar, onConectar, puedeCargar }) {
       <PrimerPaso onCargar={onCargar} onConectar={onConectar} puedeCargar={puedeCargar} />
 
       {/* Vista previa de EJEMPLO: atenuada y sin interacción */}
-      <Box aria-hidden>
+      <Box aria-hidden data-tour="panel-ejemplo">
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
           <Box component="span" sx={{ px: 1.25, py: 0.25, borderRadius: 999, bgcolor: '#15213E', color: '#fff', fontSize: 11, fontWeight: 800, letterSpacing: 1 }}>EJEMPLO</Box>
           <Typography component="span" sx={{ fontSize: 12.5, color: 'text.secondary' }}>Así se ve tu panel con un año de datos (los números son inventados).</Typography>

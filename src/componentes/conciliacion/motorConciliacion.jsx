@@ -288,6 +288,9 @@ export function parseFacturasCC(rows) {
 }
 // Guardan TODOS los campos útiles de cada fuente (aunque no siempre se
 // muestren), para poder ofrecerlos como columnas opcionales.
+// Formas de cobro de apps de delivery (Diego 15/11/2026: «se concilian con los marketplace, no
+// deberían estar en Mercado Pago»). Rappi/PedidosYa/Uber liquidan por su cuenta: no se cruzan contra MP.
+export const esMarketplace = (cobro) => /RAPPI|PEDIDOS\s*YA|UBER|DIDI|GLOVO/i.test(String(cobro || ""));
 export function parseVentas(rows) {
   const EXCL = ["EFECTIVO", "CTA CTE", "CUENTA CORRIENTE"];
   const out = [];
@@ -296,6 +299,7 @@ export function parseVentas(rows) {
     const imp = Math.abs(parseFloat(r["IMPORTE"]) || 0);
     if (!cobro || !imp) return;
     if (EXCL.some((e) => cobro.includes(e))) return;
+    if (esMarketplace(cobro)) return; // apps de delivery: las paga el marketplace, no entran a Mercado Pago
     if (/^NC/i.test(String(r["COMPROBANT"] || "").trim())) return; // notas de crédito = anulaciones, no van a conciliar
     out.push({
       id: "v" + i, origen: "pos", status: "pend", matchedWith: [],
@@ -376,6 +380,51 @@ export function parseBanco(rows) {
   return out;
 }
 
+// ─── Paso 0: por CUPÓN (Diego 14/11/2026: «es una key clave, en todos los PDV y negocios») ──
+// El cupón que se carga en el POS (MaxiRest, informe 22) es el Nº de operación de Mercado Pago
+// recortado a 10 dígitos: los primeros 9 + el último (Container Bar oct–nov: 1.256 de 1.272
+// «Transferencia MP» y 229 de 254 «QR-POSNET»). El back lo manda armado en cada cobro (claveMx).
+// Ventanas medidas en esos datos (15/11): el pago entra el mismo día (1.022) o el siguiente
+// (446, después de medianoche); antes de la venta = cupón mal cargado; hasta 3 tickets por pago;
+// la diferencia de importe es casi siempre propina (+1% a +12%).
+export const CUPON_DIAS = [-1, 3];      // pago desde 1 día antes hasta 3 días después de la venta
+export const CUPON_MARGEN = 0.15;       // ±15% (propina / redondeo); más que eso, el cupón está mal cargado
+export const CUPON_MAX_TICKETS = 3;     // un cupón en más tickets es un número de relleno, no se usa
+export function claveCupon(x) {
+  const d = String(x == null ? "" : x).trim().replace(/\.0+$/, "").replace(/\D/g, "");
+  return d.length >= 8 && !/^0+$/.test(d) ? d : "";
+}
+export function claveBanco(b) {
+  if (!b) return "";
+  if (b.claveMx) return claveCupon(b.claveMx);
+  const op = claveCupon(b.op || b.mpId || "");
+  return op.length > 10 ? op.slice(0, 9) + op.slice(-1) : op;
+}
+export function conciliarPorCupon(V, B) {
+  const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
+  // La clave de 10 dígitos puede repetirse entre dos pagos (3 veces en un año de Container Bar,
+  // a veces el mismo día) → se queda el de importe más cercano.
+  const porClave = new Map();
+  B.forEach((b) => { if (b.status !== "pend") return; const k = claveBanco(b); if (k) (porClave.get(k) || porClave.set(k, []).get(k)).push(b); });
+  if (!porClave.size) return 0;
+  const grupos = new Map();
+  V.forEach((v) => { if (v.status !== "pend") return; const k = claveCupon(v.cupon); if (k) (grupos.get(k) || grupos.set(k, []).get(k)).push(v); });
+  let n = 0;
+  grupos.forEach((items, k) => {
+    if (items.length > CUPON_MAX_TICKETS) return;
+    const total = items.reduce((a, v) => a + v.imp, 0);
+    const enVentana = (b) => b.status === "pend" && items.every((v) => { const d = dias(v.fecha, b.fecha); return d >= CUPON_DIAS[0] && d <= CUPON_DIAS[1]; });
+    const b = (porClave.get(k) || []).filter(enVentana).sort((x, y) => Math.abs(x.imp - total) - Math.abs(y.imp - total))[0];
+    if (!b) return;
+    const dif = b.imp - total;
+    if (Math.abs(dif) > Math.round(total * CUPON_MARGEN)) return;
+    items.forEach((v) => { v.status = "ok"; v.matchedWith = [b.id]; v.matchTipo = "cupon"; v.cuponDif = dif; if (dif) v.autoDif = Math.abs(dif); });
+    b.status = "ok"; b.matchedWith = items[0].id; b.matchTipo = "cupon";
+    n += items.length;
+  });
+  return n;
+}
+
 // ─── Match: 2 pasos (1-a-1 exacto, luego N-a-1 iguales/consecutivos) ──
 export function conciliar(ingresos, banco, tolDias, autoVal = 0, autoTipo = "pct") {
   const V = ingresos.map((v) => ({ ...v, status: "pend", matchedWith: [], matchTipo: null }));
@@ -399,40 +448,7 @@ export function conciliar(ingresos, banco, tolDias, autoVal = 0, autoTipo = "pct
     return "consecutivos";
   }
 
-  // Paso 0: POR CUPÓN (Diego 14/11/2026: «es una key clave, en todos los PDV y negocios»).
-  // El cupón que se carga en MaxiRest (informe 22) es el Nº de operación de Mercado Pago recortado
-  // a 10 dígitos: los primeros 9 y el último (Container Bar oct–nov: 1.256 de 1.272 coinciden).
-  // Se concilia solo si además coincide el importe: la venta (o las ventas con el mismo cupón,
-  // un pago que cubre varios tickets) suman lo que entró, dentro del margen. Fecha hasta 31 días
-  // (el 22 lleva la fecha del turno). Si el cupón coincide pero el importe no, queda pendiente.
-  const claveCupon = (id) => {
-    const t = String(id ?? "").replace(/\D/g, "");
-    return t.length > 10 ? t.slice(0, 9) + t.slice(-1) : t;
-  };
-  const bPorCupon = {};
-  B.forEach((b, i) => {
-    if (b.mpId == null) return;
-    const full = String(b.mpId).replace(/\D/g, "");
-    if (full.length < 7) return;
-    bPorCupon[claveCupon(full)] = i;
-    bPorCupon[full] = i;
-  });
-  const vPorCupon = {};
-  V.forEach((v) => {
-    const c = String(v.cupon || "").replace(/\D/g, "");
-    if (c.length >= 7 && bPorCupon[c] != null) (vPorCupon[c] = vPorCupon[c] || []).push(v);
-  });
-  Object.entries(vPorCupon).forEach(([c, items]) => {
-    const b = B[bPorCupon[c]];
-    if (!b || b.status !== "pend") return;
-    const libres = items.filter((v) => v.status === "pend" && dayDiff(b.fecha, v.fecha) <= 31);
-    if (!libres.length) return;
-    const total = libres.reduce((a, v) => a + v.imp, 0);
-    const d = Math.abs(b.imp - total);
-    if (d > tolDe(total)) return;
-    libres.forEach((v) => { v.status = "ok"; v.matchedWith = [b.id]; v.matchTipo = "cupon"; if (d && libres.length === 1) v.autoDif = d; });
-    b.status = "ok"; b.matchedWith = libres[0].id; b.matchTipo = "cupon";
-  });
+  conciliarPorCupon(V, B); // Paso 0: el cupón manda (antes que importe y fecha)
 
   V.forEach((v) => {
     if (v.status !== "pend") return;

@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, IconButton, Menu, MenuItem, MenuList,
   Box, Container, Avatar, Tooltip, Button, Divider,
-  Snackbar, Alert, LinearProgress, Badge, ClickAwayListener
+  Snackbar, Alert, LinearProgress, Badge, ClickAwayListener, useMediaQuery
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -79,6 +79,9 @@ export default function Navbar() {
 
   const navigate = useNavigate();
   const location = useLocation();
+  // Celular/tablet (Diego 15/11/2026): el ☰ cambia de sector y las secciones del módulo van como
+  // pestañas debajo del header (en vez de un menú que en la mitad de los sectores salía vacío).
+  const celu = useMediaQuery('(max-width: 899.95px)');
 
   // Detectar en qué sector estamos para navegar directo al tab correcto
   const getConfigTab = () => {
@@ -252,177 +255,10 @@ export default function Navbar() {
   // Staff no tiene Inicio ni menú de módulos: su casa es Recetas (11/11).
   const homeTo = isAppAdmin ? '/admin' : (isStaff ? '/insumos' : '/inicio');
 
-  return (
-    <>
-      {!isAppAdmin && <SucursalPrincipalFaltante />}
-      <AppBar
-        position="static"
-        sx={{
-          backgroundColor: 'var(--color-primary, #111111)',
-          color: 'var(--on-primary, #ffffff)',
-          borderBottom: '1px solid color-mix(in srgb, var(--on-primary, #000) 12%, transparent)',
-          boxShadow: 'none',
-          // Celular: barra de 56 px, la misma altura que la versión celular del Panel (Diego 08/11/2026).
-          '@media (max-width: 899.95px)': {
-            '& .MuiToolbar-root': { minHeight: 56, height: 56 },
-            '& .navbar-biz-logo': { height: '34px !important', maxWidth: 90 },
-            '& .navbar-biz-fallback': { width: '34px !important', height: '34px !important', fontSize: '15px !important' },
-            '& .navbar-biz-name': { fontSize: '0.95rem !important' },
-            '& .navbar-user-avatar': { width: 36, height: 36, fontSize: '0.9rem' },
-            '& .MuiIconButton-sizeLarge': { padding: '8px' },
-          },
-          // Celular angosto (Diego 15/11/2026, «todo sector tiene que tener vista mobile»): el selector de
-          // negocio se achica y corta el nombre con «…» en vez de empujar el avatar y la campana fuera de la
-          // pantalla (con «CONTAINER BAR» la página quedaba 135 px más ancha y todo se veía achicado).
-          '@media (max-width: 599.95px)': {
-            '& .MuiToolbar-root': { gap: '4px' },
-            '& [data-tour="hdr-negocio"]': { flexShrink: 1, minWidth: 0, ml: 0 },
-            '& [data-tour="hdr-negocio"] .MuiButton-root': { minWidth: 0, maxWidth: '100%', px: 0.5 },
-            '& [data-tour="hdr-negocio"] .MuiButton-endIcon': { ml: 0.25 },
-            '& [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root, & [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root > .MuiBox-root': { minWidth: 0, overflow: 'hidden' },
-            '& .navbar-biz-logo': { display: 'none' },
-            '& [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root > .MuiBox-root > span': {
-              display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            },
-            '& [data-tour="hdr-perfil"], & [data-tour="hdr-campana"], & [data-tour="hdr-config"]': { ml: 0, flexShrink: 0 },
-            '& .navbar-user-avatar': { width: 34, height: 34 },
-          },
-        }}
-      >
-        {/* Sin el maxWidth="xl" (1536px) de MUI: con eso el contenido quedaba
-            centrado con franjas vacías a los costados en pantallas grandes,
-            mientras el resto de la app ocupa el ancho completo. Pero del todo
-            sin tope (maxWidth={false} a secas) el logo y los links quedaban
-            pegados a la izquierda con un hueco creciente antes del selector de
-            negocio/avatar en pantallas grandes — mismo problema, en el medio
-            en vez de en los costados. 1800px cubre laptops/monitores comunes
-            sin ningún recorte; recién en ultrawide/4K+ aparece un margen, ahí
-            sí simétrico en los dos costados (no un hueco raro de un solo lado). */}
-        <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 }, maxWidth: '1800px !important', mx: 'auto' }}>
-          <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
-            {/* Logo + pulso de los datos (Diego, 06/11/2026: el punto va al lado del logo) */}
-            {/* Con la fila de sucursales abajo de los botones, el logo se alinea con la fila de
-                botones, no con el centro de la barra (Diego 10/11/2026: «antes el logo coincidía
-                con los botones»): misma altura y mismo margen de arriba que esa fila. */}
-            <Box
-              sx={{
-                mr: 2,
-                display: { xs: 'none', md: 'flex' },
-                alignItems: 'center',
-                gap: 1,
-                pr: '50px',
-                ...(conFilaSucursales ? { alignSelf: 'flex-start', mt: 0.75, height: 36.5 } : {}),
-              }}
-            >
-              <Box
-                component={NavLink}
-                to={homeTo}
-                aria-label="Ir al inicio"
-                sx={{ position: 'relative', display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}
-              >
-                <Box
-                  component="img"
-                  src={brandSrc}
-                  alt="Lazarillo"
-                  sx={{
-                    height: 45,
-                    display: 'block',
-                    filter: isLightBg
-                      ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
-                      : 'none',
-                  }}
-                />
-                {nombreModulo && (
-                  // Colgado bajo el logo sin ocupar lugar: el logo mantiene su tamaño y el punto de
-                  // pulso queda centrado con él (Diego 10/11/2026: «quisiera el tamaño anterior»).
-                  <Box component="span" sx={{
-                    position: 'absolute', left: 2, top: 'calc(100% + 1px)', fontFamily: "'Sora', 'Archivo', sans-serif", fontSize: 11, fontWeight: 700,
-                    letterSpacing: '0.22em', lineHeight: 1, textTransform: 'uppercase', opacity: 0.8, whiteSpace: 'nowrap',
-                  }}>
-                    {nombreModulo}
-                  </Box>
-                )}
-              </Box>
-              {/* Staff: sin pulso de datos (es info de administración, usuaria 10/11). */}
-              {!isAppAdmin && !isStaff && <Box component="span" data-tour="hdr-pulso" sx={{ display: 'inline-flex' }}><PulsoDatos puedeActualizar /></Box>}
-            </Box>
-
-            {/* Mobile – hamburguesa */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
-              <IconButton
-                size="large"
-                sx={{ color: 'inherit' }}
-                onClick={(e) => setNavEl(e.currentTarget)}
-                aria-label="Abrir menú principal"
-              >
-                <MenuIcon />
-              </IconButton>
-
-              <Menu
-                anchorEl={navEl}
-                open={Boolean(navEl)}
-                onClose={() => setNavEl(null)}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-                sx={{
-                  display: { xs: 'block', md: 'none' },
-                  '& .MuiPaper-root': {
-                    background: 'var(--color-primary)',
-                    color: 'var(--on-primary)',
-                  },
-                }}
-                MenuListProps={{ 'aria-label': 'Navegación principal' }}
-              >
-                <MenuList dense sx={{ color: 'inherit' }}>
-                  {enAlta && <MenuItem disabled sx={{ opacity: '1 !important' }}>Asistente de alta</MenuItem>}
-                  {!enAlta && location.pathname.startsWith('/rrhh') && !isAppAdmin ? [
-                    <MenuItem key="rrhh-crono" component={NavLink} to="/rrhh/cronogramas" onClick={() => setNavEl(null)}>Cronogramas</MenuItem>,
-                    <MenuItem key="rrhh-liq" disabled>Liquidación · Próximamente</MenuItem>,
-                    <MenuItem key="rrhh-fich" disabled>Fichaje · Próximamente</MenuItem>,
-                    <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
-                    <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
-                  ] : null}
-                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/gestion') ? [
-                    puedeVer('conceptos') && <MenuItem key="g-conc" component={NavLink} to="/gestion/conceptos" onClick={() => setNavEl(null)}>Conceptos de caja</MenuItem>,
-                    puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
-                    puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
-                  ] : null}
-                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/movimientos-bancarios') ? [
-                    mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
-                    <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
-                  ] : null}
-                  {!enAlta && enRecetas && puedeVer('recetas') && (
-                  <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
-                    {isAppAdmin ? 'Menú' : 'Artículos'}
-                  </MenuItem>
-                  )}
-
-                  {!enAlta && !isAppAdmin && enRecetas && puedeVer('recetas') && (
-                    <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
-                      Insumos
-                    </MenuItem>
-                  )}
-
-                  {!enAlta && !isAppAdmin && veMenuDiseno && enRecetas && puedeVer('recetas') && (
-                    <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
-                      Menú
-                    </MenuItem>
-                  )}
-
-
-                  {isAppAdmin && (
-                    <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>
-                      Admin
-                    </MenuItem>
-                  )}
-                </MenuList>
-              </Menu>
-            </Box>
-
-{/* Desktop – links */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 1, py: 0.75 }}>
-            <Box data-tour="hdr-botonera" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              {(() => {
+  // Botones de las secciones del módulo (Artículos · Insumos | Menú, Cronogramas · Nómina, las plazas…).
+  // En la compu van al lado del logo; en el celular, como pestañas debajo del header. Se arma una sola
+  // vez y se muestra en un solo lugar (TablerosBotonera trae datos y su modal: no montarla dos veces).
+  const botonera = (() => {
                 const path = location.pathname;
                 const enMenu = path.includes('/menu') || path.includes('/articulos') || path === '/';
                 const enInsumos = path.includes('/insumos');
@@ -577,7 +413,184 @@ export default function Navbar() {
                     })()}
                   </>
                 );
-              })()}
+              })();
+
+  return (
+    <>
+      {!isAppAdmin && <SucursalPrincipalFaltante />}
+      <AppBar
+        position="static"
+        sx={{
+          backgroundColor: 'var(--color-primary, #111111)',
+          color: 'var(--on-primary, #ffffff)',
+          borderBottom: '1px solid color-mix(in srgb, var(--on-primary, #000) 12%, transparent)',
+          boxShadow: 'none',
+          // Celular: barra de 56 px, la misma altura que la versión celular del Panel (Diego 08/11/2026).
+          '@media (max-width: 899.95px)': {
+            // theme-layout/global.css le fijan el alto al header (86/64 px): con la fila de pestañas abajo tiene
+            // que crecer, si no las pestañas quedan medio afuera (Diego 15/11/2026). Las páginas miden el alto real.
+            height: 'auto !important', minHeight: 'var(--navbar-height)',
+            '& .MuiToolbar-root': { minHeight: 56, height: 56 },
+            '& .navbar-biz-logo': { height: '34px !important', maxWidth: 90 },
+            '& .navbar-biz-fallback': { width: '34px !important', height: '34px !important', fontSize: '15px !important' },
+            '& .navbar-biz-name': { fontSize: '0.95rem !important' },
+            '& .navbar-user-avatar': { width: 36, height: 36, fontSize: '0.9rem' },
+            '& .MuiIconButton-sizeLarge': { padding: '8px' },
+          },
+          // Celular angosto (Diego 15/11/2026, «todo sector tiene que tener vista mobile»): el selector de
+          // negocio se achica y corta el nombre con «…» en vez de empujar el avatar y la campana fuera de la
+          // pantalla (con «CONTAINER BAR» la página quedaba 135 px más ancha y todo se veía achicado).
+          '@media (max-width: 599.95px)': {
+            '& .MuiToolbar-root': { gap: '4px' },
+            '& [data-tour="hdr-negocio"]': { flexShrink: 1, minWidth: 0, ml: 0 },
+            '& [data-tour="hdr-negocio"] .MuiButton-root': { minWidth: 0, maxWidth: '100%', px: 0.5 },
+            '& [data-tour="hdr-negocio"] .MuiButton-endIcon': { ml: 0.25 },
+            '& [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root, & [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root > .MuiBox-root': { minWidth: 0, overflow: 'hidden' },
+            '& .navbar-biz-logo': { display: 'none' },
+            '& [data-tour="hdr-negocio"] .MuiButton-root > .MuiBox-root > .MuiBox-root > span': {
+              display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            },
+            '& [data-tour="hdr-perfil"], & [data-tour="hdr-campana"], & [data-tour="hdr-config"]': { ml: 0, flexShrink: 0 },
+            '& .navbar-user-avatar': { width: 34, height: 34 },
+          },
+        }}
+      >
+        {/* Sin el maxWidth="xl" (1536px) de MUI: con eso el contenido quedaba
+            centrado con franjas vacías a los costados en pantallas grandes,
+            mientras el resto de la app ocupa el ancho completo. Pero del todo
+            sin tope (maxWidth={false} a secas) el logo y los links quedaban
+            pegados a la izquierda con un hueco creciente antes del selector de
+            negocio/avatar en pantallas grandes — mismo problema, en el medio
+            en vez de en los costados. 1800px cubre laptops/monitores comunes
+            sin ningún recorte; recién en ultrawide/4K+ aparece un margen, ahí
+            sí simétrico en los dos costados (no un hueco raro de un solo lado). */}
+        <Container maxWidth={false} sx={{ px: { xs: 1.5, sm: 2, md: 3 }, maxWidth: '1800px !important', mx: 'auto' }}>
+          <Toolbar disableGutters sx={{ color: 'inherit', gap: 1 }}>
+            {/* Logo + pulso de los datos (Diego, 06/11/2026: el punto va al lado del logo) */}
+            {/* Con la fila de sucursales abajo de los botones, el logo se alinea con la fila de
+                botones, no con el centro de la barra (Diego 10/11/2026: «antes el logo coincidía
+                con los botones»): misma altura y mismo margen de arriba que esa fila. */}
+            <Box
+              sx={{
+                mr: 2,
+                display: { xs: 'none', md: 'flex' },
+                alignItems: 'center',
+                gap: 1,
+                pr: '50px',
+                ...(conFilaSucursales ? { alignSelf: 'flex-start', mt: 0.75, height: 36.5 } : {}),
+              }}
+            >
+              <Box
+                component={NavLink}
+                to={homeTo}
+                aria-label="Ir al inicio"
+                sx={{ position: 'relative', display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}
+              >
+                <Box
+                  component="img"
+                  src={brandSrc}
+                  alt="Lazarillo"
+                  sx={{
+                    height: 45,
+                    display: 'block',
+                    filter: isLightBg
+                      ? 'drop-shadow(0 0 1px rgba(0,0,0,.45))'
+                      : 'none',
+                  }}
+                />
+                {nombreModulo && (
+                  // Colgado bajo el logo sin ocupar lugar: el logo mantiene su tamaño y el punto de
+                  // pulso queda centrado con él (Diego 10/11/2026: «quisiera el tamaño anterior»).
+                  <Box component="span" sx={{
+                    position: 'absolute', left: 2, top: 'calc(100% + 1px)', fontFamily: "'Sora', 'Archivo', sans-serif", fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.22em', lineHeight: 1, textTransform: 'uppercase', opacity: 0.8, whiteSpace: 'nowrap',
+                  }}>
+                    {nombreModulo}
+                  </Box>
+                )}
+              </Box>
+              {/* Staff: sin pulso de datos (es info de administración, usuaria 10/11). */}
+              {!isAppAdmin && !isStaff && <Box component="span" data-tour="hdr-pulso" sx={{ display: 'inline-flex' }}><PulsoDatos puedeActualizar /></Box>}
+            </Box>
+
+            {/* Mobile – hamburguesa */}
+            <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
+              <IconButton
+                size="large"
+                sx={{ color: 'inherit' }}
+                // Con menú de módulos (dueño/admin): el ☰ cambia de sector, como en la versión celular.
+                // Staff y el asistente de alta siguen con el menú de antes.
+                onClick={(e) => (!isStaff && !isAppAdmin && !enAlta ? setModulosOpen(true) : setNavEl(e.currentTarget))}
+                aria-label="Abrir menú principal"
+              >
+                <MenuIcon />
+              </IconButton>
+
+              <Menu
+                anchorEl={navEl}
+                open={Boolean(navEl)}
+                onClose={() => setNavEl(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                sx={{
+                  display: { xs: 'block', md: 'none' },
+                  '& .MuiPaper-root': {
+                    background: 'var(--color-primary)',
+                    color: 'var(--on-primary)',
+                  },
+                }}
+                MenuListProps={{ 'aria-label': 'Navegación principal' }}
+              >
+                <MenuList dense sx={{ color: 'inherit' }}>
+                  {enAlta && <MenuItem disabled sx={{ opacity: '1 !important' }}>Asistente de alta</MenuItem>}
+                  {!enAlta && location.pathname.startsWith('/rrhh') && !isAppAdmin ? [
+                    <MenuItem key="rrhh-crono" component={NavLink} to="/rrhh/cronogramas" onClick={() => setNavEl(null)}>Cronogramas</MenuItem>,
+                    <MenuItem key="rrhh-liq" disabled>Liquidación · Próximamente</MenuItem>,
+                    <MenuItem key="rrhh-fich" disabled>Fichaje · Próximamente</MenuItem>,
+                    <Divider key="rrhh-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
+                    <MenuItem key="rrhh-nom" component={NavLink} to="/rrhh/nomina" onClick={() => setNavEl(null)}>Nómina</MenuItem>,
+                  ] : null}
+                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/gestion') ? [
+                    puedeVer('conceptos') && <MenuItem key="g-conc" component={NavLink} to="/gestion/conceptos" onClick={() => setNavEl(null)}>Conceptos de caja</MenuItem>,
+                    puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
+                    puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
+                  ] : null}
+                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/movimientos-bancarios') ? [
+                    mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
+                    <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
+                  ] : null}
+                  {!enAlta && enRecetas && puedeVer('recetas') && (
+                  <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
+                    {isAppAdmin ? 'Menú' : 'Artículos'}
+                  </MenuItem>
+                  )}
+
+                  {!enAlta && !isAppAdmin && enRecetas && puedeVer('recetas') && (
+                    <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
+                      Insumos
+                    </MenuItem>
+                  )}
+
+                  {!enAlta && !isAppAdmin && veMenuDiseno && enRecetas && puedeVer('recetas') && (
+                    <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
+                      Menú
+                    </MenuItem>
+                  )}
+
+
+                  {isAppAdmin && (
+                    <MenuItem component={NavLink} to="/admin" onClick={() => setNavEl(null)}>
+                      Admin
+                    </MenuItem>
+                  )}
+                </MenuList>
+              </Menu>
+            </Box>
+
+{/* Desktop – links */}
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'flex-start', gap: 1, py: 0.75 }}>
+            <Box data-tour="hdr-botonera" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              {!celu && botonera}
 
               {isAppAdmin && (
                 <Button color="inherit" sx={{ color: 'inherit' }} component={NavLink} to="/admin">
@@ -590,6 +603,19 @@ export default function Navbar() {
             {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos') || location.pathname === '/gestion') && (
               <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
                 <SucursalesChips />
+              </Box>
+            )}
+            {/* Movimientos bancarios y Conciliación: cada sucursal tiene su cuenta (Diego 15/11/2026: «me gusta
+                que te haga elegir una cuando entrás, pero después tienen que quedar arriba en el menú como en
+                el resto de las pantallas»). Sin "Todas" y sin marcar ninguna hasta que se elige. */}
+            {!isAppAdmin && (location.pathname.startsWith('/movimientos-bancarios') || location.pathname.startsWith('/conciliacion')) && (
+              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
+                <SucursalesChips sinTodas elegir ayuda={
+                  <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
+                    <b>Sucursales</b><br />
+                    Cada sucursal cobra en su propia cuenta de Mercado Pago: elegí cuál ver.
+                  </span>
+                } />
               </Box>
             )}
             {/* Cronogramas: cada sucursal tiene su calendario (Diego, 07/11) → sin "Todas". */}
@@ -707,6 +733,22 @@ export default function Navbar() {
           </Toolbar>
         </Container>
 
+        {/* Celular: secciones del módulo como pestañas que se deslizan de costado (Diego 15/11/2026). */}
+        {celu && (
+          <Box className="navbar-pestanas" sx={{
+            // alignSelf: el AppBar centra a sus hijos; las pestañas van a todo el ancho, desde la izquierda.
+            // Alto fijo de 48 con aire arriba y abajo: con overflowX el contenido más alto que la fila se recortaba
+            // (el «+» de Tableros sin plazas quedaba pisado, Diego 15/11/2026).
+            display: 'flex', alignItems: 'center', gap: 0.5, overflowX: 'auto', overflowY: 'hidden', alignSelf: 'stretch',
+            boxSizing: 'border-box', minHeight: 48, px: 1, py: 0.5,
+            scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' }, '&:empty': { display: 'none' },
+            '& > *': { flexShrink: 0 }, '& .MuiButton-root': { minHeight: 40, whiteSpace: 'nowrap', px: 1.25 },
+            '& .MuiIconButton-root': { width: 36, height: 36, my: 0 },
+          }}>
+            {botonera}
+          </Box>
+        )}
+
         {syncRunning && (
           <LinearProgress
             color="inherit"
@@ -762,7 +804,8 @@ export default function Navbar() {
               borderRadius: '0 8px 8px 0',
               background: 'color-mix(in srgb, var(--on-primary, #fff) 16%, var(--color-primary, #111111))',
               color: 'var(--on-primary, #ffffff)',
-              display: 'flex',
+              // En el celular no va: el ☰ ya abre los módulos (Diego 15/11/2026).
+              display: { xs: 'none', md: 'flex' },
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
