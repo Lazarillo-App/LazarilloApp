@@ -391,7 +391,11 @@ export default function ComprasDetalleModal({ filter, onClose }) {
 
   const abrirEdicion = (item) => {
     const esDistribuida = item.esDistribuido || item.distribucionId != null;
-    const importeInicial = texto(esDistribuida ? item.importeBase : item.importeManual ?? item.importe);
+    // El importe llega de la base como "58300.00000000": se muestra sin los ceros de más (58300).
+    // Mismo número, así que no cambia lo que se guarda (parseImporteManual compara números).
+    const crudo = esDistribuida ? item.importeBase : item.importeManual ?? item.importe;
+    const n = Number(crudo);
+    const importeInicial = crudo != null && String(crudo).trim() !== '' && Number.isFinite(n) ? String(Math.round(n * 100) / 100) : texto(crudo);
     const concepto = item.conceptoCodigoManual ?? item.conceptoCaja?.codigo ?? '';
     setEditing({
       rowId: String(item.rowId),
