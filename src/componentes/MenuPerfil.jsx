@@ -10,6 +10,7 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import AdminPanelSettingsOutlinedIcon from '@mui/icons-material/AdminPanelSettingsOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
+import MenuBookOutlinedIcon from '@mui/icons-material/MenuBookOutlined';
 import { VerComoItems } from '@/componentes/VerComo';
 import { T, FT, FB, cargarFuentes } from '@/componentes/ui/temaDiego';
 
@@ -74,6 +75,8 @@ export default function MenuPerfil({
       )}
       {/* Mi equipo (Diego 15/11/2026): directo a la gestión del equipo, fuera del perfil. */}
       {conEquipo && <Opcion icono={<GroupsOutlinedIcon />} to="/equipo" onClick={onCerrar}>Mi equipo</Opcion>}
+      {/* Manual (Diego 16/11/2026): todas las guías con buscador y su link para compartir. */}
+      <Opcion icono={<MenuBookOutlinedIcon />} to="/manual" onClick={onCerrar}>Manual</Opcion>
       {esSuper && (
         <>
           <Linea />
