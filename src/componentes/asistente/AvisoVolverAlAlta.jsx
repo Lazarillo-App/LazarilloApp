@@ -9,7 +9,11 @@ import { useNavigate } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { useAccess } from '@/context/AccessContext';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
-import UploadInsumosModal from '../UploadInsumosModal';
+// Ventas y compras con sus modales propios, los mismos de Configuración › Importar (usuaria 16/11/2026:
+// «Subir ventas» abría el modal de lote de insumos).
+import UploadCSVModal from '../UploadCSVModal';
+import UploadComprasModal from '../UploadComprasModal';
+import { clearVentasCache } from '@/servicios/apiVentas';
 import { ANT } from './anthonyAssets';
 import { avisoDatos } from './altaEstado';
 
@@ -39,6 +43,10 @@ export default function AvisoVolverAlAlta() {
   const marcar = async (key, value = true) => {
     try { await BusinessesAPI.setOnboardingFlag(activeBusinessId, key, value); await refetchBusinesses?.(); } catch { /* el aviso igual se ajusta */ }
   };
+  const subido = (k) => {
+    setOcultos((o) => ({ ...o, [k]: true }));
+    marcar(k === 'ventas' ? 'ventas_subidas' : 'compras_subidas');
+  };
   const esconderAhora = () => { setAhoraNo(true); try { sessionStorage.setItem(LEIDO_KEY(activeBusinessId), '1'); } catch { /* sin storage */ } };
 
   return (
@@ -66,16 +74,17 @@ export default function AvisoVolverAlAlta() {
         <button type="button" style={link} onClick={esconderAhora}>Ahora no</button>
         <button type="button" style={link} onClick={() => { esconderAhora(); marcar('avisos_datos_off'); }}>No mostrar más</button>
       </div>
-      <UploadInsumosModal
-        open={!!subiendo}
-        tipo={subiendo || 'ventas'}
+      <UploadCSVModal
+        open={subiendo === 'ventas'}
         businessId={activeBusinessId}
         onClose={() => setSubiendo(null)}
-        onSuccess={() => {
-          const k = subiendo;
-          setOcultos((o) => ({ ...o, [k]: true }));
-          marcar(k === 'ventas' ? 'ventas_subidas' : 'compras_subidas');
-        }}
+        onSuccess={() => { clearVentasCache(); subido('ventas'); }}
+      />
+      <UploadComprasModal
+        open={subiendo === 'compras'}
+        businessId={activeBusinessId}
+        onClose={() => setSubiendo(null)}
+        onSuccess={() => { setSubiendo(null); subido('compras'); }}
       />
     </div>
   );
