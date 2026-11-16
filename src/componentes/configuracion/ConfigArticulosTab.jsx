@@ -398,14 +398,16 @@ export default function ConfigArticulosTab({
 
           <Grid size={{ xs: 12, md: 7 }}>
             <Card>
-              <CardHeader icon={<MenuBookIcon />} title="Importar paso a paso + foto de recetas" subtitle="Desde un ZIP con pares .txt + imagen" />
+              <CardHeader icon={<MenuBookIcon />} title="Importar recetas" subtitle="Excel de recetas, MaxiRest o paso a paso con fotos" />
               <CardBody>
                 <Stack spacing={2}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                    Subí un .zip con el método de preparación (.txt) y la foto de cada plato, mismo nombre de archivo.
-                    Solo actualiza recetas que ya existen — las que no tengan receta previa quedan listadas para revisar.
+                    {/* Antes la tarjeta solo hablaba del ZIP y el import de recetas por Excel quedaba escondido
+                        en una pestaña del mismo modal (usuaria 16/11/2026, alta de un negocio a mano). */}
+                    Las recetas (artículo, insumo y cantidad) desde un Excel o desde MaxiRest, y el paso a paso con
+                    la foto de cada plato desde un .zip (pares .txt + imagen con el mismo nombre).
                   </Typography>
-                  <PrimaryBtn icon={<MenuBookIcon />} label="Importar paso a paso" onClick={() => setRecetasImportOpen(true)} tc={tc} />
+                  <PrimaryBtn icon={<MenuBookIcon />} label="Importar recetas" onClick={() => setRecetasImportOpen(true)} tc={tc} />
                 </Stack>
               </CardBody>
             </Card>
