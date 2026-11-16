@@ -10,7 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SoporteAPI } from '@/servicios/apiSoporte';
 import { ANT } from './anthonyAssets';
 import { useAccess } from '@/context/AccessContext';
-import { GUIAS, GRUPOS_GUIAS, NOMBRE_SECTOR, pedirGuia } from './guias';
+import { GUIAS, GRUPOS_GUIAS, NOMBRE_SECTOR, pedirGuia, buscarGuias } from './guias';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ABRIR_CHAT, SIN_LEER } from './chatEvento';
 import { capturarPantalla, imagenADataUrl } from '@/componentes/soporte/capturaPantalla';
@@ -267,7 +267,7 @@ export default function AnthonyChat() {
         </div>
 
         {vista === 'guias' ? (
-          <Guias ruta={location.pathname} onVer={(g, sector) => { setAbierto(false); pedirGuia(g, navigate, sector); }} />
+          <Guias ruta={location.pathname} onVer={(g, sector) => { setAbierto(false); pedirGuia(g, navigate, sector); }} onManual={() => { setAbierto(false); navigate('/manual'); }} />
         ) : vista === 'pedidos' ? (
           <MisPedidos onSinLeer={actualizarSinLeer} />
         ) : (
@@ -544,10 +544,12 @@ function MisPedidos({ onSinLeer }) {
 
 // Pestaña «Guías» (Diego 14/11/2026): el lugar común para volver a ver el recorrido de cada sección.
 // Primero las de la pantalla donde estás; después el resto, agrupadas por módulo.
-function Guias({ ruta, onVer }) {
+function Guias({ ruta, onVer, onManual }) {
   // Las de pantallas solo de dueño y admin (Nómina, Conciliación) no se le muestran al staff.
   const { isStaff } = useAccess() || {};
-  const todas = GUIAS.filter((g) => !(g.soloGestion && isStaff));
+  const [q, setQ] = useState('');
+  // Buscador (Diego 16/11/2026: «que tenga un buscador así lo encuentra el usuario»).
+  const todas = buscarGuias(q, GUIAS.filter((g) => !(g.soloGestion && isStaff)));
   // Tableros vive en /tableros/:id: «En esta pantalla» mira el comienzo de la ruta.
   const esAca = (g) => ruta === g.ruta || (g.ruta === '/tableros' && ruta.startsWith('/tableros/'));
   const aca = todas.filter(esAca);
@@ -586,12 +588,17 @@ function Guias({ ruta, onVer }) {
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={burbuja(true)}>Te muestro cómo se usa cada parte, paso a paso. Elegí una:</div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar: factura, receta, turnos…"
+        style={{ flexShrink: 0, height: 38, boxSizing: 'border-box', padding: '0 12px', borderRadius: 10, border: '1px solid #bfdcef', fontSize: 13.5, outline: 'none', fontFamily: 'inherit' }} />
+      {!todas.length && <div style={{ fontSize: 13, color: '#64748b', padding: '4px 2px' }}>No encontré guías con «{q}». Escribime en el chat y te ayudo.</div>}
       {aca.length > 0 && titulo('En esta pantalla')}
       {aca.map((g) => item(g, true))}
       {GRUPOS_GUIAS.map((grupo) => {
         const del = otras.filter((g) => g.grupo === grupo);
         return del.length ? [titulo(grupo), ...del.map((g) => item(g, false))] : null;
       })}
+      <a href="/manual" onClick={(e) => { e.preventDefault(); onManual?.(); }}
+        style={{ flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: '#2492C8', textAlign: 'center', padding: '6px 0' }}>Ver el manual completo ›</a>
     </div>
   );
 }
