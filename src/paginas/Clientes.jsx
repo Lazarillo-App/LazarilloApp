@@ -16,6 +16,8 @@ import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
 import { useCelular, EncabezadoPagina, ListaTarjetas } from '@/componentes/base';
+import MenuColumna from '@/componentes/base/MenuColumna';
+import { pasaFiltro as pasaFiltroBase, filtroActivo } from '@/componentes/base/filtrosColumna';
 
 const T = {
   txt: '#15213E', txt2: '#5b6577', txt3: '#8a93a3', line: 'rgba(21,33,62,.12)', line2: 'rgba(21,33,62,.07)',
@@ -63,19 +65,13 @@ const COLS = [
   { k: 'segL', l: 'Segmento', f: 'lista' },
 ];
 const textoDe = (c, k) => (k === 'nombre' ? `${c.nombre || ''} ${c.docTxt || ''}` : String(c[k] ?? ''));
+// Filtros y menú de columna compartidos con Movimientos bancarios (componentes/base, tablero #84).
+// Lo único propio: un cliente puede estar en varias sucursales («Centro, Norte»).
+const sucursalesDe = (c) => String(c.suc || '').split(', ');
 function pasaFiltro(c, k, f) {
-  if (!f) return true;
-  const v = c[k];
-  if (f.texto != null && f.texto !== '') return textoDe(c, k).toLowerCase().includes(f.texto.toLowerCase());
-  if (f.valores) return k === 'suc' ? String(v || '').split(', ').some((x) => f.valores.includes(x)) : f.valores.includes(String(v ?? ''));
-  if (f.min !== '' && f.min != null && !(Number(v) >= Number(f.min))) return false;
-  if (f.max !== '' && f.max != null && !(Number(v) <= Number(f.max))) return false;
-  if (f.desde && !(String(v || '') >= f.desde)) return false;
-  if (f.hasta && !(String(v || '') <= f.hasta)) return false;
-  return true;
+  if (k === 'suc' && f?.valores) return sucursalesDe(c).some((x) => f.valores.includes(x));
+  return pasaFiltroBase(c[k], textoDe(c, k), f);
 }
-const filtroActivo = (f) => !!f && ((f.texto != null && f.texto !== '') || !!f.valores || (f.min !== '' && f.min != null)
-  || (f.max !== '' && f.max != null) || !!f.desde || !!f.hasta);
 
 const MESES_LARGO = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
@@ -233,6 +229,16 @@ export default function Clientes() {
   // «piquitos» blancos entre columnas).
   const th = { padding: '8px 8px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#fff', fontWeight: 700, position: 'sticky', top: 0, zIndex: 1, background: 'var(--color-primary, #2492C8)', textAlign: 'center', whiteSpace: 'nowrap', userSelect: 'none', borderRadius: 0, boxShadow: 'none' };
   const td = { padding: '7px 8px', fontSize: 13, borderBottom: `1px solid ${T.line2}`, textAlign: 'center', whiteSpace: 'nowrap' };
+  // Valores posibles de una columna 'lista' (sobre lo filtrado por las OTRAS columnas, como Excel
+  // y como Movimientos bancarios). Sucursal cuenta cada una por separado.
+  const valoresDe = (k) => {
+    const otras = Object.keys(filtros).filter((x) => x !== k && filtroActivo(filtros[x]));
+    const n = {};
+    lista.filter((c) => otras.every((x) => pasaFiltro(c, x, filtros[x]))).forEach((c) => {
+      (k === 'suc' ? sucursalesDe(c) : [String(c[k] ?? '')]).forEach((v) => { n[v] = (n[v] || 0) + 1; });
+    });
+    return Object.entries(n).sort((a, b) => b[1] - a[1]);
+  };
   const abrirMenu = (e, k) => {
     // La app tiene zoom en #root: el rectángulo viene escalado y el menú fijo se vuelve a escalar.
     const z = parseFloat(getComputedStyle(document.getElementById('root') || document.body).zoom) || 1;
@@ -382,85 +388,11 @@ export default function Clientes() {
         )}
       </div>
       {abierto && (
-        <MenuColumna col={COLS.find((c) => c.k === abierto.k)} pos={abierto} lista={lista} filtro={filtros[abierto.k]}
+        <MenuColumna col={COLS.find((c) => c.k === abierto.k)} pos={abierto} filtro={filtros[abierto.k]}
+          valores={COLS.find((c) => c.k === abierto.k)?.f === 'lista' ? valoresDe(abierto.k) : []}
           onFiltro={(f) => ponerFiltro(abierto.k, f)} onOrden={(asc) => { setOrden({ k: abierto.k === 'segL' ? 'seg' : abierto.k, asc }); setAbierto(null); }}
           onCerrar={() => setAbierto(null)} />
       )}
     </div>
-  );
-}
-
-// Menú de cada columna, estilo Excel: ordenar y filtrar.
-function MenuColumna({ col, pos, lista, filtro, onFiltro, onOrden, onCerrar }) {
-  const [busca, setBusca] = useState('');
-  const f = filtro || {};
-  const campo = { fontFamily: 'inherit', fontSize: 13, height: 32, boxSizing: 'border-box', padding: '0 8px', borderRadius: 6, border: '1px solid rgba(21,33,62,.18)', width: '100%' };
-  const fila = { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6, background: 'none', border: 'none', width: '100%', textAlign: 'left', fontFamily: 'inherit', color: T.txt };
-  const valores = useMemo(() => {
-    if (col.f !== 'lista') return [];
-    const n = {};
-    lista.forEach((c) => {
-      const vs = col.k === 'suc' ? String(c.suc || '').split(', ') : [String(c[col.k] ?? '')];
-      vs.forEach((v) => { n[v] = (n[v] || 0) + 1; });
-    });
-    return Object.entries(n).sort((a, b) => b[1] - a[1]);
-  }, [col, lista]);
-  const elegidos = f.valores ? new Set(f.valores) : null;
-  const alternar = (v) => {
-    const set = new Set(elegidos || valores.map(([x]) => x));
-    if (set.has(v)) set.delete(v); else set.add(v);
-    onFiltro(set.size === valores.length ? null : { valores: [...set] });
-  };
-  const az = col.f === 'num' || col.f === 'fecha' ? ['Menor a mayor', 'Mayor a menor'] : ['A → Z', 'Z → A'];
-  return (
-    <>
-      <div onClick={onCerrar} style={{ position: 'fixed', inset: 0, zIndex: 1300 }} />
-      <div style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 1301, width: 260, background: '#fff', border: `1px solid ${T.line}`, borderRadius: 10, boxShadow: '0 10px 30px rgba(21,33,62,.18)', padding: 6, fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt }}>
-        <button type="button" style={fila} onClick={() => onOrden(true)}>↑ {az[0]}</button>
-        <button type="button" style={fila} onClick={() => onOrden(false)}>↓ {az[1]}</button>
-        <div style={{ height: 1, background: T.line, margin: '6px 4px' }} />
-        <div style={{ padding: '2px 10px 6px', fontSize: 11.5, fontWeight: 700, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.4px' }}>Filtrar {col.l}</div>
-        <div style={{ padding: '0 10px 8px' }}>
-          {col.f === 'texto' && (
-            <input autoFocus type="search" value={f.texto || ''} placeholder="Contiene…" style={campo}
-              onChange={(e) => onFiltro(e.target.value ? { texto: e.target.value } : null)} />
-          )}
-          {col.f === 'num' && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="number" value={f.min ?? ''} placeholder="Desde" style={campo} onChange={(e) => onFiltro({ ...f, min: e.target.value })} />
-              <span style={{ color: T.txt3 }}>a</span>
-              <input type="number" value={f.max ?? ''} placeholder="Hasta" style={campo} onChange={(e) => onFiltro({ ...f, max: e.target.value })} />
-            </div>
-          )}
-          {col.f === 'fecha' && (
-            <div style={{ display: 'grid', gap: 6 }}>
-              <input type="date" value={f.desde || ''} style={campo} onChange={(e) => onFiltro({ ...f, desde: e.target.value })} />
-              <input type="date" value={f.hasta || ''} style={campo} onChange={(e) => onFiltro({ ...f, hasta: e.target.value })} />
-            </div>
-          )}
-          {col.f === 'lista' && (
-            <>
-              {valores.length > 8 && <input type="search" value={busca} placeholder="Buscar…" style={{ ...campo, marginBottom: 6 }} onChange={(e) => setBusca(e.target.value)} />}
-              <label style={{ ...fila, padding: '4px 2px', fontWeight: 700 }}>
-                <input type="checkbox" checked={!elegidos} onChange={() => onFiltro(elegidos ? null : { valores: [] })} />
-                (Seleccionar todo)
-              </label>
-              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                {valores.filter(([v]) => !busca || v.toLowerCase().includes(busca.toLowerCase())).map(([v, n]) => (
-                  <label key={v} style={{ ...fila, padding: '4px 2px' }}>
-                    <input type="checkbox" checked={!elegidos || elegidos.has(v)} onChange={() => alternar(v)} />
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '(vacío)'}</span>
-                    <span style={{ color: T.txt3, fontSize: 12 }}>{n.toLocaleString('es-AR')}</span>
-                  </label>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-        {filtroActivo(filtro) && (
-          <button type="button" style={{ ...fila, color: T.rojo }} onClick={() => { onFiltro(null); onCerrar(); }}>✕ Quitar filtro de {col.l}</button>
-        )}
-      </div>
-    </>
   );
 }
