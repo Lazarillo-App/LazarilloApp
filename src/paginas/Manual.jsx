@@ -252,7 +252,11 @@ export default function Manual() {
                   <Texto texto={s.texto} />
                   {s.imagen && (
                     <figure style={{ margin: '6px 0 4px' }}>
-                      <a href={urlImagen(s.imagen)} target="_blank" rel="noreferrer" title="Ver la imagen grande"><img src={urlImagen(s.imagen)} alt={s.pie || s.titulo} loading="lazy" style={{ display: 'block', width: '100%', borderRadius: 12, border: `1px solid ${T.border}`, boxShadow: T.sombraSuave }} /></a>
+                      <a href={urlImagen(s.imagen)} target="_blank" rel="noreferrer" title="Ver la imagen grande"><img src={urlImagen(s.imagen)} alt={s.pie || s.titulo} loading="lazy"
+                        // Las capturas son al doble de resolución: se muestran a la mitad de su ancho (un modal
+                        // chico no se agranda a todo el ancho), nunca más anchas que la columna.
+                        onLoad={(e) => { e.currentTarget.style.maxWidth = `${Math.round(e.currentTarget.naturalWidth / 2)}px`; }}
+                        style={{ display: 'block', width: '100%', borderRadius: 12, border: `1px solid ${T.border}`, boxShadow: T.sombraSuave }} /></a>
                       {s.pie && <figcaption style={{ fontSize: 12.5, color: T.text3, marginTop: 6 }}>{s.pie}</figcaption>}
                     </figure>
                   )}
