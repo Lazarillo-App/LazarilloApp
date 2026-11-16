@@ -1640,9 +1640,9 @@ export default function TablaArticulos({
       .map(c => {
         if (c.id === 'acciones' && isTodo) return '154px';
         // Costo %: se achica antes que los montos (la barra mide 150 adentro).
-        if (c.id === 'rentabilidad' && c.width === '250px') return 'minmax(140px, .7fr)';
+        if (c.id === 'rentabilidad' && c.width === '250px') return 'minmax(120px, .7fr)';
         // Montos: nunca menos de lo que ocupa «sug. $ 53.400» en un renglón.
-        if (['costo', 'precio', 'sinPromo'].includes(c.id) && /fr$/.test(String(c.width))) return `minmax(88px, ${c.width})`;
+        if (['costo', 'precio', 'sinPromo'].includes(c.id) && /fr$/.test(String(c.width))) return `minmax(84px, ${c.width})`;
         // Nuevo precio: el input se achica hasta 116 (entra «USAR $ 32.584»); el espacio va al Nombre.
         if (c.id === 'manual' && /fr$/.test(String(c.width))) return `minmax(116px, .3fr)`;
         if (c.id === 'acciones' && /fr$/.test(String(c.width))) return `minmax(28px, ${c.width})`;
@@ -1651,7 +1651,10 @@ export default function TablaArticulos({
       .join(' ');
     // En Sin Agrupación el botón va en 2 líneas con ancho fijo (154px = botón
     // de 118 + ⋮), y el espacio que libera se lo lleva el Nombre. Nunca menos de 140px.
-    const nombreCol = 'minmax(140px, 1fr)';
+    // Mínimos (tablero #69, 16/11/2026): a 1100 px, en Promociones (columna «sin promo») y en Sin
+    // agrupación (acciones de 154) la suma de mínimos pasaba el ancho y el ⋮ quedaba cortado afuera.
+    // Nombre baja a 110, Costo % a 120 y los montos a 84: en pantallas anchas no cambia nada (son fr).
+    const nombreCol = 'minmax(110px, 1fr)';
     // Código más angosto (Diego 11/11/2026: «la veo muy ancha»): entra «L-1279» con su ícono.
     return `${check}minmax(56px, 72px) ${nombreCol} minmax(72px, .4fr) ${branchCols}${dynCols}`;
   }, [hasBranches, branches, visibleCols, isTodo]);
