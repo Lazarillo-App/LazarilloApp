@@ -37,6 +37,7 @@ import Login from './paginas/Login';
 import LazarilloLanding from './paginas/LazarilloLanding';
 import Register from './paginas/Register';
 import Perfil, { MiEquipo } from './paginas/Perfil';
+import Manual, { AbrirGuia } from './paginas/Manual';
 import AltaRetomar from './paginas/AltaRetomar';
 import Inicio from './paginas/Inicio';
 import RrhhCronogramas from './paginas/RrhhCronogramas';
@@ -345,6 +346,9 @@ export default function App() {
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><RequireSeccion seccion="medios"><GestionMediosPago /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
                 <Route path="/equipo" element={<RequireAdminOrOwner><MiEquipo /></RequireAdminOrOwner>} />
+                {/* Manual de guías y link único por guía (Diego 16/11/2026) */}
+                <Route path="/manual" element={<Manual />} />
+                <Route path="/guia/:id/:sector?" element={<AbrirGuia />} />
                 <Route path="/alta" element={<RequireAdminOrOwner><AltaRetomar /></RequireAdminOrOwner>} />
                 <Route path="/inicio" element={<Inicio />} />
                 <Route path="/configuracion" element={<RequireAdminOrOwner><RequireSeccion seccion={['configuracion', 'conexiones']}><ConfiguracionMain /></RequireSeccion></RequireAdminOrOwner>} />
