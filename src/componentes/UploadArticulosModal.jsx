@@ -33,10 +33,12 @@ const ROLES_ARTICULOS = [
   { value: 'codigo', label: '✓ Código', color: '#166534', bg: '#dcfce7' },
   { value: 'nombre', label: '✓ Nombre', color: '#1e40af', bg: '#dbeafe' },
   { value: 'precio', label: '✓ Precio', color: '#7c3aed', bg: '#ede9fe' },
-  // Rubro / subrubro: código (MaxiRest, se cruza con el listado de rubros) o el nombre directo
-  // («Familia: BEBIDAS» de otros POS). El back distingue solo (usuaria 16/11/2026).
-  { value: 'rubro', label: '○ Rubro (código o nombre)', color: '#92400e', bg: '#fef3c7' },
-  { value: 'subrubro', label: '○ Subrubro (código o nombre)', color: '#065f46', bg: '#d1fae5' },
+  { value: 'rubro', label: '○ Cód. rubro', color: '#92400e', bg: '#fef3c7' },
+  { value: 'subrubro', label: '○ Cód. subrubro', color: '#065f46', bg: '#d1fae5' },
+  // El nombre directo del rubro/subrubro, como lo traen otros POS («Familia: BEBIDAS»), sin cruzar
+  // con un listado de rubros. La columna puede llamarse de cualquier forma (usuaria 16/11/2026).
+  { value: 'rubro_nombre', label: '○ Rubro (nombre)', color: '#9a3412', bg: '#ffedd5' },
+  { value: 'subrubro_nombre', label: '○ Subrubro (nombre)', color: '#115e59', bg: '#ccfbf1' },
 ];
 function getRoles(tipo) {
   if (tipo === 'rubros') return ROLES_RUBROS;
@@ -61,8 +63,10 @@ function detectarRol(col, tipo) {
     if (['codigo', 'code', 'codarticulo', 'cod', 'id'].includes(c)) return 'codigo';
     if (['nombre', 'name', 'descripcion', 'denominacion'].includes(c)) return 'nombre';
     if (['precio1', 'precio', 'price', 'precioventa', 'precioref'].includes(c)) return 'precio';
-    if (['codrua', 'codru', 'rubro', 'codrubro', 'familia', 'categoria'].includes(c)) return 'rubro';
-    if (['codsua', 'subrubro', 'codsubrubro', 'subfamilia', 'subcategoria'].includes(c)) return 'subrubro';
+    if (['codrua', 'codru', 'codrubro'].includes(c)) return 'rubro';
+    if (['codsua', 'codsubrubro'].includes(c)) return 'subrubro';
+    if (['rubro', 'familia', 'categoria', 'grupo'].includes(c)) return 'rubro_nombre';
+    if (['subrubro', 'subfamilia', 'subcategoria'].includes(c)) return 'subrubro_nombre';
   }
   return 'ignorar';
 }
