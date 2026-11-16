@@ -54,7 +54,7 @@ import { MESES_IDX } from '@/gestion/formato';
 import { useAccess } from '@/context/AccessContext';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { usePasosHeader, refTour } from '@/componentes/asistente/pasosHeader';
-import { useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
+import { useSectorGuia, pasosDelSector, useAbrirGuia, pedirGuia, GUIAS } from '@/componentes/asistente/guias';
 import { useRecorrido } from '@/hooks/useRecorrido';
 
 const ANIO_ACTUAL = new Date().getFullYear();
@@ -238,6 +238,13 @@ function GestionPanelContenido() {
   // Quedan Notas, Cargar Gastos y la tarjeta del primer paso con el ejemplo.
   const panelVacio = sinDatosPanel && !busquedaActiva;
   const navigate = useNavigate();
+  // Guía «Corregir un registro» (Diego 16/11/2026): abre el detalle de compras del mes en curso (o
+  // de diciembre si se mira otro año). Sin datos todavía no hay qué corregir: muestra el primer paso.
+  useAbrirGuia('editar_registro', () => {
+    if (panelVacio) { pedirGuia(GUIAS.find((g) => g.id === 'gestion_panel'), navigate, 'tabla'); return; }
+    const hoy = new Date();
+    abrirDetalle({ mes: estado.year === hoy.getFullYear() ? hoy.getMonth() + 1 : 12 });
+  }, !!rango.data, 900);
   // Impagas y Sin carga: en la Económica sin búsqueda están en la tarjeta "Para mirar"; si no, en la barra.
   const pdvId = lugarDe(activeBusinessId, sucursalCaja);
   // Las tarjetas se ven siempre (Diego 11/11/2026: sacamos «ocultar tarjetas», lo resuelve el maximizar).

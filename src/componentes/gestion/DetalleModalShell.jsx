@@ -98,11 +98,11 @@ export default function DetalleModalShell({
             <Box sx={{ fontSize: 16, fontWeight: 600 }}>{title}</Box>
             {subtitle && <Box sx={{ fontSize: 12, color: 'text.secondary' }}>{subtitle}</Box>}
           </Box>
-          {headerControls}
+          {headerControls && <Box data-tour="ed-periodo" sx={{ display: 'flex' }}>{headerControls}</Box>}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
           {!error && (!!query || (!isLoading && count > 1)) && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: 176, flexShrink: 0, height: 32, px: 1, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+            <Box data-tour="ed-buscar" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, width: 176, flexShrink: 0, height: 32, px: 1, border: 1, borderColor: 'divider', borderRadius: 2 }}>
               <SearchIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
               <InputBase value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar…" sx={{ fontSize: 13, flex: 1 }} />
             </Box>

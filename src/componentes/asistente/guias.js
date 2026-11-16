@@ -18,6 +18,7 @@ export const GUIAS = [
   { id: 'tableros', grupo: 'Operación', titulo: 'Tableros de la cocina', detalle: 'Plazas, la lámina de cada producto y la TV', ruta: '/tableros', sectores: ['tablero', 'header'], claves: 'plaza despacho cocina barra lámina tv pantalla armado' },
   { id: 'gestion_panel', grupo: 'Resultados', titulo: 'Panel de gestión', detalle: 'Ventas, gastos y resultados del mes', ruta: '/gestion', sectores: ['filtros', 'tabla', 'header'], claves: 'resultados ganancia gastos ventas rubros económica financiera mes período balance' },
   { id: 'carga_gastos', grupo: 'Resultados', titulo: 'Cargar una factura o gasto', detalle: 'Factura, gasto vario o pago a empleados', ruta: '/gestion', claves: 'factura gasto vario pago proveedor sueldos adelantos impaga ticket comprobante' },
+  { id: 'editar_registro', grupo: 'Resultados', titulo: 'Corregir un registro', detalle: 'Fecha, mes, concepto, importe, pagos, repartir o borrar', ruta: '/gestion', sectores: ['detalle', 'fila'], claves: 'editar modificar cambiar fecha mes período pago impaga concepto importe observación borrar eliminar mover pdv apertura repartir cuenta corriente tildar varios' },
   { id: 'conciliacion', grupo: 'Administración', titulo: 'Conciliación bancaria', detalle: 'Cruzar tus ventas con lo que entró al banco', ruta: '/conciliacion', sectores: ['fuentes', 'conciliar', 'header'], soloGestion: true, claves: 'banco mercado pago cobros extracto conciliar cupón tarjeta cuenta corriente' },
   { id: 'rrhh_nomina', grupo: 'RRHH', titulo: 'Nómina', detalle: 'Tu equipo: altas, bajas y quién va en cronogramas', ruta: '/rrhh/nomina', sectores: ['barra', 'tabla', 'header'], soloGestion: true, claves: 'empleados equipo alta baja personal dni no aplica' },
   { id: 'rrhh_cronogramas', grupo: 'RRHH', titulo: 'Cronogramas', detalle: 'Armar la semana, feriados, puestos y mandarla por WhatsApp', ruta: '/rrhh/cronogramas', sectores: ['cronograma', 'header'], claves: 'turnos horarios semana francos feriados puestos whatsapp' },
@@ -30,7 +31,7 @@ export const GRUPOS_GUIAS = ['Recetas', 'Operación', 'Resultados', 'Administrac
 // es uno de ellos, pero con todos»). «Ver» muestra la guía entera; cada sector, solo sus pasos.
 export const NOMBRE_SECTOR = {
   lateral: 'Lateral', tabla: 'Tabla', barra: 'Barra', header: 'Header', filtros: 'Filtros',
-  cronograma: 'Cronograma', pestanas: 'Pestañas', tablero: 'Tablero', fuentes: 'Fuentes', conciliar: 'Conciliar', datos: 'Datos', ingredientes: 'Ingredientes', encabezado: 'Encabezado', pie: 'Pie',
+  cronograma: 'Cronograma', pestanas: 'Pestañas', tablero: 'Tablero', detalle: 'Detalle', fila: 'Fila', fuentes: 'Fuentes', conciliar: 'Conciliar', datos: 'Datos', ingredientes: 'Ingredientes', encabezado: 'Encabezado', pie: 'Pie',
 };
 
 /** Link para compartir una guía (Diego 16/11/2026: «que cada guía tenga un link único»).

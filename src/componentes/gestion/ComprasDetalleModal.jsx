@@ -28,6 +28,26 @@ import { cuerpoMover, filasAMover } from '@/gestion/apertura/mover';
 import { refrescarCompras } from '@/gestion/hooksPanel';
 import { gestionFetch } from '@/servicios/apiGestion';
 import { toast } from 'sonner';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosPresentes } from '@/componentes/asistente/pasosHeader';
+import { useSectorGuia } from '@/componentes/asistente/guias';
+import { useRecorrido } from '@/hooks/useRecorrido';
+
+// Guía «Corregir un registro» (Diego 16/11/2026: «guías de cómo editar registros: su fecha rápido,
+// sus períodos, sus pagos»). Señala la primera fila; cada paso sale solo si esa parte está.
+const PASOS_EDITAR = [
+  { k: 'ed-periodo', s: 'detalle', t: <>Este es el <b>detalle</b> de lo que suma la celda que tocaste. Arriba elegís <b>Mes</b>, <b>Año</b> o <b>Histórico</b> y con las flechas te movés.</> },
+  { k: 'ed-buscar', s: 'detalle', t: <>Buscás un registro por proveedor, comprobante, observación o importe.</> },
+  { k: 'ed-fecha', s: 'fila', t: <><b>F. gasto</b> es la fecha del gasto: define en qué <b>mes</b> cuenta en la vista Económica. Si la cambiás, el gasto pasa a ese mes.</> },
+  { k: 'ed-pago', s: 'fila', t: <><b>F. pago</b> es cuándo se pagó: define el mes en la vista Financiera. Pasá el mouse para ver si tiene varios pagos o uno parcial.</> },
+  { k: 'ed-editar', s: 'fila', t: <>Con el <b>lápiz</b> corregís en la misma fila la fecha, la fecha de pago, el concepto, la observación y el importe, y guardás con el tilde. Los pagos cargados en Lazarillo se corrigen desde Pagos.</> },
+  { k: 'ed-tildar', s: 'fila', t: <>¿Varios a la vez? <b>Tildalos</b> y editá uno: la fecha, el concepto y la observación se aplican a todos los tildados.</> },
+  { k: 'ed-proveedor', s: 'fila', t: <>Tocá el <b>proveedor</b> (o el punto de color del importe) y ves su <b>cuenta corriente</b>: qué está pago y qué debés.</> },
+  { k: 'ed-comprobante', s: 'fila', t: <>Tocá el <b>comprobante</b> y ves sus renglones.</> },
+  { k: 'ed-borrar', s: 'fila', t: <>El <b>tacho</b> borra una carga hecha en Lazarillo: queda en Notificaciones y se puede restaurar. Lo que viene de tu punto de venta se borra allá.</> },
+  { k: 'ed-apertura', s: 'fila', t: <><b>Apertura de gastos</b>: repartís este gasto entre tus locales o áreas.</> },
+  { k: 'ed-mover', s: 'fila', t: <>Con las <b>flechas</b> lo pasás entero a otro punto de venta (con varios tildados, se mueven todos).</> },
+];
 
 const SIN_RUBRO_CODE = '__sin_rubro';
 const SIN_RUBRO_NOMBRE = 'Sin Rubro';
@@ -158,7 +178,7 @@ function Semaforo({ estado, onClick }) {
 function CheckFila({ seleccion }) {
   if (!seleccion) return null;
   return (
-    <TableCell sx={{ pl: 1.5, pr: 0, py: 0.75 }}>
+    <TableCell data-tour="ed-tildar" sx={{ pl: 1.5, pr: 0, py: 0.75 }}>
       <Box component="input" type="checkbox" aria-label="Tildar registro" checked={seleccion.tildado} onChange={seleccion.onToggle} sx={{ cursor: 'pointer', verticalAlign: 'middle' }} />
     </TableCell>
   );
@@ -457,20 +477,20 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     const observacion = item.observacManual ?? item.observac ?? '';
     const prov = nombreProveedor(item);
     return (
-      <TableRow key={key} hover className="group" selected={!!seleccion?.tildado} sx={{ '&:hover .lapiz': { opacity: 1 } }}>
+      <TableRow key={key} data-tour="ed-fila" hover className="group" selected={!!seleccion?.tildado} sx={{ '&:hover .lapiz': { opacity: 1 } }}>
         <CheckFila seleccion={seleccion} />
-        <TableCell sx={celda}>
+        <TableCell data-tour="ed-fecha" sx={celda}>
           <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>{esEditada(item) && <EditedDot />}{fmtDate(fecha)}</Box>
         </TableCell>
-        <TableCell sx={{ ...celda, color: 'text.secondary' }}><FechaPago item={item} /></TableCell>
+        <TableCell data-tour="ed-pago" sx={{ ...celda, color: 'text.secondary' }}><FechaPago item={item} /></TableCell>
         <TableCell sx={celda} title={prov}>
           {origenDe(item) ? (
-            <Box component="button" type="button" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
+            <Box component="button" type="button" data-tour="ed-proveedor" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
           ) : prov}
         </TableCell>
         <TableCell sx={celda} title={item.detalle ?? undefined}>
           {item.detalle ? (
-            <Box component="button" type="button" onClick={() => setLineas({ rowId: item.rowId, detalle: item.detalle })} sx={{ all: 'unset', cursor: 'pointer', color: 'text.secondary', fontFamily: 'monospace', fontSize: 12, '&:hover': { color: 'text.primary', textDecoration: 'underline' } }}>
+            <Box component="button" type="button" data-tour="ed-comprobante" onClick={() => setLineas({ rowId: item.rowId, detalle: item.detalle })} sx={{ all: 'unset', cursor: 'pointer', color: 'text.secondary', fontFamily: 'monospace', fontSize: 12, '&:hover': { color: 'text.primary', textDecoration: 'underline' } }}>
               {item.detalle}
             </Box>
           ) : <Box component="span" sx={{ color: 'text.secondary' }}>—</Box>}
@@ -485,29 +505,36 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         </TableCell>
         <TableCell sx={{ px: 1, py: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <EditTriggerButton onClick={() => abrirEdicion(item)} />
+            <Box component="span" data-tour="ed-editar" sx={{ display: 'inline-flex' }}><EditTriggerButton onClick={() => abrirEdicion(item)} /></Box>
             {item.esLazarillo ? (
-              <IconButton className="lapiz" size="small" title="Eliminar esta carga" onClick={() => setBorrar({ item })} sx={{ p: 0.25, opacity: 0, '&:focus-visible': { opacity: 1 }, '&:hover': { color: 'error.main' } }}>
+              <IconButton className="lapiz" data-tour="ed-borrar" size="small" title="Eliminar esta carga" onClick={() => setBorrar({ item })} sx={{ p: 0.25, opacity: 0, '&:focus-visible': { opacity: 1 }, '&:hover': { color: 'error.main' } }}>
                 <DeleteOutlineIcon sx={{ fontSize: 14 }} />
               </IconButton>
             ) : (
               <Tooltip title="Viene de MaxiRest: se borra en MaxiRest (si se borra acá, vuelve con la próxima importación)">
-                <Box component="span" className="lapiz" sx={{ display: 'inline-flex', p: 0.25, opacity: 0, color: 'action.disabled', cursor: 'default' }}>
+                <Box component="span" className="lapiz" data-tour="ed-borrar" sx={{ display: 'inline-flex', p: 0.25, opacity: 0, color: 'action.disabled', cursor: 'default' }}>
                   <DeleteOutlineIcon sx={{ fontSize: 14 }} />
                 </Box>
               </Tooltip>
             )}
-            <BotonAperturaRegistro panel={aperturaPanel} rowId={item.rowId} onClick={() => abrirAperturaFila(item)} />
+            <Box component="span" data-tour="ed-apertura" sx={{ display: 'inline-flex' }}><BotonAperturaRegistro panel={aperturaPanel} rowId={item.rowId} onClick={() => abrirAperturaFila(item)} /></Box>
             {localesApertura && (() => {
               // Con la fila tildada actúa sobre todas las tildadas; si no, solo sobre ella.
               const filas = (tildadas.has(item.rowId) ? [...tildadas.values()] : [item]).map(filaMovible);
-              return <ScopeGestion><MoverPdvButton filas={filas} importeTotal={filas.reduce((a, f) => a + importeDe(f), 0)} locales={localesApertura} onMover={moverFilas} /></ScopeGestion>;
+              return <Box component="span" data-tour="ed-mover" sx={{ display: 'inline-flex' }}><ScopeGestion><MoverPdvButton filas={filas} importeTotal={filas.reduce((a, f) => a + importeDe(f), 0)} locales={localesApertura} onMover={moverFilas} /></ScopeGestion></Box>;
             })()}
           </Box>
         </TableCell>
       </TableRow>
     );
   };
+
+  // Guía (se pide desde Anthony › Guías o con su link; el Panel abre este detalle).
+  const pasosEd = usePasosPresentes(PASOS_EDITAR, `${filter !== null}:${editing ? 1 : 0}`, filter !== null);
+  const sectorEd = useSectorGuia('editar_registro');
+  const pasosTourEd = pasosEd.filter((p) => !sectorEd || p.s === sectorEd);
+  const recEd = useRecorrido('editar_registro', pasosTourEd.length, filter !== null && !editing && !ctaCte && !lineas && !borrar && pasosEd.length > 0, { sinDatos: false });
+  const pasoEd = pasosTourEd[recEd.paso - 1];
 
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
@@ -544,7 +571,14 @@ export default function ComprasDetalleModal({ filter, onClose }) {
             : <Box sx={{ py: 4, textAlign: 'center', fontSize: 14, color: 'text.secondary' }}>Este gasto no tiene proveedor: no hay cuenta corriente para mostrar.</Box>;
         } : undefined}
         renderRow={renderFila}
+        // Editar, borrar, apertura y mover (⇄): con 68 px el ⇄ quedaba cortado afuera (16/11/2026).
+        anchoAcciones={localesApertura ? 100 : 80}
       />
+      {recEd.visible && pasoEd && (<>
+        {/* Los íconos de la fila aparecen al pasar el mouse: durante la guía se ven siempre. */}
+        <style>{'[data-tour="ed-fila"] .lapiz{opacity:1 !important}'}</style>
+        <SpotlightTour key={pasoEd.k} targetRef={pasoEd.ref} pose={recEd.paso === 1 ? 'presenta' : 'senala'} placement="bottom" text={pasoEd.t} {...recEd.props(recEd.paso)} />
+      </>)}
       <ModalAperturaPanel panel={aperturaPanel} />
       {ctaCte && <ScopeGestion><CtaCteModal origen={ctaCte.origen} resaltado={ctaCte.resaltado} onCerrar={() => setCtaCte(null)} /></ScopeGestion>}
       <VerFactura rowId={lineas?.rowId ?? null} detalle={lineas?.detalle ?? null} onClose={() => setLineas(null)} />
