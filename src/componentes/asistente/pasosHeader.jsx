@@ -92,7 +92,7 @@ export function usePasosHeader({ conBarra = false } = {}) {
  *  [data-tour=tour||k] existe y tiene tamaño). Así una guía no señala lo que esa pantalla no
  *  tiene (sin datos, sin permiso, otra vista). Se vuelve a mirar cuando cambia «clave» y un rato
  *  después, porque las tablas llegan después. Devuelve los pasos con su ref. */
-export function usePasosPresentes(lista, clave) {
+export function usePasosPresentes(lista, clave, observar = false) {
   const [claves, setClaves] = useState([]);
   const listaRef = React.useRef(lista);
   listaRef.current = lista;
@@ -108,7 +108,12 @@ export function usePasosPresentes(lista, clave) {
     };
     medir();
     const ts = [150, 600, 1500, 3000].map((ms) => setTimeout(medir, ms));
-    return () => ts.forEach(clearTimeout);
-  }, [clave]);
+    // observar: la pantalla carga sus datos después (un modal que trae registros): se vuelve a mirar
+    // cuando cambia el DOM, con una pausa corta para no medir en cada cambio.
+    let t = null;
+    const mo = observar ? new MutationObserver(() => { clearTimeout(t); t = setTimeout(medir, 250); }) : null;
+    mo?.observe(document.body, { childList: true, subtree: true });
+    return () => { ts.forEach(clearTimeout); clearTimeout(t); mo?.disconnect(); };
+  }, [clave, observar]);
   return lista.filter((p) => claves.includes(p.k)).map((p) => ({ ...p, ref: p.ref || refTour(p.tour || p.k) }));
 }
