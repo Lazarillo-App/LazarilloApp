@@ -1268,7 +1268,9 @@ function ModalNuevaCarga(props) {
   return (
     <div style={embebido ? { display: "contents" } : { position: "fixed", inset: 0, background: "rgba(40,40,40,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1300 }} onClick={embebido ? undefined : onCerrar}>
       {abmMedios.dialogo}
-      <div style={{ ...(embebido ? { maxHeight: "86vh" } : { ...card, width: "min(1320px, 98vw)", maxHeight: "94vh" }), display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
+      {/* El modal vive dentro de #root, que tiene zoom 0.9: «98vw» quedaba en el 88 % de la pantalla y a
+          1100 px los renglones (mínimo 1100) se iban de costado (tablero #19). Dividido por el zoom = 98 % real. */}
+      <div style={{ ...(embebido ? { maxHeight: "86vh" } : { ...card, width: "min(1320px, calc(98vw / 0.9))", maxHeight: "94vh" }), display: "flex", flexDirection: "column", overflow: "hidden" }} onClick={(e) => e.stopPropagation()} onKeyDown={enterAvanza} data-card="1">
         <div style={{ padding: "14px 20px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {vista === "nueva" && !rde ? (<>
@@ -1697,8 +1699,8 @@ function ModalNuevaCarga(props) {
                       </>) : <div style={{ gridColumn: "1 / span 6" }} />}
                       <div style={{ gridColumn: "7 / span 4", display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "flex-start", paddingRight: 8, minWidth: 0 }}>
                         {esIns && (
-                          <span style={{ ...chip, ...(l.conc ? {} : { borderColor: C.nar, background: "#fdf8ef" }) }}>Caja
-                            <span style={{ width: 150 }}><Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Concepto…" crearPrimero="concepto" onCrear={(n) => abrirAltaItem(i, "concepto", "conc", n)}
+                          <span style={{ ...chip, flexShrink: 0, ...(l.conc ? {} : { borderColor: C.nar, background: "#fdf8ef" }) }}>Caja
+                            <span style={{ width: 138 }}><Combo opciones={conceptosDe(null)} valor={l.conc} placeholder="Concepto…" crearPrimero="concepto" onCrear={(n) => abrirAltaItem(i, "concepto", "conc", n)}
                               estilo={{ height: 24, fontSize: 12, fontWeight: 600, border: "none", background: "transparent", padding: "2px 6px 2px 24px" }}
                               onElegir={(v) => {
                                 // cambia el concepto: el reparto precargado pasa a ser el de la regla del concepto nuevo
@@ -1707,9 +1709,11 @@ function ModalNuevaCarga(props) {
                               }} /></span>
                           </span>
                         )}
-                        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                        {/* El chip del PDV cede ancho y corta el nombre con «…» (tablero #19: a 1100 px «PDV CONTAINER
+                            BAR» quedaba cortado por el borde del renglón). El nombre completo va en el título. */}
+                        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2, minWidth: 0, maxWidth: "100%" }}>
                           {!l.reparto && !variosPdv
-                            ? <span style={{ ...chip, fontWeight: 700, color: C.neg }}><span style={{ fontWeight: 600, color: C.gris }}>PDV</span>{PDVS[0]}</span>
+                            ? <span title={`PDV ${PDVS[0]}`} style={{ ...chip, fontWeight: 700, color: C.neg, maxWidth: "100%", minWidth: 0, boxSizing: "border-box", paddingRight: 11 }}><span style={{ fontWeight: 600, color: C.gris, flexShrink: 0 }}>PDV</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{PDVS[0]}</span></span>
                             : !l.reparto
                             ? <span style={chip}>PDV
                                 <select style={{ height: 26, border: "none", background: "transparent", fontSize: 12, fontWeight: 700, color: C.neg, cursor: "pointer", outline: "none", maxWidth: 170 }}
