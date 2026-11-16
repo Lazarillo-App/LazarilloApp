@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 
 import { BranchesAPI } from '@/servicios/apiBranches';
+import BuscadorDireccion from '@/componentes/BuscadorDireccion';
 
 /**
  * BranchFormModal
@@ -30,6 +31,9 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
   const [phone,     setPhone]     = useState(branch?.contacts?.phone || '');
   const [city,      setCity]      = useState(branch?.address?.city  || '');
   const [line1,     setLine1]     = useState(branch?.address?.line1 || '');
+  // Coordenadas de la dirección elegida en Google Maps (tablero #55); se borran si la calle se edita a mano.
+  const geoDe = (a) => (a?.lat != null && a?.lng != null ? { lat: a.lat, lng: a.lng, place_id: a.place_id || null } : null);
+  const [geo,       setGeo]       = useState(geoDe(branch?.address));
   const [instagram, setInstagram] = useState(branch?.props?.social?.instagram || '');
   const [website,   setWebsite]   = useState(branch?.props?.social?.website   || '');
   const [logoUrl,   setLogoUrl]   = useState(branch?.logo_url || '');
@@ -47,6 +51,7 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
     setPhone(branch?.contacts?.phone || '');
     setCity(branch?.address?.city    || '');
     setLine1(branch?.address?.line1  || '');
+    setGeo(geoDe(branch?.address));
     setInstagram(branch?.props?.social?.instagram || '');
     setWebsite(branch?.props?.social?.website     || '');
     setLogoUrl(branch?.logo_url || '');
@@ -65,7 +70,11 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
         name:     name.trim(),
         color,
         logo_url: logoUrl.trim() || null,
-        address:  { city: city.trim() || null, line1: line1.trim() || null },
+        address:  {
+          ...(branch?.address || {}),
+          city: city.trim() || null, line1: line1.trim() || null,
+          lat: geo?.lat ?? null, lng: geo?.lng ?? null, place_id: geo?.place_id ?? null,
+        },
         contacts: { phone: phone.trim() || null },
         props:    {
           social: { instagram: instagram.trim() || null, website: website.trim() || null },
@@ -157,10 +166,22 @@ export default function BranchFormModal({ open, onClose, onSaved, bizId, branch 
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>
             Dirección
           </Typography>
+          <BuscadorDireccion onElegir={(r) => {
+            setCity(r.ciudad || r.provincia || '');
+            setLine1([r.calle, r.numero].filter(Boolean).join(' ') || String(r.direccion || '').split(',')[0]);
+            setGeo(r.lat != null && r.lng != null ? { lat: r.lat, lng: r.lng, place_id: r.place_id || null } : null);
+          }} />
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
             {field('Ciudad', city, setCity)}
-            {field('Calle / Dirección', line1, setLine1)}
+            {field('Calle / Dirección', line1, (v) => { setLine1(v); setGeo(null); })}
           </Box>
+          {geo && (
+            <Typography variant="caption" color="text.secondary">
+              📍 Ubicada en Google Maps ·{' '}
+              <a href={`https://www.google.com/maps/search/?api=1&query=${geo.lat},${geo.lng}${geo.place_id ? `&query_place_id=${geo.place_id}` : ''}`}
+                target="_blank" rel="noopener noreferrer">ver en el mapa</a>
+            </Typography>
+          )}
 
           <Divider />
 
