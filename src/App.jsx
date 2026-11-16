@@ -348,6 +348,7 @@ export default function App() {
                 <Route path="/equipo" element={<RequireAdminOrOwner><MiEquipo /></RequireAdminOrOwner>} />
                 {/* Manual de guías y link único por guía (Diego 16/11/2026) */}
                 <Route path="/manual" element={<Manual />} />
+                <Route path="/manual/:capitulo" element={<Manual />} />
                 <Route path="/guia/:id/:sector?" element={<AbrirGuia />} />
                 <Route path="/alta" element={<RequireAdminOrOwner><AltaRetomar /></RequireAdminOrOwner>} />
                 <Route path="/inicio" element={<Inicio />} />
