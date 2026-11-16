@@ -40,7 +40,7 @@ export function linkGuia(g, sector = null) {
   return `${window.location.origin}/guia/${g.id}${sector ? `/${sector}` : ''}`;
 }
 
-const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');
 /** Busca guías por título, detalle, módulo, sectores y palabras clave. Todas las palabras
  *  tienen que aparecer (en cualquier orden). */
 export function buscarGuias(q, lista = GUIAS) {
