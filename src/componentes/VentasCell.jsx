@@ -162,7 +162,11 @@ function VentasCell({
         sx={{ minWidth: 28, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
         title={String(totalToShow)}
       >
-        {totalToShow}
+        {/* Hasta 2 decimales (usuaria 16/11/2026: «97.01818181818182» en una pizza; las mitades
+            y mitades llegan con fracción desde el POS). El valor exacto queda en el title. */}
+        {Number.isFinite(Number(totalToShow))
+          ? Number(totalToShow).toLocaleString('es-AR', { maximumFractionDigits: 2 })
+          : totalToShow}
       </Typography>
 
       {showChart && (
