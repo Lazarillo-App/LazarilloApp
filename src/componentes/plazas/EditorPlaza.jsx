@@ -2,8 +2,10 @@
 // Se usa en Configuración › Sectores (con el sector fijo) y en Operación › Tableros (con el «+», eligiendo
 // el sector entre los que la persona puede gestionar: dueño/admin todos, el jefe los que conduce).
 import React from 'react';
-import { Box, Stack, Typography, Button, TextField, Chip, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Box, Stack, Typography, Button, TextField, Chip, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, ToggleButton, ToggleButtonGroup, IconButton, Tooltip } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
+import { useBusiness } from '@/context/BusinessContext';
 import { showAlert } from '@/servicios/appAlert';
 import { showPrompt } from '@/servicios/appPrompt';
 import { PlazasAPI } from '@/servicios/apiPlazas';
@@ -90,6 +92,23 @@ export default function EditorPlaza({ abierto, sector, sectores = [], sectorInic
     }
     return [...m.values()].sort((x, y) => y.ventas - x.ventas || x.nombre.localeCompare(y.nombre, 'es'));
   }, [filtrados, modoGrupo]);
+  // Rubros (o subrubros) plegables y «omitir para Tableros» (Diego 17/11/2026). Arrancan abiertos; los
+  // omitidos se recuerdan por negocio en este navegador y vuelven con un toque en su chip («Ocultos: …»).
+  const { activeId } = useBusiness() || {};
+  const claveOcultos = `plazas.rubrosOcultos.${activeId || ''}`;
+  const [cerrados, setCerrados] = React.useState(() => new Set());
+  const [ocultos, setOcultos] = React.useState(() => new Set());
+  React.useEffect(() => {
+    try { setOcultos(new Set(JSON.parse(localStorage.getItem(claveOcultos) || '[]'))); } catch { setOcultos(new Set()); }
+  }, [claveOcultos]);
+  const guardarOcultos = (s) => { setOcultos(s); try { localStorage.setItem(claveOcultos, JSON.stringify([...s])); } catch { /* sin storage */ } };
+  const kGrupo = (g) => `${modoGrupo}:${g.nombre}`;
+  const ocultar = (g) => { const s = new Set(ocultos); s.add(kGrupo(g)); guardarOcultos(s); };
+  const mostrarDeNuevo = (k) => { const s = new Set(ocultos); s.delete(k); guardarOcultos(s); };
+  const plegar = (g) => setCerrados((prev) => { const s = new Set(prev); if (s.has(kGrupo(g))) s.delete(kGrupo(g)); else s.add(kGrupo(g)); return s; });
+  // Buscando, se ve todo (también lo omitido) para poder encontrar cualquier producto.
+  const visibles = q.trim() ? grupos : grupos.filter((g) => !ocultos.has(kGrupo(g)));
+  const ocultosDelModo = [...ocultos].filter((k) => k.startsWith(`${modoGrupo}:`));
   const toggleGrupo = (g) => {
     const todos = g.items.every((a) => ids.has(Number(a.id)));
     setElegidos((prev) => (todos
@@ -199,19 +218,42 @@ export default function EditorPlaza({ abierto, sector, sectores = [], sectorInic
             <ToggleButton value="subrubro">Subrubro</ToggleButton>
           </ToggleButtonGroup>
         </Stack>
+        {/* Lo omitido se ve siempre acá: un toque en el chip lo vuelve a mostrar. */}
+        {ocultosDelModo.length > 0 && (
+          <Stack direction="row" alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5, mt: 0.75, flexShrink: 0 }}>
+            <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary', mr: 0.25 }}>
+              {modoGrupo === 'rubro' ? 'Rubros' : 'Subrubros'} ocultos para Tableros:
+            </Typography>
+            {ocultosDelModo.map((k) => (
+              <Chip key={k} size="small" label={k.slice(k.indexOf(':') + 1)} onDelete={() => mostrarDeNuevo(k)} onClick={() => mostrarDeNuevo(k)}
+                title="Volver a mostrar" sx={{ height: 22, fontSize: '0.7rem', textTransform: 'uppercase', bgcolor: '#f1f5f9' }} />
+            ))}
+          </Stack>
+        )}
         <Box sx={{ flex: 1, minHeight: 160, overflowY: 'auto', mt: 0.75, border: '1px solid #eef0f4', borderRadius: 1.5 }}>
-          {grupos.map((g) => {
+          {visibles.map((g) => {
             const marcados = g.items.filter((a) => ids.has(Number(a.id))).length;
+            const cerrado = cerrados.has(kGrupo(g)) && !q.trim();
             return (
               <Box key={g.nombre}>
-                {/* Encabezado del grupo: tildarlo suma (o saca) todos sus productos. */}
-                <Stack direction="row" alignItems="center" onClick={() => toggleGrupo(g)}
-                  sx={{ px: 1, minHeight: 32, cursor: 'pointer', bgcolor: '#f5f7fa', borderBottom: '1px solid #eef0f4', position: 'sticky', top: 0, zIndex: 1 }}>
-                  <Checkbox size="small" checked={marcados === g.items.length} indeterminate={marcados > 0 && marcados < g.items.length} sx={{ p: 0.5, mr: 0.5 }} />
+                {/* Encabezado del grupo: el tilde suma (o saca) todos sus productos; el nombre lo pliega;
+                    el ojito lo omite de esta lista para Tableros. */}
+                <Stack direction="row" alignItems="center" onClick={() => plegar(g)}
+                  sx={{ px: 1, minHeight: 34, cursor: 'pointer', bgcolor: '#f5f7fa', borderBottom: '1px solid #eef0f4', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <Checkbox size="small" checked={marcados === g.items.length} indeterminate={marcados > 0 && marcados < g.items.length}
+                    onClick={(e) => { e.stopPropagation(); toggleGrupo(g); }} sx={{ p: 0.5, mr: 0.25 }} />
+                  <ExpandMoreIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.25, transition: 'transform .15s', transform: cerrado ? 'rotate(-90deg)' : 'none' }} />
                   <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase', flex: 1, minWidth: 0 }} noWrap>{g.nombre}</Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary', whiteSpace: 'nowrap', mr: 1 }}>{g.items.length} · {fmtVentas(g.ventas)}</Typography>
+                  <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary', whiteSpace: 'nowrap', mr: 0.5 }}>{g.items.length} · {fmtVentas(g.ventas)}</Typography>
+                  {!q.trim() && (
+                    <Tooltip title={`No mostrar ${modoGrupo === 'rubro' ? 'este rubro' : 'este subrubro'} al armar plazas`}>
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); ocultar(g); }} aria-label={`Ocultar ${g.nombre}`} sx={{ p: 0.5 }}>
+                        <VisibilityOffOutlinedIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                 </Stack>
-                {g.items.slice(0, 200).map((a) => (
+                {!cerrado && g.items.slice(0, 200).map((a) => (
                   <Stack key={a.id} direction="row" alignItems="center" onClick={() => toggle(a)}
                     sx={{ pl: 3, pr: 1, minHeight: 34, cursor: 'pointer', borderBottom: '1px solid #f5f6f8', '&:hover': { bgcolor: 'action.hover' } }}>
                     <Checkbox size="small" checked={ids.has(Number(a.id))} sx={{ p: 0.5, mr: 0.5 }} />
