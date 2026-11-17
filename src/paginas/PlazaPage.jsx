@@ -1,6 +1,6 @@
 // src/paginas/PlazaPage.jsx — /plaza/:id: la vista «diseño» de una plaza de despacho (Diego 11/11/2026).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import EditorPlaza from '@/componentes/plazas/EditorPlaza';
 import VincularTV from '@/componentes/plazas/VincularTV';
 import TvOutlinedIcon from '@mui/icons-material/TvOutlined';
@@ -9,6 +9,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import VistaPlaza from '@/componentes/plazas/VistaPlaza';
 import { PLAZAS_EJEMPLO } from '@/componentes/plazas/ejemploPlaza';
+import { useTableros, sectoresDe, pedirNuevaPlaza } from '@/componentes/plazas/useTableros';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 import { useBusiness } from '@/context/BusinessContext';
 import RecetaModal from '@/componentes/RecetaModal';
@@ -42,35 +43,98 @@ const fichaDe = (renglones) => ({
   extras: renglones.filter((r) => r.extra).map((r) => ({ id: r.key, texto: r.nombre, color: r.color })),
 });
 
-// /tableros: entra a la primera plaza; si no hay, lo dice (y deja crear si se puede).
+// «Todos» (Diego 17/11/2026): el mapa del negocio — cada sector con sus plazas, cuántos productos tienen y
+// qué TV las muestra. Los sectores vacíos se ven igual, con «+ Crear la primera». Tocás una plaza y entrás.
+function TablerosMapa({ t }) {
+  const navigate = useNavigate();
+  const sectores = sectoresDe(t);
+  const tarjeta = { border: '1px solid #e2e8f0', borderRadius: 2, p: 1.5 };
+  return (
+    <Box sx={{ px: { xs: 1.5, md: 2.5 }, py: 2, bgcolor: '#fff', minHeight: '100%' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(auto-fill, minmax(300px, 1fr))' }, gap: 2, alignItems: 'start' }}>
+        {sectores.map((s) => {
+          const plazas = t.plazas.filter((p) => Number(p.sectorId) === s.id);
+          return (
+            <Box key={s.id} sx={{ border: '1px solid #e5e7eb', borderRadius: 2.5, p: 1.5 }}>
+              <Stack direction="row" alignItems="baseline" sx={{ mb: 1.25 }}>
+                <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '0.95rem', textTransform: 'uppercase', flex: 1 }}>{s.nombre}</Typography>
+                <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>{plazas.length} plaza{plazas.length !== 1 ? 's' : ''}</Typography>
+              </Stack>
+              {plazas.map((p) => {
+                const n = (p.productos || []).length;
+                return (
+                  <Box key={p.id} component="button" type="button" onClick={() => navigate(`/tableros/${p.id}`)}
+                    sx={{ ...tarjeta, width: '100%', mb: 1, display: 'flex', alignItems: 'center', bgcolor: '#fff', cursor: 'pointer', font: 'inherit', textAlign: 'left',
+                      minHeight: 56, '&:hover': { borderColor: '#5BC2EA', bgcolor: 'rgba(91,194,234,.05)' } }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: '0.92rem' }} noWrap>{p.nombre}</Typography>
+                      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>{n} producto{n !== 1 ? 's' : ''}</Typography>
+                    </Box>
+                    <Typography sx={{ fontSize: '0.75rem', whiteSpace: 'nowrap', color: p.tvs > 0 ? '#16a34a' : 'text.disabled' }}>
+                      {p.tvs > 0 ? `● ${p.tvs > 1 ? `${p.tvs} TV` : 'TV'}` : 'sin TV'}
+                    </Typography>
+                  </Box>
+                );
+              })}
+              {t.puedeCrear && (
+                <Box component="button" type="button" onClick={() => pedirNuevaPlaza(s.id)}
+                  sx={{ width: '100%', minHeight: plazas.length ? 44 : 72, border: '1px dashed #cbd5e1', borderRadius: 2, bgcolor: 'transparent', cursor: 'pointer',
+                    font: 'inherit', color: '#2492C8', fontWeight: 600, fontSize: '0.85rem', '&:hover': { borderColor: '#5BC2EA' } }}>
+                  {plazas.length ? '+ Plaza' : <>Todavía no tiene plazas<br />+ Crear la primera</>}
+                </Box>
+              )}
+              {!t.puedeCrear && !plazas.length && <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>Todavía no tiene plazas.</Typography>}
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
+  );
+}
+
+// /tableros/sector/:sid — un sector: entra a su primera plaza; si está vacío, invita a crear la primera.
+export function TablerosSector() {
+  const { sid } = useParams();
+  const t = useTableros();
+  if (!t) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
+  const sector = sectoresDe(t).find((x) => String(x.id) === String(sid));
+  if (!sector) return <Navigate to="/tableros" replace />;
+  const primera = t.plazas.find((p) => String(p.sectorId) === String(sid));
+  if (primera) return <Navigate to={`/tableros/${primera.id}`} replace />;
+  return (
+    <Box sx={{ px: 2, py: 4, bgcolor: '#fff', minHeight: '100%' }}>
+      <Box sx={{ maxWidth: 620, mx: 'auto', p: 2.5, borderRadius: 2, border: '1px solid #5BC2EA', bgcolor: 'rgba(91,194,234,.06)', textAlign: 'center' }}>
+        <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.05rem' }}>{sector.nombre} todavía no tiene plazas</Typography>
+        <Typography color="text.secondary" sx={{ fontSize: '0.88rem', mt: 0.75, mb: 1.5 }}>
+          Armá sus puestos de despacho (por ejemplo Tragos, Café o Freidora): cada uno tiene su tablero con la lámina de armado.
+        </Typography>
+        {t.puedeCrear
+          ? <Button variant="contained" disableElevation onClick={() => pedirNuevaPlaza(sector.id)} sx={{ minHeight: 40 }}>+ Crear plaza en {sector.nombre}</Button>
+          : <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>Las plazas las crea el dueño, un admin o el jefe de cocina de su sector.</Typography>}
+      </Box>
+    </Box>
+  );
+}
+
+// /tableros: con plazas, «Todos» (el mapa); sin plazas, el primer paso + tableros de ejemplo.
 export function TablerosInicio() {
-  const { activeId } = useBusiness() || {};
-  const [t, setT] = useState(null);
-  const [creando, setCreando] = useState(false);
-  const [nueva, setNueva] = useState(null);
+  const t = useTableros();
   const [conReceta, setConReceta] = useState(null); // productos con receta del negocio (dato real del primer paso)
   const [ej, setEj] = useState(0); // qué tablero de ejemplo se muestra
-  useEffect(() => { setT(null); PlazasAPI.tablero().then(setT).catch(() => setT({ plazas: [], puedeCrear: false, sectores: [] })); }, [activeId]);
-  // Sector creado desde el editor: se vuelve a pedir la lista sin vaciar la pantalla.
+  const sinPlazas = !!t && !t.plazas.length;
   useEffect(() => {
-    const recargar = () => PlazasAPI.tablero().then(setT).catch(() => {});
-    window.addEventListener('plazas:changed', recargar);
-    return () => window.removeEventListener('plazas:changed', recargar);
-  }, [activeId]);
-  useEffect(() => {
-    if (!t || t.plazas.length) return;
+    if (!sinPlazas) return;
     PlazasAPI.articulos().then((r) => setConReceta(r.articulos.length)).catch(() => setConReceta(null));
-  }, [t]);
-  if (nueva) return <Navigate to={`/tableros/${nueva}`} replace />;
+  }, [sinPlazas]);
   if (!t) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
-  if (t.plazas.length) return <Navigate to={`/tableros/${t.plazas[0].id}`} replace />;
+  if (t.plazas.length) return <TablerosMapa t={t} />;
   // Sin plazas (negocio nuevo): tarjeta del primer paso + tableros de EJEMPLO atenuados que no se
   // pueden tocar y no se guardan (regla del proyecto para pantallas vacías). Se ve el diseño real
   // de la lámina —colores, pesos, observaciones— para que se entienda qué se va a armar.
   const ejemplo = PLAZAS_EJEMPLO[ej];
   return (
     <Box sx={{ px: 2, py: 2, bgcolor: '#fff', minHeight: '100%' }}>
-      <GuiaTableros activo={!creando} sinDatos pasos={[
+      <GuiaTableros activo sinDatos pasos={[
         { k: 'tab-primer-paso', s: 'tablero', t: t.puedeCrear
           ? <>Una <b>plaza</b> es un puesto de despacho: un sector de la cocina o de la barra. Con <b>+ Crear plaza</b> armás la primera y elegís sus productos.</>
           : <>Una <b>plaza</b> es un puesto de despacho: un sector de la cocina o de la barra. Las crea el jefe de cocina, un encargado o el dueño.</> },
@@ -83,7 +147,7 @@ export function TablerosInicio() {
           Una plaza es un puesto de despacho: un sector de la cocina o de la barra (Ensaladas, Freidora, Frozen). Su tablero es la lámina de armado de sus productos, para que la comunicación no falle.
         </Typography>
         {t.puedeCrear
-          ? <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>
+          ? <Button variant="contained" disableElevation onClick={() => pedirNuevaPlaza(sectoresDe(t)[0]?.id ?? null)} sx={{ height: 36 }}>+ Crear plaza</Button>
           : <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>Las plazas las crea el dueño, un admin o el jefe de cocina de su sector.</Typography>}
         {conReceta != null && (
           <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', mt: 1 }}>
@@ -106,8 +170,6 @@ export function TablerosInicio() {
       <Box data-tour="tab-ejemplo" aria-hidden sx={{ opacity: 0.85, pointerEvents: 'none', userSelect: 'none' }}>
         <VistaPlaza productos={ejemplo.productos} />
       </Box>
-      <EditorPlaza abierto={creando} sectores={t.sectores} puedeCrearSector={t.puedeCrearSector} onCerrar={() => setCreando(false)}
-        onGuardado={(id) => { setCreando(false); if (id) setNueva(id); }} />
     </Box>
   );
 }
