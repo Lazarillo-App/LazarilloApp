@@ -2266,7 +2266,11 @@ export default function TablaArticulos({
           if (sub) headerSr = sub;
         }
       }
-      const label = row.agrupLabel || (isRubroView ? `${headerSr} - ${headerCat}` : `${headerCat} - ${headerSr}`);
+      // En los datos, «subrubro» es el RUBRO que se ve y «categoria» el SUBRUBRO: los vacíos se nombran
+      // por lo que falta de verdad (Diego 16/11/2026: decía «Sin subrubro» cuando faltaba el rubro).
+      const etqRubro = (v) => (!v || /^sin (subrubro|rubro)$/i.test(String(v).trim())) ? 'Sin rubro' : v;
+      const etqSub = (v) => (!v || /^sin (categor[ií]a|subrubro)$/i.test(String(v).trim())) ? 'Sin subrubro' : v;
+      const label = row.agrupLabel || (isRubroView ? `${etqRubro(headerSr)} - ${etqSub(headerCat)}` : `${etqSub(headerCat)} - ${etqRubro(headerSr)}`);
       const groupKeyName = tableHeaderMode === "sr-first" ? headerCat : headerSr;
       const ids = row.ids || [];
       const totalQty = ids.reduce((acc, id) => acc + getVentasQty(id), 0);

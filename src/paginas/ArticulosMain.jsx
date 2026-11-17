@@ -3066,8 +3066,20 @@ export default function ArticulosMain(props) {
       const saved = viewModeByGroup[Number(g.id)] || viewModeByGroup[String(g.id)];
       if (saved === 'by-subrubro' || saved === 'by-categoria') return saved;
     }
+    // Si el negocio no tiene rubros (o no tiene subrubros), arranca en la vista que sí tiene datos
+    // (Diego 16/11/2026: en Renato todo decía «Sin rubro» y no veía los subrubros). Con los dos, como siempre.
+    // En los datos, «subrubro» es el RUBRO que se ve y «categoria» el SUBRUBRO.
+    const arbol = categorias || [];
+    if (arbol.length) {
+      // El árbol rellena los vacíos con «Sin subrubro» / «Sin categoría»: esos cuentan como vacíos.
+      const conDato = (v) => { const t = String(v || '').trim(); return !!t && !/^sin (subrubro|rubro|categor[ií]a)$/i.test(t); };
+      const hayRubro = arbol.some((sub) => conDato(sub?.subrubro));
+      const haySub = arbol.some((sub) => (sub?.categorias || []).some((c) => conDato(c?.categoria)));
+      if (!hayRubro && haySub) return 'by-categoria';
+      if (hayRubro && !haySub) return 'by-subrubro';
+    }
     return viewModeGlobal;
-  }, [agrupacionSeleccionada, viewModeByGroup, viewModeGlobal]);
+  }, [agrupacionSeleccionada, viewModeByGroup, viewModeGlobal, categorias]);
 
   const sidebarListMode = effectiveViewMode;
   const tableHeaderMode =
