@@ -214,6 +214,14 @@ export function ThemeProviderNegocio({ children, activeBizId }) {
     }
   };
 
+  // 1b) al montar, revalidar SIEMPRE el tema del negocio activo contra la base. Sin esto, en un
+  // navegador sin caché (cliente nuevo, otra compu) el negocio arrancaba con la paleta celeste de
+  // Lazarillo y no se corregía hasta cambiar de negocio (FALLA, Renato 16/11/2026).
+  useEffect(() => {
+    if (bizIdInitial && role !== 'app_admin') refreshFromBackend(bizIdInitial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 2) cuando cambia activeBizId (prop o LS), cargar cache o backend
   useEffect(() => {
     const nextId = String(activeBizId || getActiveBizId() || '');
