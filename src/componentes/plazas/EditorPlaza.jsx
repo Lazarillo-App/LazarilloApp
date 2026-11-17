@@ -222,3 +222,4 @@ export default function EditorPlaza({ abierto, sector, sectores = [], puedeCrear
     </Dialog>
   );
 }
+
