@@ -20,7 +20,7 @@ import { BASE } from '@/servicios/apiBase';
 import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
-import TablerosBotonera from './plazas/TablerosBotonera';
+import TablerosBotonera, { TablerosChips } from './plazas/TablerosBotonera';
 import PulsoDatos from './PulsoDatos';
 import MenuPerfil from '@/componentes/MenuPerfil';
 import { MisPendientesDrawer, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
@@ -617,6 +617,12 @@ export default function Navbar() {
                 <SucursalesChips />
               </Box>
             )}
+            {/* Tableros (Diego 17/11/2026): debajo de los sectores, sus plazas con el diseño de las sucursales. */}
+            {!isAppAdmin && location.pathname.startsWith('/tableros') && (
+              <Box data-tour="hdr-plazas" sx={{ pl: 1, pb: 0.25 }}>
+                <TablerosChips />
+              </Box>
+            )}
             {/* Movimientos bancarios y Conciliación: cada sucursal tiene su cuenta (Diego 15/11/2026: «me gusta
                 que te haga elegir una cuando entrás, pero después tienen que quedar arriba en el menú como en
                 el resto de las pantallas»). Sin "Todas" y sin marcar ninguna hasta que se elige. */}
@@ -758,6 +764,13 @@ export default function Navbar() {
             '& .MuiIconButton-root': { width: 36, height: 36, my: 0 },
           }}>
             {botonera}
+          </Box>
+        )}
+        {/* Celular, Tableros: las plazas del sector en una segunda fila (chips de 30 px, se deslizan de costado). */}
+        {celu && location.pathname.startsWith('/tableros') && (
+          <Box sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', alignSelf: 'stretch', minHeight: 44, px: 1.5, pb: 0.75,
+            scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+            <TablerosChips celu />
           </Box>
         )}
 
