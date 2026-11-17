@@ -5,12 +5,26 @@ import React from 'react';
 import { Box, Stack, Typography, Button, TextField, Chip, Checkbox, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { showAlert } from '@/servicios/appAlert';
+import { showPrompt } from '@/servicios/appPrompt';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 
-export default function EditorPlaza({ abierto, sector, sectores = [], plaza, onCerrar, onGuardado }) {
+export default function EditorPlaza({ abierto, sector, sectores = [], puedeCrearSector = false, plaza, onCerrar, onGuardado }) {
   // Sin sector fijo (desde Tableros): se elige entre los sectores donde la persona puede crear plazas.
+  // Dueño/admin también pueden crear uno ahí mismo (Diego 17/11/2026): «+ Crear sector» arriba de la lista.
+  const [secs, setSecs] = React.useState(sectores);
+  React.useEffect(() => { if (abierto) setSecs(sectores); }, [abierto]); // eslint-disable-line react-hooks/exhaustive-deps
   const [sectorId, setSectorId] = React.useState(sector?.id || sectores[0]?.id || '');
-  const sectorElegido = sector || sectores.find((x) => String(x.id) === String(sectorId)) || null;
+  const sectorElegido = sector || secs.find((x) => String(x.id) === String(sectorId)) || null;
+  const crearSector = async () => {
+    const n = await showPrompt('Nombre del sector (ej. Cocina, Barra, Cafetería):', '');
+    if (n == null || !String(n).trim()) return;
+    try {
+      const s = await PlazasAPI.crearSector(String(n).trim());
+      setSecs((l) => (l.some((x) => Number(x.id) === Number(s.id)) ? l : [...l, s].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))));
+      setSectorId(s.id);
+    } catch (e) { showAlert(e?.message || 'No se pudo crear el sector', 'error'); }
+  };
+  const conSelector = !sector && (secs.length > 1 || puedeCrearSector);
   const [nombre, setNombre] = React.useState('');
   const [elegidos, setElegidos] = React.useState([]); // [{ id, nombre }]
   const [q, setQ] = React.useState('');
@@ -94,13 +108,20 @@ export default function EditorPlaza({ abierto, sector, sectores = [], plaza, onC
       <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5 }}>
         <Typography component="h2" sx={{ fontWeight: 700, fontSize: '1rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {plaza?.id ? 'Editar plaza' : 'Nueva plaza'}
-          {sectorElegido && (sector || sectores.length <= 1) && <Typography component="span" color="text.secondary" sx={{ fontSize: '0.85rem' }}> · {sectorElegido.nombre}</Typography>}
+          {sectorElegido && !conSelector && <Typography component="span" color="text.secondary" sx={{ fontSize: '0.85rem' }}> · {sectorElegido.nombre}</Typography>}
         </Typography>
-        {!sector && sectores.length > 1 && (
-          <TextField select size="small" value={sectorId} onChange={(e) => setSectorId(e.target.value)}
+        {conSelector && (
+          <TextField select size="small" value={sectorId} onChange={(e) => { if (e.target.value === '__crear') { crearSector(); return; } setSectorId(e.target.value); }}
             sx={{ width: 170, flexShrink: 0, '& .MuiInputBase-root': { height: 40 } }}
-            SelectProps={{ renderValue: (v) => `Sector: ${sectores.find((x) => String(x.id) === String(v))?.nombre || ''}` }}>
-            {sectores.map((x) => <MenuItem key={x.id} value={x.id}>{x.nombre}</MenuItem>)}
+            SelectProps={{ displayEmpty: true, renderValue: (v) => `Sector: ${secs.find((x) => String(x.id) === String(v))?.nombre || 'elegí'}` }}>
+            {/* Acción primero, en franja gris (mismo patrón que SelectorBuscable / «+ Crear merma»). */}
+            {puedeCrearSector && (
+              <MenuItem value="__crear" sx={{ fontSize: '0.82rem', fontWeight: 600, color: 'primary.main',
+                bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider', '&:hover': { bgcolor: 'action.selected' } }}>
+                + Crear sector
+              </MenuItem>
+            )}
+            {secs.map((x) => <MenuItem key={x.id} value={x.id}>{x.nombre}</MenuItem>)}
           </TextField>
         )}
         <TextField autoFocus={!plaza?.id} fullWidth size="small" placeholder="Nombre de la plaza (ej. Ensaladas, Freidora, Tostados)" value={nombre}

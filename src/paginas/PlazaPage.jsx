@@ -100,7 +100,7 @@ export function TablerosInicio() {
       <Box data-tour="tab-ejemplo" aria-hidden sx={{ opacity: 0.85, pointerEvents: 'none', userSelect: 'none' }}>
         <VistaPlaza productos={ejemplo.productos} />
       </Box>
-      <EditorPlaza abierto={creando} sectores={t.sectores} onCerrar={() => setCreando(false)}
+      <EditorPlaza abierto={creando} sectores={t.sectores} puedeCrearSector={t.puedeCrearSector} onCerrar={() => setCreando(false)}
         onGuardado={(id) => { setCreando(false); if (id) setNueva(id); }} />
     </Box>
   );

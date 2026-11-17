@@ -5,7 +5,7 @@ const ok = (r, msg) => { if (!r?.ok) throw new Error(r?.error || msg); return r;
 
 export const PlazasAPI = {
   // Plazas + si la persona puede crear (dueño/admin, o jefe en sus sectores) y en qué sectores.
-  async tablero() { const r = ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas'); return { plazas: r.plazas || [], puedeCrear: !!r.puedeCrear, sectores: r.sectores || [] }; },
+  async tablero() { const r = ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas'); return { plazas: r.plazas || [], puedeCrear: !!r.puedeCrear, puedeCrearSector: !!r.puedeCrearSector, sectores: r.sectores || [] }; },
   async listar() { return ok(await httpBiz('/plazas', { method: 'GET', cache: false }), 'No se pudieron cargar las plazas').plazas || []; },
   // Artículos con receta, por ventas (90 días) de mayor a menor, con rubro/subrubro y agrupaciones; y las
   // agrupaciones para filtrar.
@@ -25,6 +25,8 @@ export const PlazasAPI = {
     return r.pantalla;
   },
   async desvincularPantalla(id, pid) { return ok(await httpBiz(`/plazas/${id}/pantallas/${pid}`, { method: 'DELETE' }), 'No se pudo desvincular'); },
+  // Sector nuevo desde el editor de la plaza (dueño/admin). Si ya existe con ese nombre, devuelve ese.
+  async crearSector(nombre) { return ok(await httpBiz('/plazas/sectores', { method: 'POST', body: { nombre } }), 'No se pudo crear el sector').sector; },
   async borrar(id) { return ok(await httpBiz(`/plazas/${id}`, { method: 'DELETE' }), 'No se pudo borrar la plaza'); },
   async vista(id, articleId) { return ok(await httpBiz(`/plazas/${id}/vista${articleId ? `?articleId=${articleId}` : ''}`, { method: 'GET', cache: false }), 'No se pudo cargar la plaza'); },
   async guardarFicha(id, articleId, ficha) { return ok(await httpBiz(`/plazas/${id}/fichas/${articleId}`, { method: 'PUT', body: ficha }), 'No se pudo guardar'); },
