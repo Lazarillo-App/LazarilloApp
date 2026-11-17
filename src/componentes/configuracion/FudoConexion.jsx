@@ -5,10 +5,12 @@
 //    pantalla real de Fudo) y los dos campos.
 //  - Conectada: hasta qué día hay ventas, la última lectura, «Traer ahora», los productos sin vincular
 //    (FudoProductos) y Desconectar.
-// Lazarillo solo LEE ventas de Fudo: no escribe nada allá (la API de Fudo es de solo lectura). Las
-// claves se guardan cifradas y no se vuelven a mostrar.
+//  - Qué traer (usuaria 17/11): las ventas siempre; artículos, insumos y recetas, y compras, a elección
+//    (arrancan tildados: si el cliente sigue usando Fudo para eso, Lazarillo lo trae igual).
+// Lazarillo solo LEE de Fudo: no escribe nada allá (la API de Fudo es de solo lectura). Las claves se
+// guardan cifradas y no se vuelven a mostrar.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Paper, Stack, Typography, Box, Button, Chip, Alert, CircularProgress, TextField, Collapse } from '@mui/material';
+import { Paper, Stack, Typography, Box, Button, Chip, Alert, CircularProgress, TextField, Collapse, Checkbox, FormControlLabel } from '@mui/material';
 import { FudoAPI } from '@/servicios/apiFudo';
 import { showConfirm } from '@/servicios/appConfirm';
 import { showAlert } from '@/servicios/appAlert';
@@ -17,12 +19,53 @@ import FudoProductos from './FudoProductos';
 const fecha = (iso) => (iso ? new Date(String(iso).length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
 const fechaHora = (iso) => (iso ? new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '');
 
+// Qué se puede traer de Fudo. Las ventas no se pueden destildar.
+const OPCIONES = [
+  ['ventas', 'Ventas', 'todas las noches'],
+  ['articulos', 'Artículos', 'los productos nuevos y sus cambios de nombre, precio y rubro'],
+  ['insumos', 'Insumos y recetas', 'los ingredientes con su rubro y unidad, y la receta de cada producto'],
+  ['compras', 'Compras', 'los gastos que cargues en Fudo; si ya están cargados en Lazarillo no se repiten'],
+];
+const TRAER_DEFAULT = { ventas: true, articulos: true, insumos: true, compras: true };
+
+function QueTraer({ valor, onCambio, deshabilitado, themeColor }) {
+  return (
+    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.5, py: 1 }}>
+      <Typography sx={{ fontWeight: 700, fontSize: 13.5, mb: 0.25 }}>Qué traer de Fudo</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        Lo ideal es cargar artículos, insumos y compras en Lazarillo; si los seguís cargando en Fudo, los traemos igual. Lo que edites en Lazarillo no se pisa.
+      </Typography>
+      {OPCIONES.map(([k, l, d]) => (
+        <FormControlLabel key={k} sx={{ display: 'flex', alignItems: 'flex-start', m: 0, py: 0.25 }}
+          control={<Checkbox size="small" checked={!!valor[k]} disabled={deshabilitado || k === 'ventas'}
+            onChange={(e) => onCambio({ ...valor, [k]: e.target.checked })}
+            sx={{ p: 0.75, mt: -0.25, color: themeColor, '&.Mui-checked': { color: themeColor } }} />}
+          label={<Typography variant="body2" sx={{ pt: 0.5 }}><b>{l}</b> <span style={{ color: '#5b6577' }}>· {d}</span></Typography>} />
+      ))}
+    </Box>
+  );
+}
+
 const PASOS = [
   <>En Fudo entrá a <b>Configuración › Integraciones › API Pública General</b> y tocá <b>Habilitar API Pública General</b>. Si te pregunta para qué la vas a usar, marcá <i>gestión de stock, inventario y compras</i> y <i>tablero con métricas</i>.</>,
   <>Andá a <b>Configuración › Equipo › Usuarios</b> y tocá <b>+ Nuevo</b>. Usuario: <b>lazarillo</b> · Nombre: <b>Lazarillo API</b> · Rol: <b>admin</b> · <b>sin</b> marcar Superusuario. Poné una contraseña cualquiera y un mail tuyo.</>,
   <>Abrí ese usuario nuevo desde la lista. Abajo, en <b>API</b>, vas a ver la <b>API Key</b> y el <b>API Secret</b> «Sin asignar»: generá el secret.</>,
   <>Copiá las dos claves acá abajo. <b>Ojo:</b> Fudo muestra el secret una sola vez, pegalo antes de cerrar esa ventana.</>,
 ];
+
+// «12 artículos nuevos, 2 insumos nuevos, 3 recetas, 1 compra» a partir de lo que devuelve el back.
+function resumenMaestros(m) {
+  if (!m) return '';
+  const n = (x, uno, varios) => (x ? `${x} ${x === 1 ? uno : varios}` : null);
+  return [
+    n(m.articulos?.nuevos, 'artículo nuevo', 'artículos nuevos'),
+    n(m.articulos?.vinculados, 'artículo vinculado solo', 'artículos vinculados solos'),
+    n(m.insumos?.nuevos, 'insumo nuevo', 'insumos nuevos'),
+    n((m.recetas?.nuevas || 0) + (m.recetas?.actualizadas || 0), 'receta', 'recetas'),
+    n(m.compras?.nuevas, 'compra', 'compras'),
+    n(m.compras?.salteadas, 'compra que ya estaba en Lazarillo', 'compras que ya estaban en Lazarillo'),
+  ].filter(Boolean).join(', ');
+}
 
 export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlta = false, onConectado }) {
   const [est, setEst] = useState(null);
@@ -31,6 +74,7 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
   const [secret, setSecret] = useState('');
   const [conectando, setConectando] = useState(false);
   const [verProductos, setVerProductos] = useState(false);
+  const [traer, setTraer] = useState(TRAER_DEFAULT);
   const espera = useRef(null);
 
   const cargar = useCallback(async () => {
@@ -38,6 +82,7 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
     try {
       const r = await FudoAPI.estado(businessId);
       setEst(r);
+      if (r?.traer) setTraer(r.traer);
       setError('');
       // Mientras trae ventas (la primera vez son 3 meses), se vuelve a mirar cada 10 s.
       clearTimeout(espera.current);
@@ -51,9 +96,9 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
   const conectar = async () => {
     setConectando(true); setError('');
     try {
-      await FudoAPI.conectar(businessId, key.trim(), secret.trim());
+      await FudoAPI.conectar(businessId, key.trim(), secret.trim(), traer);
       setKey(''); setSecret('');
-      showAlert('Fudo conectado. Ya estamos trayendo los últimos 3 meses de ventas.', 'success');
+      showAlert('Fudo conectado. Ya estamos trayendo los últimos 3 meses.', 'success');
       onConectado?.();
       setTimeout(cargar, 1500);
     } catch (e) {
@@ -63,6 +108,19 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
         : 'No se pudo conectar con Fudo. Probá de nuevo en unos minutos.'));
     } finally {
       setConectando(false);
+    }
+  };
+
+  // Conectada: cada tilde se guarda al instante (y deja aviso en la campanita).
+  const cambiarTraer = async (nuevo) => {
+    const antes = traer;
+    setTraer(nuevo);
+    try {
+      await FudoAPI.traer(businessId, nuevo);
+      showAlert('Listo: se aplica en la próxima lectura (o tocá «Traer ahora»).', 'success');
+    } catch {
+      setTraer(antes);
+      showAlert('No se pudo guardar qué traer de Fudo.', 'error');
     }
   };
 
@@ -112,7 +170,7 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
         {est && !est.conectado && (
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">
-              Con Fudo nos conectamos solos: Lazarillo trae tus <b>ventas</b> todas las noches, sin instalar nada ni dejar ninguna compu prendida.
+              Con Fudo nos conectamos solos: Lazarillo trae tus <b>ventas</b> (y si querés, artículos, insumos y compras) todas las noches, sin instalar nada ni dejar ninguna compu prendida.
               Solo <b>leemos</b>: Lazarillo no cambia nada en tu Fudo. Necesitamos dos claves que se sacan en Fudo en 5 minutos:
             </Typography>
             <Stack component="ol" spacing={1} sx={{ m: 0, pl: 0, listStyle: 'none' }}>
@@ -123,6 +181,7 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
                 </Stack>
               ))}
             </Stack>
+            <QueTraer valor={traer} onCambio={setTraer} themeColor={themeColor} />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
               <TextField size="small" label="API Key" value={key} onChange={(e) => setKey(e.target.value)} fullWidth
                 autoComplete="off" inputProps={{ spellCheck: false }} />
@@ -151,6 +210,9 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
               {est.ultimo_sync_at && !est.sincronizando ? ` · última lectura ${fechaHora(est.ultimo_sync_at)}` : ''}
               {' · '}se actualiza sola todas las noches.
             </Typography>
+            {resumenMaestros(est.maestros_resumen) && (
+              <Typography variant="body2" color="text.secondary">Última lectura de Fudo: {resumenMaestros(est.maestros_resumen)}.</Typography>
+            )}
             {est.ultimo_sync_error && (
               <Alert severity="warning">La última vez Fudo respondió con un error: {est.ultimo_sync_error}. Si cambiaste el usuario o el API Secret en Fudo, desconectá y volvé a conectar.</Alert>
             )}
@@ -169,6 +231,9 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
           </Stack>
         )}
 
+        {est?.conectado && !enAlta && (
+          <Box sx={{ mt: 1.5 }}><QueTraer valor={traer} onCambio={cambiarTraer} deshabilitado={est.sincronizando} themeColor={themeColor} /></Box>
+        )}
         {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
       </Box>
 
