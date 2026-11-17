@@ -43,11 +43,15 @@ function Aviso({ aviso, onClose }) {
 
 // `pedido`: celda vacía tocada en el Panel; abre un Gasto Vario ya armado.
 // `abrirAlMontar`: se entra desde la home ("Carga de gastos") y el modal arranca abierto.
-export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Cargar Gastos', abrirAlMontar = false, onAbiertoAlMontar }) {
+export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Cargar Gastos', abrirAlMontar = false, onAbiertoAlMontar, onAbiertoCambia, cerrarAhora }) {
   const { businessId, sucursal, sucursalCaja } = usePanelGestion();
   const queryClient = useQueryClient();
   const [abierto, setAbierto] = useState(abrirAlMontar);
   useEffect(() => { if (abrirAlMontar) onAbiertoAlMontar?.(); }, [abrirAlMontar, onAbiertoAlMontar]);
+  // El Panel sabe si la carga está abierta: su guía espera a que se cierre (Diego 17/11/2026).
+  useEffect(() => { onAbiertoCambia?.(abierto); }, [abierto, onAbiertoCambia]);
+  // …y la cierra si piden la guía del Panel con la carga abierta (cerrarAhora cambia de número).
+  useEffect(() => { if (cerrarAhora) { setAbierto(false); setCtx(null); } }, [cerrarAhora]);
   const [ctx, setCtx] = useState(null);
   // Guía «Cargar una factura o gasto» de Anthony: abre la carga vacía (Diego 14/11/2026).
   useAbrirGuia('carga_gastos', () => { setCtx(null); setAbierto(true); });

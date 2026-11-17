@@ -54,7 +54,7 @@ import { MESES_IDX } from '@/gestion/formato';
 import { useAccess } from '@/context/AccessContext';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { usePasosHeader, refTour } from '@/componentes/asistente/pasosHeader';
-import { useSectorGuia, pasosDelSector, useAbrirGuia, pedirGuia, GUIAS } from '@/componentes/asistente/guias';
+import { useSectorGuia, pasosDelSector, useAbrirGuia, pedirGuia, GUIAS, guiaPedida, VER_GUIA } from '@/componentes/asistente/guias';
 import { useRecorrido } from '@/hooks/useRecorrido';
 
 const ANIO_ACTUAL = new Date().getFullYear();
@@ -121,6 +121,17 @@ function GestionPanelContenido() {
   // Desde la home ("Carga de gastos"): /gestion?cargar=1 abre el modal de carga y se limpia la URL.
   const [params, setParams] = useSearchParams();
   const [cargarAlEntrar] = useState(() => params.get('cargar') === '1');
+  // Carga abierta (Diego 17/11/2026: la guía del Panel no se muestra encima del modal de carga).
+  // Si alguien pide la guía del Panel con la carga abierta, la carga se cierra para mostrarla.
+  const [cargaAbierta, setCargaAbierta] = useState(false);
+  const [cerrarCarga, setCerrarCarga] = useState(0);
+  useEffect(() => {
+    if (!cargaAbierta) return undefined;
+    if (guiaPedida() === 'gestion_panel') setCerrarCarga((n) => n + 1);
+    const f = (e) => { if (e?.detail === 'gestion_panel') setCerrarCarga((n) => n + 1); };
+    window.addEventListener(VER_GUIA, f);
+    return () => window.removeEventListener(VER_GUIA, f);
+  }, [cargaAbierta]);
   // PROVEEDORES del header (Diego 10/11/2026): /gestion?proveedores=1 abre la cuenta corriente sin proveedor elegido.
   const [verProveedores, setVerProveedores] = useState(false);
   // Pantalla completa de la tabla (como en el Panel viejo, se perdió en la migración — Diego 10/11/2026).
@@ -356,7 +367,7 @@ function GestionPanelContenido() {
     // Panel sin datos (Diego 15/11/2026: «si un sector no tiene nada para mostrar, armémoslo»): el primer
     // paso y el EJEMPLO de cómo se va a ver.
     ...(panelVacio ? [
-      { k: 'panel-primer-paso', s: 'tabla', ref: refTour('panel-primer-paso'), t: <>Tu panel todavía no tiene datos. <b>Conectá tu punto de venta</b> y las ventas y compras entran solas; mientras, podés <b>cargar tu primer gasto</b>.</> },
+      { k: 'panel-primer-paso', s: 'tabla', ref: refTour('panel-primer-paso'), t: <>Tu panel todavía no tiene datos. Si querés ver tu <b>historia para atrás</b>, <b>conectá tu punto de venta</b> y las ventas y compras entran solas; si no, <b>empezá a cargar</b> tus gastos.</> },
       { k: 'panel-ejemplo', s: 'tabla', ref: refTour('panel-ejemplo'), t: <>Así se va a ver, con un <b>ejemplo</b> de números inventados: cada fila es un rubro de gastos y cada columna un mes; abajo, cuánto vendiste y <b>qué te quedó</b>.</> },
     ] : []),
     ...(mostrarTarjetas && hayTarjetas ? [{ k: 'tarjetas', t: <>Estas tarjetas son el resumen del <b>último mes cerrado</b> y cómo viene el mes en curso.</> }] : []),
@@ -368,7 +379,7 @@ function GestionPanelContenido() {
   ].map((p) => ({ ...p, s: p.s || SECTOR_PANEL[p.k] || 'tabla' })), sectorPanel);
   // Arranca solo mientras el panel no tenga datos propios (Diego 14/11/2026); si no, desde Guías.
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
-    verPanel && !!rango.data && !cargarAlEntrar && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores,
+    verPanel && !!rango.data && !cargarAlEntrar && !cargaAbierta && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores,
     // Al final ofrece cargar la primera factura con la ayuda de Anthony (Diego 14/11/2026).
     { sinDatos: sinDatosPanel, siguiente: verCarga && pasosTour[pasosTour.length - 1]?.k === 'cargar' ? { id: 'carga_gastos', label: 'Cargar una factura ahora' } : undefined });
   const pasoTour = pasosTour[recPanel.paso - 1];
@@ -446,7 +457,7 @@ function GestionPanelContenido() {
         </Stack>
         {estado.tab !== 'ventas' && (
           <Stack direction="row" alignItems="center" gap={1}>
-            {verCarga && <Box ref={refsTour.cargar} sx={{ display: 'inline-flex' }}><BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} /></BloqueSeguro></Box>}
+            {verCarga && <Box ref={refsTour.cargar} sx={{ display: 'inline-flex' }}><BloqueSeguro nombre="Cargar Gastos" compacto><CargarFactura pedido={pedidoCarga} onPedidoAtendido={limpiarPedido} abrirAlMontar={cargarAlEntrar} onAbiertoAlMontar={limpiarCargar} onAbiertoCambia={setCargaAbierta} cerrarAhora={cerrarCarga} /></BloqueSeguro></Box>}
             {verPanel && !enParaMirar && pdvId != null && (
               <ScopeGestion>
                 {!oculto('btn.impagas') && <BloqueSeguro nombre="Impagas" compacto><ImpagasBoton locales={locales ?? []} pdvId={pdvId} /></BloqueSeguro>}
