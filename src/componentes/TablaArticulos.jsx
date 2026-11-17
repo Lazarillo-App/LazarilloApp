@@ -1755,7 +1755,7 @@ export default function TablaArticulos({
     'art-tab-listas': <>En <b>Listas</b> quedan los grupos de artículos que guardaste, para volver a encontrarlos con un clic.</>,
     'art-tab-pendientes': <>En <b>Pendientes</b> ves los cambios que propone tu equipo y esperan tu OK.</>,
     'art-marcar': <>Con esta casilla <b>marcás</b> artículos y elegís: guardarlos en una <b>lista</b> o <b>vincularlos</b> (los vinculados tienen siempre el mismo precio).</>,
-    'art-col-ventas': <><b>Ventas</b> del período que elegís arriba. El <b>👁</b> deja solo los que vendieron y <b>U / $</b> cambia entre unidades y pesos.</>,
+    'art-col-ventas': <><b>Ventas</b> del período que elegís arriba. El <b>👁</b> deja solo los que vendieron. El chip de abajo elige qué ver: unidades <b>vendidas</b>, las que salieron <b>sin venta</b> (personal, BigBox, roturas…), <b>todo</b> junto, o <b>pesos</b>.</>,
     'art-col-costo': <><b>Costo</b>: cuánto te sale hacerlo según su receta. Debajo, <b>sug.</b> es el precio que necesitás para llegar a tu costo objetivo.</>,
     'art-col-precio': <><b>Precio</b> de venta en la lista elegida. Debajo, <b>gan.</b> es lo que te queda por cada uno.</>,
     'art-col-rentabilidad': <><b>Costo %</b>: qué parte del precio se va en costo, contra tu objetivo (la rayita). Fila <b>roja</b>: te pasaste del objetivo; <b>ámbar</b>: el costo no es confiable. Tocando <b>obj</b> fijás el objetivo en el costo actual.</>,
