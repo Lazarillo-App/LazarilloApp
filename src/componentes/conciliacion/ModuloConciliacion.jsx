@@ -1,7 +1,7 @@
 
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, react-refresh/only-export-components -- módulo de Diego: se integró sin tocar su lógica (14/11/2026) */
 import React from "react";
-import { C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, autoConciliarCC, cliKey, conciliar, esMP, fmt, fmtFecha, memDesdeProp, memOlvidar, memRegistrar, pagadorCoincide, parseFacturasCC, refBan, refCob, useBrandFonts, useSheetJS } from './motorConciliacion';
+import { CORTE_DEFAULT, aplicarCorte, C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, autoConciliarCC, cliKey, conciliar, esMP, fmt, fmtFecha, memDesdeProp, memOlvidar, memRegistrar, pagadorCoincide, parseFacturasCC, refBan, refCob, useBrandFonts, useSheetJS } from './motorConciliacion';
 import { BuscadorBox, ColErrorModal, CuentaModal, DynThead, Empty, Field, GrupoCCHead, ImportModal, InfoTip, InstructivoModal, NotaChip, NotaEditor, Panel, PanelColapsable, PanelHead, Rows, SubFilter, UploaderCard, fldLbl, ghostBtn, inputStyle } from './piezasConciliacion';
 import { DayCompareBar, DayGroupedRows, DayNav, DiaCompartido, DynRow, PendItem, SugerenciasPanel } from './vistasDiaConciliacion';
 import { calcBarTotals, calcCcPorDia, calcDifSigno, calcResComp, calcSugerencias, calcView } from './calculosConciliacion';
@@ -22,10 +22,15 @@ export default function ModuloConciliacion({
   persist = null,
 }) {
   useBrandFonts();
-  const [data, setData] = React.useState(() => {
+  const [dataBase, setData] = React.useState(() => {
     const f = (persist && persist.fuentes) || {};
     return { ventas: f.ventas || null, pagos: f.pagos || null, banco: f.banco || null };
   });
+  // Corte del día (17/11): los cobros de madrugada cuentan como del día anterior. Se recuerda por negocio.
+  const corteKey = "lz-conc-corte:" + ((business && (business.id || business.name)) || "");
+  const [corte, setCorteSt] = React.useState(() => { try { const v = localStorage.getItem(corteKey); return v == null ? CORTE_DEFAULT : (parseInt(v, 10) || 0); } catch (e) { return CORTE_DEFAULT; } });
+  const setCorte = (v) => { setCorteSt(v); try { localStorage.setItem(corteKey, String(v)); } catch (e) { /* sin storage */ } };
+  const data = React.useMemo(() => (dataBase.banco ? { ...dataBase, banco: aplicarCorte(dataBase.banco, corte) } : dataBase), [dataBase, corte]);
   const [result, setResult] = React.useState(null);
   const [tol, setTol] = React.useState(0); // arranca en "mismo día"
   const [desde, setDesde] = React.useState(null);
@@ -1089,7 +1094,7 @@ export default function ModuloConciliacion({
         </p>
 
         {/* SETUP: fuentes + período + config (tolerancia y margen). Se minimiza cuando está todo cargado. */}
-        {renderBarraSuperior({ allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady })}
+        {renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady })}
 
         {/* RESULTADOS */}
         {renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen, aprobadas, barTotals, busqComp, busqPago, ccById, ccConc, ccListaOpen, ccOpen, ccPorDia, ccSplit, colFilterB, colFilterOpen, colFilterV, colMenu, colsB, colsBeff, colsV, colsVeff, conciliarManual, conocePagador, controlCC, ctrlOpen, dayCenter, dayView, dayWindow, desarmarCluster, descartarSugerencia, desde, deshacerAprobada, diaCounts, diasPend, difFiltro, difPend, editarCluster, efectivoOpen, efectivoPorDia, efectivoSospechoso, elegirDia, expandedGroups, exportarControl, faltantes, filterB, filterV, filtrarPorDif, formaProps, goTab, hasta, hayHighlight, haySeleccion, hlBanTotal, hlIngTotal, irAResultado, kpis, limiteFilas, limpiarSeleccion, mesesPend, moveDay, notaProps, onSubFiltro, parB, parV, pendOpen, pendPorDia, pendPorMes, pendUnif, pendingDays, resComp, resPago, result, rowsBref, rowsVref, selBan, selBanTotal, selCC, selEfec, selIng, selIngTotal, setAprobExp, setAprobOpen, setBusqComp, setBusqPago, setCcListaOpen, setCcOpen, setColFilterB, setColFilterOpen, setColFilterV, setColMenu, setColsB, setColsV, setCtrlOpen, setCuentaModal, setDayCenter, setDayView, setDiasPend, setEfectivoOpen, setExpandedGroups, setFilterB, setFilterV, setLimiteFilas, setMesesPend, setParB, setParV, setPendOpen, setSelBan, setSelCC, setSelEfec, setSelIng, setSortB, setSortV, setSubFilterV, sortB, sortV, subFilterV, sugActiva, sugResaltados, sugerencias, sugerir, tieneCuenta, tipDe, tipProps, tipsInfo, toggleBan, toggleBanGroup, toggleIng, tol, verParDeBanco, verParDeIngreso, verSugerencia, view, xlsxReady })}

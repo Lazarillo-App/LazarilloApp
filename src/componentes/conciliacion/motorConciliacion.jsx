@@ -380,6 +380,23 @@ export function parseBanco(rows) {
   return out;
 }
 
+// ─── Corte del día (Diego 17/11/2026) ───────────────────────────────────
+// Lo que entra a Mercado Pago de madrugada es de la jornada anterior: el POS lo registra con la
+// fecha del turno. Medido con Container Bar (cupón = Nº de operación): 2.724 de 2.728 pagos entre
+// las 00:00 y las 02:59 son de ventas del día anterior, y entre las 03:00 y las 09:00 no entra nada.
+// Los cobros con hora anterior al corte pasan al día anterior (fecha = día de caja; fechaMp = la de MP).
+export const CORTE_DEFAULT = 6; // 06:00
+export function aplicarCorte(banco, corteHora) {
+  if (!Array.isArray(banco) || !corteHora) return banco;
+  return banco.map((b) => {
+    const base = b.fechaMp || b.fecha;
+    const h = parseInt(String(b.hora || "").slice(0, 2), 10);
+    if (!base || !Number.isFinite(h) || h >= corteHora) return b.fechaMp ? { ...b, fecha: b.fechaMp, fechaMp: undefined, madrugada: false } : b;
+    const d = new Date(base + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - 1);
+    return { ...b, fecha: d.toISOString().slice(0, 10), fechaMp: base, madrugada: true };
+  });
+}
+
 // ─── Paso 0: por CUPÓN (Diego 14/11/2026: «es una key clave, en todos los PDV y negocios») ──
 // El cupón que se carga en el POS (MaxiRest, informe 22) es el Nº de operación de Mercado Pago
 // recortado a 10 dígitos: los primeros 9 + el último (Container Bar oct–nov: 1.256 de 1.272

@@ -5,13 +5,13 @@ import { BuscadorBox, DynThead, Empty, Field, GrupoCCHead, InfoTip, NotaChip, No
 import { DayCompareBar, DayGroupedRows, DayNav, DiaCompartido, DynRow, PendItem, SugerenciasPanel } from './vistasDiaConciliacion';
 import React from "react";
 
-export function renderBarraSuperior({ allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady }) {
+export function renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady }) {
   return (
     allLoaded && !setupOpen ? (
           <div data-tour="conc-setup" onClick={() => setSetupOpen(true)} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: C.white, border: "1px solid " + C.line2, borderRadius: 12, padding: "10px 16px", marginBottom: 14, cursor: "pointer" }}>
             <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13.5, color: C.green }}>✓ Fuentes cargadas</span>
             <span style={{ fontSize: 13, color: C.txt2 }}>{resumenPeriodo}</span>
-            <span style={{ fontSize: 12.5, color: C.txt3 }}>tol {tol === 0 ? "mismo día" : "± 1 día"} · auto {autoMargenVal}{autoMargenTipo === "pct" ? "%" : "$"} · sugerencias {margenVal}{margenTipo === "pct" ? "%" : "$"}</span>
+            <span style={{ fontSize: 12.5, color: C.txt3 }}>tol {tol === 0 ? "mismo día" : "± 1 día"} · corte {corte ? String(corte).padStart(2, "0") + ":00" : "no"} · auto {autoMargenVal}{autoMargenTipo === "pct" ? "%" : "$"} · sugerencias {margenVal}{margenTipo === "pct" ? "%" : "$"}</span>
             <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
               <button onClick={(e) => { e.stopPropagation(); guardarEstado(); }} title="Descargar un archivo con tu trabajo (conciliaciones, propinas, notas)" style={{ border: "1px solid " + C.line2, background: C.white, color: C.txt2, borderRadius: 7, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>💾 Guardar</button>
               <button onClick={(e) => { e.stopPropagation(); estadoFileRef.current && estadoFileRef.current.click(); }} title="Cargar un estado guardado" style={{ border: "1px solid " + C.line2, background: C.white, color: C.txt2, borderRadius: 7, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>📂 Cargar</button>
@@ -50,6 +50,12 @@ export function renderBarraSuperior({ allDates, allLoaded, autoMargenTipo, autoM
                   <div><label style={fldLbl}>Tolerancia fecha</label><br />
                     <select value={tol} onChange={(e) => setTol(parseInt(e.target.value))} style={inputStyle}>
                       <option value={0}>Mismo día</option><option value={1}>± 1 día</option>
+                    </select>
+                  </div>
+                  <div><label style={fldLbl}>Corte del día <InfoTip text={"Lo que entra a Mercado Pago de madrugada, antes de esta hora, cuenta como venta del día anterior (el POS lo registra con la fecha del turno). Se marca con ↶ en la hora."} /></label><br />
+                    <select value={corte} onChange={(e) => setCorte(parseInt(e.target.value, 10) || 0)} style={inputStyle}>
+                      <option value={0}>Sin corte</option>
+                      {[3, 4, 5, 6, 7, 8].map((h) => <option key={h} value={h}>{"Hasta las " + String(h).padStart(2, "0") + ":00"}</option>)}
                     </select>
                   </div>
                   <div><label style={fldLbl}>Auto-conciliar <InfoTip text={"Todos los movimientos con diferencia de " + autoMargenVal + (autoMargenTipo === "pct" ? "%" : "$") + " o menos se concilian automáticamente, según las reglas definidas."} /></label><br />
