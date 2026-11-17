@@ -17,11 +17,12 @@ import { useTableros, sectoresDe, pedirNuevaPlaza, COLORES_PLAZA } from './useTa
 export function useSeleccionTableros(t) {
   const { pathname } = useLocation();
   const mSector = pathname.match(/^\/tableros\/sector\/(\d+)/);
+  const enTodos = pathname.startsWith('/tableros/todos');
   const mPlaza = !mSector && pathname.match(/^\/tableros\/(\d+)/);
   const plazaId = mPlaza ? Number(mPlaza[1]) : null;
   const plaza = plazaId ? (t?.plazas || []).find((p) => Number(p.id) === plazaId) : null;
   const sectorId = mSector ? Number(mSector[1]) : (plaza ? Number(plaza.sectorId) : null);
-  return { todos: !mSector && !mPlaza, sectorId, plazaId };
+  return { todos: enTodos, sectorId, plazaId };
 }
 
 export default function TablerosBotonera({ activeSx = () => ({}) }) {
@@ -75,7 +76,7 @@ export default function TablerosBotonera({ activeSx = () => ({}) }) {
       {!!(t.plazas || []).length && (
         <>
           <Box component="span" aria-hidden sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
-          <Button color="inherit" onClick={() => navigate('/tableros')}
+          <Button color="inherit" onClick={() => navigate('/tableros/todos')}
             sx={{ color: 'inherit', position: 'relative', whiteSpace: 'nowrap', ...activeSx(sel.todos) }}>
             Todos
           </Button>

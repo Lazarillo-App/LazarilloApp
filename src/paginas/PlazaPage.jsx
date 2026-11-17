@@ -116,7 +116,21 @@ export function TablerosSector() {
   );
 }
 
-// /tableros: con plazas, «Todos» (el mapa); sin plazas, el primer paso + tableros de ejemplo.
+// /tableros/todos: el mapa de todos los sectores (pestaña TODOS, al fondo del header).
+export function TablerosTodos() {
+  const t = useTableros();
+  if (!t) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
+  if (!t.plazas.length) return <Navigate to="/tableros" replace />;
+  return <TablerosMapa t={t} />;
+}
+
+// Plaza en la que se entra a Tableros (Diego 17/11/2026: «el mapa es una pantalla de más»): entre las que
+// la persona ve (Staff y jefe de cocina solo las de su sector: «la que tenés asignada»), la que tiene más
+// ingredientes; a igualdad, la de más productos y después la primera.
+export const plazaDeEntrada = (plazas) => [...plazas].sort((a, b) =>
+  (Number(b.ingredientes) || 0) - (Number(a.ingredientes) || 0) || (b.productos || []).length - (a.productos || []).length)[0];
+
+// /tableros: entra directo a una plaza; sin plazas, el primer paso + tableros de ejemplo.
 export function TablerosInicio() {
   const t = useTableros();
   const [conReceta, setConReceta] = useState(null); // productos con receta del negocio (dato real del primer paso)
@@ -127,7 +141,7 @@ export function TablerosInicio() {
     PlazasAPI.articulos().then((r) => setConReceta(r.articulos.length)).catch(() => setConReceta(null));
   }, [sinPlazas]);
   if (!t) return <Stack alignItems="center" sx={{ py: 8 }}><CircularProgress size={26} /></Stack>;
-  if (t.plazas.length) return <TablerosMapa t={t} />;
+  if (t.plazas.length) return <Navigate to={`/tableros/${plazaDeEntrada(t.plazas).id}`} replace />;
   // Sin plazas (negocio nuevo): tarjeta del primer paso + tableros de EJEMPLO atenuados que no se
   // pueden tocar y no se guardan (regla del proyecto para pantallas vacías). Se ve el diseño real
   // de la lámina —colores, pesos, observaciones— para que se entienda qué se va a armar.
