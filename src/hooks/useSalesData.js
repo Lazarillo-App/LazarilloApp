@@ -1,5 +1,5 @@
 // src/hooks/useSalesData.js
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { BASE } from "@/servicios/apiBase";
 
 // Clave del total de ventas sin artículo dentro del mapa de ventas.
@@ -25,6 +25,7 @@ export function useSalesData({
   enabled = true,
   syncVersion = 0,
   branchId = null,       // number = sucursal real, null = todas, 'main' = principal sin branch
+  unidades = 'ventas',   // 'ventas' | 'stock' | 'todo' — qué unidades cuenta qty (pendiente #109)
 }) {
   const [ventasMap, setVentasMap] = useState(() => new Map());
   const [isLoading, setIsLoading] = useState(false);
@@ -132,8 +133,13 @@ export function useSalesData({
 
         // Se acumula: si alguna vez llegan varias filas del mismo artículo
         // (por día o por fuente) se suman, no se pisan.
+        // Salidas de stock sin venta (pendiente #109): vienen en la misma fila; el filtro
+        // Todo / Ventas / Stock se aplica abajo sin volver a pedir.
+        const stockQty = Number(r.stock_qty ?? 0) || 0;
         const prev = map.get(id);
-        map.set(id, prev ? { qty: prev.qty + qty, amount: prev.amount + amount } : { qty, amount });
+        map.set(id, prev
+          ? { qty: prev.qty + qty, amount: prev.amount + amount, ventasQty: prev.ventasQty + qty, stockQty: prev.stockQty + stockQty }
+          : { qty, amount, ventasQty: qty, stockQty });
       }
 
       // Duplicar keys como string para compatibilidad
@@ -176,8 +182,25 @@ export function useSalesData({
     cacheRef.current.clear();
   }, []);
 
+  // Filtro de unidades sin volver a pedir: 'ventas' es lo de siempre (sin los artículos que
+  // solo tienen salidas de stock); 'stock' = salidas sin venta; 'todo' = las dos. El $ no cambia.
+  const ventasMapVista = useMemo(() => {
+    if (!(ventasMap instanceof Map)) return ventasMap;
+    const out = new Map();
+    for (const [k, v] of ventasMap) {
+      if (!v || typeof v !== 'object' || v.ventasQty == null) { out.set(k, v); continue; }
+      if (unidades === 'ventas') {
+        if (v.ventasQty === 0 && !v.amount) continue;
+        out.set(k, { ...v, qty: v.ventasQty });
+      } else {
+        out.set(k, { ...v, qty: unidades === 'stock' ? v.stockQty : v.ventasQty + v.stockQty });
+      }
+    }
+    return out;
+  }, [ventasMap, unidades]);
+
   return {
-    ventasMap,
+    ventasMap: ventasMapVista,
     isLoading,
     error,
     refetch: fetchData,
