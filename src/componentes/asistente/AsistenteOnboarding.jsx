@@ -2790,6 +2790,7 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   // Alta sin POS, simple (09/11): archivo de artículos → archivo de insumos → tabla.
   const [manualView, setManualView] = useState(retoma && String(pasoInicial).startsWith("manual_"));
   const [posPedido, setPosPedido] = useState(false); // otro POS: pedido de conexión anotado para el equipo
+  const [fudoEst, setFudoEst] = useState(null); // estado de la conexión con Fudo (paso POS)
   // Paso actual del alta, guardado en el negocio para retomarlo si se sale (09/11).
   useEffect(() => {
     if (!businessId || !negocio || manualView) return; // la vista manual guarda su propio paso
@@ -3038,17 +3039,36 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
             // Fudo (17/11): se conecta por su API con dos claves; las ventas llegan solas y, si el cliente
             // lo deja tildado, también artículos, insumos, recetas y compras.
             <div>
-              <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta
+              <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta onEstado={setFudoEst}
                 onConectado={async () => { if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } } }} />
-              <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
-                Si dejaste tildados artículos e insumos, llegan solos de Fudo en unos minutos (con sus recetas); lo que quede sin vincular lo ves en <b>Configuración › Conexiones › Fudo</b>. Si no tenés las claves a mano, conectalo después desde ahí mismo.
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <Btn accent={marca.primary} onClick={async () => {
-                  if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } }
-                  cargarManual();
-                }}>Seguir con mis artículos →</Btn>
-              </div>
+              {fudoEst?.conectado ? (
+                // Conectado (usuaria 17/11): lo que trae Fudo ya está en Lazarillo → directo a verlo, como
+                // «Ya lo instalé: ir a mis artículos» de MaxiRest. Nada de carga manual.
+                <>
+                  <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
+                    {fudoEst.sincronizando ? "Fudo todavía está mandando datos: podés entrar igual, van apareciendo solos." : "Listo: lo que tenías en Fudo ya está en Lazarillo."}{" "}
+                    Lo que quede sin vincular lo ves en <b>Configuración › Conexiones › Fudo</b>.
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <Btn accent={marca.primary} onClick={async () => {
+                      if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } }
+                      onDone?.();
+                    }}>Ver mis artículos →</Btn>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
+                    Si no tenés las claves a mano, seguí con tus artículos y conectalo después desde <b>Configuración › Conexiones › Fudo</b>.
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <Btn ghost small accent={marca.primary} onClick={async () => {
+                      if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } }
+                      cargarManual();
+                    }}>Lo conecto después: seguir con mis artículos →</Btn>
+                  </div>
+                </>
+              )}
             </div>
           ) : !pos ? null : pos === POS_NINGUNO ? (
             // Sin POS: un solo camino, sin "Conectar por API" ni "Lo subo manualmente" (usuaria 11/11).

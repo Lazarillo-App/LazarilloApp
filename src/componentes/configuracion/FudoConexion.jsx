@@ -67,7 +67,7 @@ function resumenMaestros(m) {
   ].filter(Boolean).join(', ');
 }
 
-export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlta = false, onConectado }) {
+export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlta = false, onConectado, onEstado }) {
   const [est, setEst] = useState(null);
   const [error, setError] = useState('');
   const [key, setKey] = useState('');
@@ -82,6 +82,7 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
     try {
       const r = await FudoAPI.estado(businessId);
       setEst(r);
+      onEstado?.(r);
       if (r?.traer) setTraer(r.traer);
       setError('');
       // Mientras trae ventas (la primera vez son 3 meses), se vuelve a mirar cada 10 s.
@@ -90,7 +91,7 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
     } catch {
       setError('No pude leer la conexión con Fudo.');
     }
-  }, [businessId]);
+  }, [businessId]); // eslint-disable-line react-hooks/exhaustive-deps -- onEstado es un aviso al padre, no cambia qué se carga
   useEffect(() => { cargar(); return () => clearTimeout(espera.current); }, [cargar]);
 
   const conectar = async () => {
