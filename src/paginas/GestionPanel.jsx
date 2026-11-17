@@ -35,6 +35,7 @@ import ComprasDetalleModal from '@/componentes/gestion/ComprasDetalleModal';
 import VentasDetalleModal from '@/componentes/gestion/VentasDetalleModal';
 import CargarFactura from '@/componentes/gestion/CargarFactura';
 import PanelEjemplo, { PrimerPaso } from '@/componentes/gestion/PanelEjemplo';
+import usePosConectado from '@/componentes/gestion/usePosConectado';
 import BloqueSeguro from '@/componentes/gestion/BloqueSeguro';
 import BarraIngresosManuales from '@/componentes/gestion/IngresosManuales';
 import { ImpagasBoton } from '@/componentes/gestion/pagos/impagas-boton';
@@ -101,6 +102,7 @@ export default function GestionPanel() {
 function GestionPanelContenido() {
   const { activeBusinessId, active } = useBusiness() || {};
   const { activeBranchFilter, activeBranch, branches, setActiveBranch } = useBranch() || {};
+  const posConectado = usePosConectado(activeBusinessId, active?.props);
   const [estado, setEstado] = useState(() => {
     const e = leerEstado(activeBusinessId);
     // El botón de carga no está en Ventas: si se entra a cargar, se abre en Compras.
@@ -473,7 +475,7 @@ function GestionPanelContenido() {
       {/* Con gastos pero sin ninguna venta en el año: falta conectar el punto de venta (14/11/2026). */}
       {verPanel && !sinDatosPanel && ventas.data && !(ventas.data.rows || []).length && !busquedaActiva && (
         <Box sx={{ mb: 2 }}>
-          <PrimerPaso soloVentas onConectar={() => navigate('/configuracion?tab=7')} />
+          <PrimerPaso soloVentas posConectado={posConectado} onConectar={() => navigate('/configuracion?tab=7')} />
         </Box>
       )}
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
@@ -534,6 +536,7 @@ function GestionPanelContenido() {
             puedeCargar={verCarga}
             onCargar={() => refsTour.cargar.current?.querySelector('button')?.click()}
             onConectar={() => navigate('/configuracion?tab=7')}
+            posConectado={posConectado}
           />
         )}
         {!(sinDatosPanel && !busquedaActiva) && estado.tab === 'compras' && (
