@@ -214,7 +214,10 @@ export default function FudoConexion({ businessId, themeColor = '#2492C8', enAlt
               <Typography variant="body2" color="text.secondary">Última lectura de Fudo: {resumenMaestros(est.maestros_resumen)}.</Typography>
             )}
             {est.ultimo_sync_error && (
-              <Alert severity="warning">La última vez Fudo respondió con un error: {est.ultimo_sync_error}. Si cambiaste el usuario o el API Secret en Fudo, desconectá y volvé a conectar.</Alert>
+              // Solo un rechazo de Fudo (claves, 401/403) es cosa del cliente; lo demás es un error nuestro.
+              /rechaz|claves|respondió 40[13]/i.test(est.ultimo_sync_error)
+                ? <Alert severity="warning">Fudo no aceptó las claves: {est.ultimo_sync_error}. Si cambiaste el usuario o el API Secret en Fudo, desconectá y volvé a conectar.</Alert>
+                : <Alert severity="warning">La última lectura no terminó bien ({est.ultimo_sync_error}). No hace falta que hagas nada: se reintenta sola esta noche, o tocá «Traer ahora».</Alert>
             )}
             {est.productos > 0 && (
               <Alert severity={sinVincular ? 'warning' : 'success'} sx={{ alignItems: 'center' }}
