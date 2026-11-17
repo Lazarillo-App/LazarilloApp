@@ -43,7 +43,7 @@ export default function TablerosBotonera({ activeSx = () => ({}) }) {
         </Tooltip>
       )}
       {!t.plazas.length && !t.puedeCrear && <Box component="span" sx={{ opacity: 0.6, fontSize: '0.85rem', alignSelf: 'center' }}>Sin plazas</Box>}
-      <EditorPlaza abierto={creando} sectores={t.sectores} onCerrar={() => setCreando(false)}
+      <EditorPlaza abierto={creando} sectores={t.sectores} puedeCrearSector={t.puedeCrearSector} onCerrar={() => setCreando(false)}
         onGuardado={(id) => { setCreando(false); if (id) navigate(`/tableros/${id}`); }} />
     </>
   );
