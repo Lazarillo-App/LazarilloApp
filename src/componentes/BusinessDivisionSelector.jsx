@@ -57,6 +57,9 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
   const [expandedBizId, setExpandedBizId] = useState(null);
   const [switching, setSwitching] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  // Soporte Lazarillo (Diego 16/11/2026): los super usuarios ven sus negocios en «Propios» y las
+  // cuentas de clientes con soporte activo en «Soporte».
+  const [pestana, setPestana] = useState('propios');
 
   // Colapsables
   const [collapsedOrgs, setCollapsedOrgs] = useState({});
@@ -95,6 +98,8 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
       const items = await BusinessesAPI.listMine();
       setBizList(items || []);
       if (activeBusinessId) setExpandedBizId(String(activeBusinessId));
+      const activoEnSoporte = (items || []).some(b => b.soporte && String(b.id) === String(activeBusinessId));
+      setPestana(activoEnSoporte ? 'soporte' : 'propios');
 
       // Inicializar colapsables: solo la org activa expandida
       const activeOrgIdLocal = items.find(b => String(b.id) === String(activeBusinessId))?.organization_id;
@@ -185,10 +190,16 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
 
   if (!activeBusinessId) return null;
 
+  // Propios / Soporte: solo aparece si hay negocios de los dos tipos (super usuarios).
+  const nSoporte = bizList.filter(b => b.soporte).length;
+  const nPropios = bizList.length - nSoporte;
+  const hayPestanas = nSoporte > 0 && nPropios > 0;
+  const listaVista = hayPestanas ? bizList.filter(b => !!b.soporte === (pestana === 'soporte')) : bizList;
+
   // Agrupar por organization_id
   const orgGroups = {};
   const soloNegocios = [];
-  bizList.forEach(b => {
+  listaVista.forEach(b => {
     const orgId = b.organization_id;
     if (orgId) {
       if (!orgGroups[orgId]) orgGroups[orgId] = { id: orgId, negocios: [] };
@@ -370,7 +381,7 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
         open={open}
         onClose={handleClose}
         disableRestoreFocus
-        marginThreshold={null}
+        marginThreshold={8}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         sx={{
@@ -394,6 +405,37 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
           },
         }}
       >
+        {/* Propios | Soporte (solo super usuarios con cuentas de soporte) */}
+        {!loadingBiz && hayPestanas && (
+          <Box key="pestanas" onClick={e => e.stopPropagation()} sx={{
+            display: 'flex', gap: 0.5, mx: 1.5, my: 1, p: 0.5, borderRadius: '10px',
+            background: 'color-mix(in srgb, var(--on-primary) 10%, transparent)',
+          }}>
+            {[['propios', 'Propios', nPropios], ['soporte', 'Soporte', nSoporte]].map(([k, l, n]) => {
+              const act = pestana === k;
+              return (
+                <Box key={k} component="button" type="button" onClick={() => {
+                  setPestana(k);
+                  // En Soporte se ven abiertas las cuentas (suelen ser una o dos por cliente).
+                  if (k === 'soporte') {
+                    const abiertas = {};
+                    bizList.forEach(b => { if (b.soporte && b.organization_id) abiertas[b.organization_id] = false; });
+                    setCollapsedOrgs(prev => ({ ...prev, ...abiertas }));
+                  }
+                }} sx={{
+                  flex: 1, height: 32, border: 'none', borderRadius: '8px', cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: '.75rem', fontWeight: 800, letterSpacing: '.06em',
+                  textTransform: 'uppercase', color: 'var(--on-primary)',
+                  background: act ? 'color-mix(in srgb, var(--on-primary) 22%, transparent)' : 'transparent',
+                  opacity: act ? 1 : 0.7,
+                }}>
+                  {l} <span style={{ fontWeight: 600, opacity: .75 }}>{n}</span>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
         {/* Loading */}
         {loadingBiz && (
           <MenuItem disabled>
@@ -451,6 +493,12 @@ export default function BusinessDivisionSelector({ canCreate = true }) {
                   }}>
                     {orgName}
                   </Typography>
+                  {og.negocios[0]?.soporte && og.negocios[0]?.owner_nombre && (
+                    <span style={{ fontSize: '.7rem', opacity: .65, fontWeight: 500, whiteSpace: 'nowrap',
+                      maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      de {String(og.negocios[0].owner_nombre).split(' ')[0]}
+                    </span>
+                  )}
                   {isActiveOrg && !isCollapsed && canCreate && (
                     <IconButton size="small"
                       onClick={e => { e.stopPropagation(); startEditOrg(e); }}
