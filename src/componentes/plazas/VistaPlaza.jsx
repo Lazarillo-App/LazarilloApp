@@ -213,7 +213,7 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
-function Tarjeta({ p, armando, mostrarPlaza = 'peso', onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false, arrastreTarjetas = false, onAgarrarTarjeta, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -299,11 +299,23 @@ function Tarjeta({ p, armando, mostrarPlaza = 'peso', onQuitar, onCambiar, onCol
   // una misma fila arrancan arriba y los renglones empiezan a la misma altura; si un título
   // usa menos renglones, queda el espacio (Diego 11/11/2026).
   return (
-    <Box sx={{ width: '100%', display: 'grid', gridRow: 'span 2', gridTemplateRows: 'subgrid', rowGap: 0 }}>
-      {/* En «Armar», ✕ arriba a la derecha para sacar el producto de la plaza (Diego 14/11/2026:
-          «no puedo quitar un producto del tablero»). Padding a los dos lados para que el título siga centrado. */}
+    <Box ref={cardRef} sx={{ width: '100%', display: 'grid', gridRow: 'span 2', gridTemplateRows: 'subgrid', rowGap: 0,
+      position: 'relative', zIndex: levantada ? 3 : 'auto', borderRadius: '6px', bgcolor: levantada ? '#fff' : 'transparent',
+      outline: levantada ? '2px solid #5BC2EA' : 'none', outlineOffset: 6, boxShadow: levantada ? '0 12px 28px rgba(0,0,0,.22)' : 'none',
+      transform: levantada ? 'scale(1.02)' : 'none', transition: 'box-shadow .12s, transform .12s',
+      pointerEvents: arrastreTarjetas && !levantada ? 'none' : 'auto' }}>
+      {/* Título (y la observación del producto, si tiene). En «Armar»: ⋮⋮ a la izquierda para mover la tarjeta
+          (Diego 17/11/2026) y ✕ a la derecha para sacarla (14/11). Padding a los dos lados: el título sigue centrado. */}
+      <Box sx={{ alignSelf: 'start', mb: 1 }}>
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.3rem', textAlign: 'center',
-        textTransform: 'uppercase', lineHeight: 1.05, mb: 1, alignSelf: 'start', position: 'relative', px: armando && onQuitar ? 3.5 : 0 }}>
+        textTransform: 'uppercase', lineHeight: 1.05, position: 'relative', px: armando && (onQuitar || onAgarrarTarjeta) ? 3.5 : 0 }}>
+        {armando && onAgarrarTarjeta && (
+          <Box component="span" onPointerDown={onAgarrarTarjeta} title="Arrastrar para ordenar los productos"
+            sx={{ position: 'absolute', left: 0, top: -4, width: 22, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: levantada ? 'grabbing' : 'grab', touchAction: 'none', borderRadius: '3px', '&:hover': { bgcolor: 'action.hover' } }}>
+            <DragIndicatorIcon sx={{ fontSize: 20, color: levantada ? '#2492C8' : 'text.disabled' }} />
+          </Box>
+        )}
         {armando && onQuitar && (
           <Tooltip title="Quitar de la plaza">
             <IconButton size="small" aria-label={`Quitar ${p.nombre} de la plaza`} onClick={() => onQuitar(p)}
@@ -319,6 +331,12 @@ function Tarjeta({ p, armando, mostrarPlaza = 'peso', onQuitar, onCambiar, onCol
           </Box>
         </Tooltip>
       </Typography>
+      {!!p.obs && (
+        <Typography sx={{ fontStyle: 'italic', fontWeight: 600, fontSize: '0.78rem', color: 'text.secondary', textAlign: 'center', lineHeight: 1.2, mt: 0.5 }}>
+          ↳ {p.obs}
+        </Typography>
+      )}
+      </Box>
       <Box>
       {visibles.map((r) => (
         <Renglon key={r.key} r={r} armando={armando}
@@ -366,11 +384,72 @@ function Tarjeta({ p, armando, mostrarPlaza = 'peso', onQuitar, onCambiar, onCol
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, mostrarPlaza, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+// Ordenar las tarjetas arrastrando (Diego 17/11/2026: «en editar poder mover los productos tipo drag entre ellos»).
+// Mismo criterio que los renglones: pointer events (mouse y touch), la grilla se reordena EN VIVO, la tarjeta
+// levantada queda donde va a caer (borde celeste + sombra) y las demás se corren con animación. Esc cancela.
+// El destino es la tarjeta cuyo centro (medido al agarrar) está más cerca del puntero.
+function useArrastreTarjetas(productos, onOrdenar) {
+  const [arr, setArr] = useState(null); // { key, desde, hasta, centros }
+  const arrRef = useRef(null);
+  arrRef.current = arr;
+  const nodos = useRef(new Map());
+  const antes = useRef(new Map());
+  const medir = () => { const m = new Map(); nodos.current.forEach((el, k) => { if (el) { const b = el.getBoundingClientRect(); m.set(k, [b.left, b.top]); } }); return m; };
+  useLayoutEffect(() => {
+    const prev = antes.current;
+    if (!prev.size) return;
+    nodos.current.forEach((el, k) => {
+      if (!el || !prev.has(k) || k === arr?.key) return;
+      const b = el.getBoundingClientRect();
+      const dx = prev.get(k)[0] - b.left; const dy = prev.get(k)[1] - b.top;
+      if (!dx && !dy) return;
+      el.style.transition = 'none'; el.style.translate = `${dx}px ${dy}px`;
+      requestAnimationFrame(() => { el.style.transition = 'translate .18s ease'; el.style.translate = '0 0'; });
+    });
+    antes.current = new Map();
+  }, [arr?.hasta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const agarrar = (e, i) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    const centros = productos.map((p) => { const b = nodos.current.get(p.articleId)?.getBoundingClientRect(); return b ? [b.left + b.width / 2, b.top + b.height / 2] : [0, 0]; });
+    setArr({ key: productos[i].articleId, desde: i, hasta: i, centros });
+  };
+  useEffect(() => {
+    if (!arr) return undefined;
+    const alMover = (e) => {
+      const a = arrRef.current; if (!a) return;
+      let mejor = a.hasta; let dist = Infinity;
+      a.centros.forEach(([x, y], j) => { const d = (x - e.clientX) ** 2 + (y - e.clientY) ** 2; if (d < dist) { dist = d; mejor = j; } });
+      if (mejor !== a.hasta) { antes.current = medir(); setArr({ ...a, hasta: mejor }); }
+    };
+    const alSoltar = () => {
+      const a = arrRef.current; setArr(null);
+      if (a && a.hasta !== a.desde) onOrdenar?.(moverEn(productos, a.desde, a.hasta));
+    };
+    const alTecla = (e) => { if (e.key === 'Escape') setArr(null); };
+    document.body.style.cursor = 'grabbing'; document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', alMover); window.addEventListener('pointerup', alSoltar);
+    window.addEventListener('pointercancel', alSoltar); window.addEventListener('keydown', alTecla);
+    return () => {
+      document.body.style.cursor = ''; document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', alMover); window.removeEventListener('pointerup', alSoltar);
+      window.removeEventListener('pointercancel', alSoltar); window.removeEventListener('keydown', alTecla);
+    };
+  }, [!!arr, productos]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lista = arr ? moverEn(productos, arr.desde, arr.hasta) : productos;
+  return { arr, lista, agarrar, nodos };
+}
+
+export default function VistaPlaza({ productos, armando = false, mostrarPlaza, onOrdenar, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+  const { arr, lista, agarrar, nodos } = useArrastreTarjetas(productos, onOrdenar);
   return (
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
-      {productos.map((p) => (
-        <Tarjeta key={p.articleId} p={p} armando={armando} mostrarPlaza={mostrarPlaza} onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
+      {lista.map((p) => (
+        <Tarjeta key={p.articleId} p={p} armando={armando} mostrarPlaza={mostrarPlaza}
+          cardRef={(el) => { if (el) nodos.current.set(p.articleId, el); else nodos.current.delete(p.articleId); }}
+          levantada={arr?.key === p.articleId} arrastreTarjetas={!!arr}
+          onAgarrarTarjeta={armando && onOrdenar && productos.length > 1 ? (e) => agarrar(e, productos.findIndex((x) => x.articleId === p.articleId)) : null}
+          onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
           onAliasIngrediente={onAliasIngrediente} onOcultarIngrediente={onOcultarIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
       ))}
     </Box>
