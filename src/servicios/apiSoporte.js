@@ -47,6 +47,11 @@ export const SuperAPI = {
   // Guía del proyecto: qué queremos lograr y cómo trabajamos (14/11/2026).
   guia: () => http('/superusuarios/guia', { withBusinessId: false, cache: false }),
   guardarGuia: (texto) => http('/superusuarios/guia', { method: 'PUT', withBusinessId: false, body: { texto } }),
+  // Manual (16/11/2026): capítulos en la base, editables desde el panel.
+  manual: () => http('/superusuarios/manual', { withBusinessId: false, cache: false }),
+  guardarCapitulo: (id, cap) => http(`/superusuarios/manual/${encodeURIComponent(id)}`, { method: 'PUT', withBusinessId: false, body: cap }),
+  borrarCapitulo: (id) => http(`/superusuarios/manual/${encodeURIComponent(id)}`, { method: 'DELETE', withBusinessId: false }),
+  subirImagenManual: (formData) => http('/superusuarios/manual/imagen', { method: 'POST', withBusinessId: false, body: formData }),
   // Tablero de tareas del equipo (13/11/2026).
   tareas: () => http('/superusuarios/tareas', { withBusinessId: false, cache: false }),
   tarea: (id) => http(`/superusuarios/tareas/${id}`, { withBusinessId: false, cache: false }),
