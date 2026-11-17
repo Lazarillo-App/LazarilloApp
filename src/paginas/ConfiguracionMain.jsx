@@ -779,9 +779,11 @@ export default function ConfiguracionMain() {
                     </div>
                   )}
 
-                  {/* ── Organizaciones con sus negocios — una por cada una, la del
-                      negocio activo primero (ya viene ordenada así del backend) ── */}
-                  {(organizations || []).filter(o => (o.businesses || []).length > 1).map((org) => (
+                  {/* ── La organización del NEGOCIO ACTIVO con sus negocios (tablero #101, 17/11/2026).
+                      Antes se dibujaban todas las del usuario: con Negocio DEMO activo aparecía
+                      CONTENEDORES con sus QR, y un super usuario con soporte veía las de cada cliente.
+                      Las demás se eligen desde el selector de negocios. ── */}
+                  {(organizations || []).filter(o => (o.businesses || []).length > 1 && organization?.id != null && o.id === organization.id).map((org) => (
                     <Paper key={org.id} variant="outlined" sx={{ borderRadius: 2, mb: 3, overflow: 'hidden' }}>
                       <Stack direction="row" alignItems="center" spacing={1}
                         sx={{ px: 2.5, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
