@@ -15,6 +15,7 @@ import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, But
 import SubrubroAccionesMenu from "./SubrubroAccionesMenu";
 import ArticuloAccionesMenu from "./ArticuloAccionesMenu";
 import VentasCell from "./VentasCell";
+import UnidadesSelector, { etiquetaVentas } from "./UnidadesSelector";
 import VirtualList from "./shared/VirtualList";
 import RecetaModal from "./RecetaModal";
 import { ensureTodo, getExclusiones } from "../servicios/apiAgrupacionesTodo";
@@ -383,6 +384,8 @@ export default function TablaArticulos({
   priceListsByList = {},
   soloConVentas = false,
   onToggleSoloConVentas,
+  unidadesModo = 'ventas',
+  onUnidadesModo,
   onAddMembersToLink,
   editingGroup = null,
 }) {
@@ -3249,7 +3252,7 @@ export default function TablaArticulos({
               </div>
               <div data-tour="art-col-ventas" style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
                 <span onClick={() => toggleSort("ventas")} className="col-sortable" style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  Ventas {ventasLoading ? "…" : ""}
+                  {etiquetaVentas(ventasVista, unidadesModo)} {ventasLoading ? "…" : ""}
                   {sortBy === "ventas" ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -3265,14 +3268,8 @@ export default function TablaArticulos({
                   >
                     👁
                   </span>
-                  {!isStaff && (
-                    <button
-                      onClick={() => setVentasVista(v => v === 'U' ? '$' : 'U')}
-                      title={ventasVista === '$' ? 'Cambiar a pesos' : 'Cambiar a unidades'}
-                      style={{ padding: '0px 6px', border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5, fontSize: '0.64rem', flexShrink: 0, background: HEADER_TEXT, color: '#fff', transition: 'background 0.15s' }}>
-                      {ventasVista}
-                    </button>
-                  )}
+                  <UnidadesSelector ventasVista={ventasVista} setVentasVista={setVentasVista}
+                    modo={unidadesModo} onModo={onUnidadesModo} isStaff={isStaff} color={HEADER_TEXT} />
                 </span>
               </div>
 

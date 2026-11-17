@@ -146,6 +146,14 @@ export default function ArticulosMain(props) {
   const [recetasCostos, setRecetasCostos] = useState({});
   const [recetasElaborados, setRecetasElaborados] = useState({}); // ← agregar acá
   const [addMembersModal, setAddMembersModal] = useState(null);
+  // Unidades: Todo / Ventas / Stock (Diego 17/11/2026, pendiente #109). Se recuerda por navegador.
+  const [unidadesModo, setUnidadesModoState] = useState(() => {
+    try { const v = localStorage.getItem('lz-unidades-modo'); return ['todo', 'ventas', 'stock'].includes(v) ? v : 'ventas'; } catch { return 'ventas'; }
+  });
+  const setUnidadesModo = useCallback((v) => {
+    setUnidadesModoState(v);
+    try { localStorage.setItem('lz-unidades-modo', v); } catch { /* sin almacenamiento */ }
+  }, []);
   const [soloConVentas, setSoloConVentas] = useState(() => {
     try { return localStorage.getItem('articulos_solo_con_ventas') === '1'; } catch { return false; }
   });
@@ -297,6 +305,7 @@ export default function ArticulosMain(props) {
     error: ventasError,
     refetch: refetchVentas,
   } = useSalesData({
+    unidades: unidadesModo,
     businessId: activeBizId,
     from: periodo.from,
     to: periodo.to,
@@ -3317,6 +3326,8 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <TablaArticulos
+            unidadesModo={unidadesModo}
+            onUnidadesModo={setUnidadesModo}
             abcVentas={rankingVentas.abc}
             acumuladoVentas={rankingVentas.acumulado}
             isStaff={isStaff}
