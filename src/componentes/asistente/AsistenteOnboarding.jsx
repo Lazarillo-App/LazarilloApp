@@ -3035,13 +3035,13 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
               {kitMsg && <div style={{ fontSize: 12.5, color: kitMsg.startsWith("✓") ? "#15803d" : C.danger, marginTop: 10 }}>{kitMsg}</div>}
             </div>
           ) : conectaPorApi(pos) ? (
-            // Fudo (17/11): se conecta por su API con dos claves; las ventas llegan solas. Los artículos
-            // se cargan igual (de Fudo solo traemos ventas) y después se vinculan en Conexiones.
+            // Fudo (17/11): se conecta por su API con dos claves; las ventas llegan solas y, si el cliente
+            // lo deja tildado, también artículos, insumos, recetas y compras.
             <div>
               <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta
                 onConectado={async () => { if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } } }} />
               <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
-                Después cargás tus artículos y, en <b>Configuración › Conexiones › Fudo</b>, vinculás cada producto de Fudo con su artículo (te sugerimos cuál es). Si no tenés las claves a mano, conectalo después desde ahí mismo.
+                Si dejaste tildados artículos e insumos, llegan solos de Fudo en unos minutos (con sus recetas); lo que quede sin vincular lo ves en <b>Configuración › Conexiones › Fudo</b>. Si no tenés las claves a mano, conectalo después desde ahí mismo.
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <Btn accent={marca.primary} onClick={async () => {
