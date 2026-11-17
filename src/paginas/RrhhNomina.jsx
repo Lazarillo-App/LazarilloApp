@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { RrhhAPI } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
-import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
+import ListaNegociosNomina, { useNominaParaUsar } from '../componentes/RrhhNominaCompartida';
 import SpotlightTour from '../componentes/SpotlightTour';
 import { usePasosHeader, usePasosPresentes } from '../componentes/asistente/pasosHeader';
 import { useSectorGuia } from '../componentes/asistente/guias';
@@ -313,6 +313,8 @@ export default function RrhhNomina() {
   useEffect(() => { cargar(); }, [cargar]);
 
   const empleados = config?.empleados || [];
+  // «Usar la de otro negocio» solo si otro negocio de la cartera tiene empleados (Diego 17/11/2026)
+  const hayNominaOtra = useNominaParaUsar(!cargando && sync === null && !empleados.length, activeBusinessId);
   const compartidaCon = config?.nomina?.compartidaCon || null;
   const dejarDeCompartir = async () => {
     try {
@@ -420,15 +422,15 @@ export default function RrhhNomina() {
     { k: 'nom-filtros', s: 'barra', t: <><b>Activos</b> son los que van en cronogramas; <b>No aplica</b>, los activos que no van (el contador, el dueño, usuarios del punto de venta); <b>Bajas</b>, los que ya no están. El número es cuántos hay en cada uno.</> },
     { k: 'nom-nuevo', s: 'barra', t: <>Con <b>+ Nuevo empleado</b> das de alta a alguien: nombre, apellido, DNI y fecha de ingreso.</> },
     { k: 'nom-origen', s: 'barra', t: sync === null
-      ? <>Este negocio no trae la nómina de un punto de venta: a tu equipo lo cargás acá, o usás la nómina de <b>otro negocio tuyo</b> y la comparten.</>
+      ? <>Este negocio no trae la nómina de un punto de venta: a tu equipo lo cargás acá{hayNominaOtra ? <>, o usás la nómina de <b>otro negocio tuyo</b> y la comparten</> : null}.</>
       : <>Si tu punto de venta tiene la nómina, <b>entra sola</b> cada vez que abrís RRHH: las altas entran y las bajas se desactivan. Lo que edites acá no se pisa.</> },
     { k: 'nom-buscar', s: 'tabla', t: <>Buscás a cualquiera por <b>nombre, código o sector</b>.</> },
     { k: 'nom-col-crono', s: 'tabla', t: <><b>Cronogramas</b> se completa solo con los puestos donde lo pusiste en las últimas 8 semanas. Tocá el chip para marcarlo <b>No aplica</b> o darle la <b>baja</b>.</> },
     { k: 'nom-col-origen', s: 'tabla', t: <>De dónde vino cada uno: de tu <b>punto de venta</b> o cargado <b>a mano</b>.</> },
     { k: 'nom-col-estado', s: 'tabla', t: <><b>Activo</b> o <b>Inactivo</b>: tocalo para darle la baja (con fecha) o reactivarlo. Nadie se borra: queda con su historia.</> },
     { k: 'nom-fila', s: 'tabla', t: <>Tocá cualquier fila para <b>editar</b> sus datos.</> },
-    { k: 'nom-primer-paso', s: 'tabla', t: <>Arrancá cargando a tu equipo con <b>+ Nuevo empleado</b>{sync === null ? <>, o usá la nómina de otro negocio tuyo</> : null}. Después lo ponés en los cronogramas.</> },
-  ], `${cargando}:${empleados.length}:${sync === null}:${filtro}`);
+    { k: 'nom-primer-paso', s: 'tabla', t: <>Arrancá cargando a tu equipo con <b>+ Nuevo empleado</b>{sync === null && hayNominaOtra ? <>, o usá la nómina de otro negocio tuyo</> : null}. Después lo ponés en los cronogramas.</> },
+  ], `${cargando}:${empleados.length}:${sync === null}:${filtro}:${hayNominaOtra}`);
   const pasosHeaderNom = usePasosHeader();
   const sectorNom = useSectorGuia('rrhh_nomina');
   const pasosTourNom = pasosNomina.concat(pasosHeaderNom).filter((p) => !sectorNom || p.s === sectorNom);
@@ -470,8 +472,8 @@ export default function RrhhNomina() {
         ) : sync === null && !empleados.length && !eligiendo ? null : sync === null ? (
           <div style={{ fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '14', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <span>Este negocio no está integrado con tu PDV: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>{empleados.length ? '.' : ', o usá la de otro negocio.'}</span>
-              {!empleados.length && !eligiendo && (
+              <span>Este negocio no está integrado con tu POS: la nómina no entra sola. Dá de alta a tu equipo con <b>+ Nuevo empleado</b>{empleados.length || !hayNominaOtra ? '.' : ', o usá la de otro negocio.'}</span>
+              {!empleados.length && !eligiendo && hayNominaOtra && (
                 <span onClick={() => setEligiendo(true)} style={{ fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}>Usar la nómina de otro negocio</span>
               )}
             </div>
@@ -574,12 +576,12 @@ export default function RrhhNomina() {
                   <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 18, color: T.text, marginBottom: 6 }}>Cargá a tu equipo</div>
                   <div style={{ fontFamily: FB, fontSize: 13, color: T.text2, marginBottom: 16 }}>
                     {sync === null
-                      ? 'Este negocio no está integrado con tu PDV: das de alta a cada uno o usás la nómina de otro negocio de tu cartera.'
+                      ? (hayNominaOtra ? 'Este negocio no está integrado con tu POS: das de alta a cada uno o usás la nómina de otro negocio de tu cartera.' : 'Este negocio no está integrado con tu POS: das de alta a cada uno con + Nuevo empleado.')
                       : 'La nómina de MaxiRest entra sola al abrir RRHH; si falta alguien, dalo de alta acá.'}
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                     <Boton activo onClick={() => setEditando('nuevo')}>+ Nuevo empleado</Boton>
-                    {sync === null && !compartidaCon && <Boton onClick={() => setEligiendo(true)}>Usar la de otro negocio</Boton>}
+                    {sync === null && !compartidaCon && hayNominaOtra && <Boton onClick={() => setEligiendo(true)}>Usar la de otro negocio</Boton>}
                   </div>
                 </div>
               </div>
