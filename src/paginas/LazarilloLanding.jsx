@@ -381,11 +381,11 @@ const funcionalidades = [
 // Integraciones: con qué se conecta. Estados a confirmar.
 const integraciones = [
   { mk: 'MX', t: 'MaxiRest', d: 'POS · ventas, compras y stock', st: 'on' },
+  { mk: 'FU', t: 'Fudo', d: 'POS · ventas', st: 'on' },
   { mk: 'MP', t: 'Mercado Pago', d: 'Cobros y acreditaciones', st: 'on' },
   { mk: 'ML', t: 'Mercado Libre', d: 'Compras de insumos', st: 'on' },
   { mk: 'AR', t: 'ARCA', d: 'Comprobantes recibidos', st: 'on' },
   { mk: 'WT', t: 'Waitry', d: 'POS y pedidos', st: 'soon' },
-  { mk: 'FU', t: 'Fudo', d: 'POS', st: 'soon' },
   { mk: '$', t: 'Bancos', d: 'Extractos para conciliar', st: 'soon' },
 ]
 
