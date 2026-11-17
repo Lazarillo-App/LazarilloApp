@@ -611,7 +611,7 @@ export function DynRow({ row, allCols, visible, side, selectable, checked, sugge
       )}
       {tipEditing && (
         <div style={{ padding: "6px 14px 8px 30px", background: "#fff7ec", borderBottom: "1px solid " + C.line }}>
-          <TipEditor value={tp.tip} max={tp.tipImp} onSave={onSaveTip} onTodo={onTodoTip} onQuitar={onQuitarTip} defaultDif={defaultDif} />
+          <TipEditor value={tip} max={tipImp} onSave={onSaveTip} onTodo={onTodoTip} onQuitar={onQuitarTip} defaultDif={defaultDif} />
         </div>
       )}
       {formaEditing && (
