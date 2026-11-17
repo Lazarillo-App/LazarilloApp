@@ -12,7 +12,16 @@ export default function EditorPlaza({ abierto, sector, sectores = [], puedeCrear
   // Sin sector fijo (desde Tableros): se elige entre los sectores donde la persona puede crear plazas.
   // Dueño/admin también pueden crear uno ahí mismo (Diego 17/11/2026): «+ Crear sector» arriba de la lista.
   const [secs, setSecs] = React.useState(sectores);
-  React.useEffect(() => { if (abierto) setSecs(sectores); }, [abierto]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al abrir se SUMAN los que vienen del padre a los ya conocidos: un sector creado acá (aunque se haya
+  // cancelado la plaza) no desaparece al volver a abrir (Diego 17/11/2026, Renato: «Barra» no aparecía).
+  React.useEffect(() => {
+    if (!abierto) return;
+    setSecs((prev) => {
+      const m = new Map(prev.map((x) => [Number(x.id), x]));
+      sectores.forEach((x) => m.set(Number(x.id), x));
+      return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    });
+  }, [abierto]); // eslint-disable-line react-hooks/exhaustive-deps
   const [sectorId, setSectorId] = React.useState(sector?.id || sectores[0]?.id || '');
   const sectorElegido = sector || secs.find((x) => String(x.id) === String(sectorId)) || null;
   const crearSector = async () => {
@@ -22,6 +31,8 @@ export default function EditorPlaza({ abierto, sector, sectores = [], puedeCrear
       const s = await PlazasAPI.crearSector(String(n).trim());
       setSecs((l) => (l.some((x) => Number(x.id) === Number(s.id)) ? l : [...l, s].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))));
       setSectorId(s.id);
+      // Avisa al resto de la pantalla (botonera de Tableros) para que vuelva a pedir los sectores.
+      try { window.dispatchEvent(new CustomEvent('plazas:changed')); } catch { /* sin evento */ }
     } catch (e) { showAlert(e?.message || 'No se pudo crear el sector', 'error'); }
   };
   const conSelector = !sector && (secs.length > 1 || puedeCrearSector);
