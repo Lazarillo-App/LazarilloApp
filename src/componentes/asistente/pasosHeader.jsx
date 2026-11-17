@@ -36,7 +36,7 @@ const visible = (clave) => {
 };
 
 function textoBotonera(path) {
-  if (path.startsWith('/gestion')) return <><b>Conceptos de caja</b> ordena en qué se agrupan tus gastos, <b>Insumos</b> te lleva a tus insumos y <b>Proveedores</b> abre la cuenta corriente de cada proveedor.</>;
+  if (path.startsWith('/gestion')) return <><b>Conceptos de caja</b> ordena en qué se agrupan tus gastos, <b>Insumos</b> te muestra lo que comprás y <b>Proveedores</b> abre la cuenta corriente de cada proveedor.</>;
   if (path.startsWith('/rrhh')) return <><b>Cronogramas</b> arma la semana de cada sucursal y <b>Nómina</b> es tu equipo. Liquidación y Fichaje llegan pronto.</>;
   if (path.startsWith('/tableros')) return <>Cada pestaña es una <b>plaza</b> de despacho (un sector de la cocina o de la barra). Con <b>+</b> creás otra.</>;
   if (path.startsWith('/menu') || path.startsWith('/insumos')) return <>Arriba cambiás de pantalla: <b>Artículos</b> (tu carta con costos y precios), <b>Insumos</b> (lo que comprás) y <b>Menú</b> (la carta lista para imprimir).</>;
@@ -51,15 +51,20 @@ const BARRA = [
 ];
 
 // El header de toda la app, de izquierda a derecha.
+const conTodas = () => /\bTodas\b/.test(document.querySelector('[data-tour="hdr-sucursales"]')?.textContent || '');
 const HEADER = [
   { k: 'hdr-modulos', t: () => <>Con esta pestañita de la izquierda abrís <b>todos los módulos</b> de Lazarillo.</> },
-  { k: 'hdr-pulso', t: () => <>El punto al lado del logo te dice si los datos de tu punto de venta están <b>al día</b>: verde hasta ayer, ámbar 2 o 3 días, rojo más viejo. Tocalo para actualizar.</> },
+  // Solo con el punto de venta conectado (Diego 17/11/2026): sin conexión no hay «al día» que explicar.
+  { k: 'hdr-pulso', si: () => !!document.querySelector('[data-tour="hdr-pulso"] [data-pos-conectado="1"]'), t: () => <>El punto al lado del logo te dice si los datos de tu punto de venta están <b>al día</b>: verde hasta ayer, ámbar 2 o 3 días, rojo más viejo. Tocalo para actualizar.</> },
   { k: 'hdr-botonera', t: (path) => textoBotonera(path) },
   { k: 'hdr-sucursales', t: (path) => (path.startsWith('/rrhh')
     ? <>Cada sucursal tiene su propio cronograma: elegí cuál ves. Con <b>+</b> sumás una sucursal.</>
     : path.startsWith('/conciliacion') || path.startsWith('/movimientos-bancarios')
       ? <>Cada sucursal cobra en su propia cuenta de <b>Mercado Pago</b>: acá elegís cuál conciliás.</>
-      : <>Elegís de qué <b>sucursal</b> ves los datos; <b>Todas</b> las suma. Con <b>+</b> sumás una sucursal y el <b>?</b> te explica cómo funcionan.</>) },
+      // «Todas» solo si hay más de una sucursal (Diego 17/11/2026: con una sola confunde).
+      : conTodas()
+        ? <>Elegís de qué <b>sucursal</b> ves los datos; <b>Todas</b> las suma. Con <b>+</b> sumás una sucursal y el <b>?</b> te explica cómo funcionan.</>
+        : <>Tu <b>sucursal</b>. Con <b>+</b> sumás otra (cada una con sus datos) y el <b>?</b> te explica cómo funcionan.</>) },
   { k: 'hdr-negocio', t: () => <>Si manejás más de un <b>negocio</b>, acá pasás de uno a otro.</> },
   { k: 'hdr-perfil', t: () => <>Tu <b>perfil</b>: tus datos, tu equipo y tus pendientes (el número rojo).</> },
   { k: 'hdr-campana', t: () => <>Los <b>avisos</b>: cada alta, baja o cambio que hace tu equipo queda acá.</> },
@@ -73,7 +78,7 @@ export function usePasosHeader({ conBarra = false } = {}) {
   const [claves, setClaves] = useState([]);
   useEffect(() => {
     const medir = () => {
-      const lista = [...(conBarra ? BARRA : []), ...HEADER].filter((p) => visible(p.k) && p.t(pathname)).map((p) => p.k);
+      const lista = [...(conBarra ? BARRA : []), ...HEADER].filter((p) => visible(p.k) && (!p.si || p.si()) && p.t(pathname)).map((p) => p.k);
       setClaves((prev) => (prev.join() === lista.join() ? prev : lista));
     };
     medir();
