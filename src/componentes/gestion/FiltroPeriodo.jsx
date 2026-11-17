@@ -1,9 +1,11 @@
 // src/componentes/gestion/FiltroPeriodo.jsx
 // Botón "📅 2026 · Todo el año" con su popover (dashboard-filters.tsx de gestion): año con
 // flechas (acotado al rango con datos) y los 12 meses para marcar; "Todo el año" limpia.
+// Tablero #5 (17/11/2026): un clic = ese mes solo; Ctrl/⌘ + clic suma o saca un mes, Shift + clic suma
+// el tramo desde el último elegido. En celular (sin teclado) el interruptor «Varios meses» hace de Ctrl.
 
-import React, { useState } from 'react';
-import { Box, Popover, IconButton } from '@mui/material';
+import React, { useRef, useState } from 'react';
+import { Box, Popover, IconButton, Switch, useMediaQuery } from '@mui/material';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -22,8 +24,33 @@ function etiquetaMeses(meses) {
   return `${meses.length} meses`;
 }
 
-export default function FiltroPeriodo({ year, meses, minYear, maxYear, onYear, onToggleMes, onTodoElAnio }) {
+/** Meses que quedan elegidos (pura). modo: 'solo' | 'sumar' | 'tramo'; ancla = último mes tocado. */
+// eslint-disable-next-line react-refresh/only-export-components -- pura, se testea aparte
+export function mesesTrasClic(meses, m, modo, ancla) {
+  let out;
+  if (modo === 'tramo' && ancla) {
+    const [a, b] = ancla < m ? [ancla, m] : [m, ancla];
+    out = [...new Set([...meses, ...Array.from({ length: b - a + 1 }, (_, i) => a + i)])];
+  } else if (modo === 'sumar') {
+    out = meses.includes(m) ? meses.filter((x) => x !== m) : [...meses, m];
+  } else {
+    // Clic común: ese mes solo; si ya era el único elegido, vuelve a todo el año.
+    out = meses.length === 1 && meses[0] === m ? [] : [m];
+  }
+  out.sort((x, y) => x - y);
+  return out.length === 12 ? [] : out;
+}
+
+export default function FiltroPeriodo({ year, meses, minYear, maxYear, onYear, onMeses, onTodoElAnio }) {
   const [anchor, setAnchor] = useState(null);
+  const [varios, setVarios] = useState(false);
+  const tactil = useMediaQuery('(hover: none)');
+  const ancla = useRef(null);
+  const clic = (e, m) => {
+    const modo = e.shiftKey ? 'tramo' : (e.ctrlKey || e.metaKey || varios) ? 'sumar' : 'solo';
+    onMeses(mesesTrasClic(meses, m, modo, ancla.current));
+    ancla.current = m;
+  };
   const flecha = { width: 28, height: 28, border: 1, borderColor: 'divider', borderRadius: 1.5 };
   return (
     <>
@@ -54,7 +81,7 @@ export default function FiltroPeriodo({ year, meses, minYear, maxYear, onYear, o
             const activo = meses.includes(m);
             return (
               <Box
-                key={m} component="button" type="button" aria-pressed={activo} onClick={() => onToggleMes(m)}
+                key={m} component="button" type="button" aria-pressed={activo} onClick={(e) => clic(e, m)}
                 sx={{
                   all: 'unset', cursor: 'pointer', height: 28, borderRadius: 1.5, border: 1, fontSize: 12, fontWeight: 500, textAlign: 'center',
                   ...(activo
@@ -67,6 +94,16 @@ export default function FiltroPeriodo({ year, meses, minYear, maxYear, onYear, o
             );
           })}
         </Box>
+        {tactil ? (
+          <Box component="label" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, color: 'text.secondary', cursor: 'pointer' }}>
+            Varios meses
+            <Switch size="small" checked={varios} onChange={(e) => setVarios(e.target.checked)} />
+          </Box>
+        ) : (
+          <Box sx={{ fontSize: 11.5, color: 'text.secondary', textAlign: 'center', lineHeight: 1.4 }}>
+            Clic: un mes · <b>Ctrl</b> + clic: sumar meses · <b>Shift</b> + clic: un tramo
+          </Box>
+        )}
         <Box
           component="button" type="button" onClick={onTodoElAnio} disabled={!meses.length}
           sx={{ all: 'unset', cursor: 'pointer', height: 28, textAlign: 'center', fontSize: 12, color: 'text.secondary', '&:hover': { color: 'text.primary' }, '&:disabled': { opacity: 0.4, cursor: 'default' } }}

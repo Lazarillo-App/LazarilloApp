@@ -14,6 +14,14 @@ export function mesCerrado(meses, anio, hoy) {
   return null;
 }
 
+/** Meses cerrados con ventas del año que se mira, del más nuevo al más viejo (para elegir cuál ver, #3). */
+export function mesesCerrados(meses, anio, hoy) {
+  const tope = anio < hoy.anio ? 12 : anio === hoy.anio ? hoy.mes - 1 : 0;
+  const out = [];
+  for (let m = tope; m >= 1; m--) if ((meses.find((x) => x.mes === m)?.ventas ?? 0) > 0) out.push(m);
+  return out;
+}
+
 // Personal a medio cargar (Diego 06/11/2026, Comercio oct-26: el Mix no puede bajar porque faltan
 // sueldos): si el gasto en personal del mes es menos del UMBRAL del último mes completo, se usa el
 // importe de ese mes. Afecta Mix, Personal, Resultado y Equilibrio del mes, marcado como estimado.

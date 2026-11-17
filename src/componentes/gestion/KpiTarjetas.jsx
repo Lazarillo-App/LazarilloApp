@@ -4,18 +4,21 @@
 // Tu canasta) y el MES EN CURSO solo como proyección. Tocar una tarjeta abre su evolución debajo,
 // a todo el ancho.
 // "Para mirar": Impagas, Sin carga y las alertas del mes.
+// Tablero #3 (17/11/2026): el mes cerrado se puede elegir (por defecto, el último); vale para el año
+// que se mira y vuelve al último al cambiar de año.
 
 import { ScopeGestion, useDashboard, useFetchQuery } from '@/gestion/compat';
 import { ImpagasBoton } from './pagos/impagas-boton';
 import { SinCargaBoton } from './pagos/sin-carga-boton';
 import { SinRubroLinea, useSinRubro } from './SinRubro';
 import React, { useMemo, useState } from 'react';
-import { Box, Snackbar, Alert } from '@mui/material';
+import { Box, Snackbar, Alert, Menu, MenuItem } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useAnual, useCanasta, useEgresosProyeccion, useEquilibrio, useProyeccionIngresos } from '@/gestion/hooksPanel';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { fmtMillones } from '@/gestion/proyeccion';
 import { equilibrioMes, equilibrioProyectado, pctVariableReciente } from '@/gestion/equilibrio';
-import { alertasDelMes, conPersonalCompleto, mesCerrado, tarjetasDelMes } from '@/gestion/tarjetas';
+import { alertasDelMes, conPersonalCompleto, mesCerrado, mesesCerrados, tarjetasDelMes } from '@/gestion/tarjetas';
 import { serieIndicador, sentido, INFO_INDICADOR } from '@/gestion/evolucion';
 import { resumirCanasta } from '@/gestion/canasta';
 import { CanastaDetalle, CanastaMini } from './CanastaTarjeta';
@@ -42,9 +45,14 @@ export default function KpiTarjetas() {
   const { proyectado: egrProy, ventasProy } = useEgresosProyeccion(egresosPorMes);
   const [abierta, setAbierta] = useState(null);
   const [aviso, setAviso] = useState(null);
-  // Canasta del último mes cerrado: se pide acá arriba porque los hooks no pueden ir después de un return.
+  const [elegido, setElegido] = useState(null); // { year, mes } que eligió el usuario
+  const [anclaMes, setAnclaMes] = useState(null);
+  // Canasta del mes cerrado: se pide acá arriba porque los hooks no pueden ir después de un return.
   const hoy = new Date();
-  const mc = anual && modo === 'economica' && !busquedaActiva ? mesCerrado(anual.meses, year, { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 }) : null;
+  const hoyAm = { anio: hoy.getFullYear(), mes: hoy.getMonth() + 1 };
+  const cerrados = anual ? mesesCerrados(anual.meses, year, hoyAm) : [];
+  const ultimo = anual && modo === 'economica' && !busquedaActiva ? mesCerrado(anual.meses, year, hoyAm) : null;
+  const mc = ultimo && elegido?.year === year && cerrados.includes(elegido.mes) ? elegido.mes : ultimo;
   const canasta = useCanasta(mc ? { anio: year, mes: mc } : null);
   const rc = canasta.data && canasta.data.componentes.length ? resumirCanasta(canasta.data) : null;
 
@@ -79,7 +87,29 @@ export default function KpiTarjetas() {
     <Box sx={{ mb: 2 }}>
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { lg: columnas } }}>
         <div>
-          <Grupo>{MES[t.mes - 1]} · último mes cerrado</Grupo>
+          <Grupo>
+            <Box component="button" type="button" onClick={(ev) => setAnclaMes(ev.currentTarget)} disabled={cerrados.length < 2}
+              title={cerrados.length < 2 ? undefined : 'Elegir otro mes cerrado'}
+              sx={{ all: 'unset', cursor: cerrados.length < 2 ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 0.25,
+                borderRadius: 1, '&:hover': cerrados.length < 2 ? undefined : { color: 'text.primary' } }}>
+              {MES[t.mes - 1]}{cerrados.length > 1 && <KeyboardArrowDownIcon sx={{ fontSize: 15 }} />}
+            </Box>
+            {' · '}{t.mes === ultimo ? 'último mes cerrado' : 'mes cerrado'}
+            {t.mes !== ultimo && (
+              <Box component="button" type="button" onClick={() => setElegido(null)}
+                sx={{ all: 'unset', cursor: 'pointer', ml: 1, color: 'primary.main', textTransform: 'none', fontWeight: 700, '&:hover': { textDecoration: 'underline' } }}>
+                volver a {MES[ultimo - 1].toLowerCase()}
+              </Box>
+            )}
+          </Grupo>
+          <Menu anchorEl={anclaMes} open={!!anclaMes} onClose={() => setAnclaMes(null)}>
+            {cerrados.map((m) => (
+              <MenuItem key={m} selected={m === t.mes} dense
+                onClick={() => { setElegido(m === ultimo ? null : { year, mes: m }); setAnclaMes(null); }}>
+                {MES[m - 1]}{m === ultimo ? ' · último cerrado' : ''}
+              </MenuItem>
+            ))}
+          </Menu>
           <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr 1fr', md: anchos.join(' ') } }}>
             {ver('ventas') && <Tarjeta titulo="Ventas" activa={abierta === 'ventas'} onClick={() => toggle('ventas')}>
               <Grande>{fmtMillones(t.ventas)}</Grande>

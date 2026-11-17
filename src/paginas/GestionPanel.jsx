@@ -175,12 +175,6 @@ function GestionPanelContenido() {
     if (sinPct && estado.modoCelda !== 'importe') arreglo.modoCelda = 'importe';
     if (Object.keys(arreglo).length) setEstado((e) => ({ ...e, ...arreglo }));
   }, [estado.tab, estado.modo, estado.modoCelda, sinEcoFin, sinPct, tabsVisibles.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const toggleMes = (m) => setEstado((e) => {
-    const set = new Set(e.meses);
-    if (set.has(m)) set.delete(m); else set.add(m);
-    // Los 12 marcados es lo mismo que ninguno (todo el año), como en gestion.
-    return { ...e, meses: set.size === 12 ? [] : [...set].sort((a, b) => a - b) };
-  });
   const ordenar = (col) => setEstado((e) => ({
     ...e,
     sort: e.sort.col === col ? { col, dir: e.sort.dir === 'desc' ? 'asc' : 'desc' } : { col, dir: 'desc' },
@@ -421,7 +415,7 @@ function GestionPanelContenido() {
           minYear={rango.data?.minYear ?? undefined}
           maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
           onYear={(year) => cambiar({ year })}
-          onToggleMes={toggleMes}
+          onMeses={(meses) => cambiar({ meses })}
           onTodoElAnio={() => cambiar({ meses: [] })}
         />
         </Box>}
