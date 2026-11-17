@@ -48,10 +48,44 @@ const ACTION_COLORS = {
   reassign: '#f59e0b',
 };
 
-function fmtValue(v) {
-  if (v == null) return '—';
+// Nombres y formato de los campos que guarda el servidor en cada cambio (tablero #102, 17/11/2026:
+// el detalle decía «items», «costoTotal», «porcentajeVenta», «porciones»).
+// tipo: '$' = pesos, '%' = porcentaje, 'n' = número; sin tipo = texto tal cual.
+const CAMPOS = {
+  nombre: ['Nombre'], items: ['Ingredientes', 'n'], porciones: ['Rendimiento', 'n'], rendimiento: ['Rendimiento', 'n'],
+  porcentajeVenta: ['% costo objetivo', '%'], costoTotal: ['Costo total', '$'], costoUnitario: ['Costo por unidad', '$'],
+  observacion: ['Observación'], unidadMed: ['Unidad'], unidad_med: ['Unidad'], precioRef: ['Precio de referencia', '$'],
+  precio_ref: ['Precio de referencia', '$'], rubro: ['Rubro'], estado: ['Estado'], insumoId: ['Insumo n°'],
+  peso_inicial: ['Peso inicial', 'n'], peso_final: ['Peso final', 'n'], mermaIds: ['Mermas'],
+  objetivo: ['% objetivo', '%'], precioManual: ['Precio manual', '$'], ajuste: ['Ajuste', '%'], ultimoPct: ['Último %', '%'],
+  excluido: ['Excluido'], scope: ['Alcance'], pisarTodo: ['Pisar todo'], normalizarNombres: ['Formato de nombres'],
+  cambiados: ['Cambiados', 'n'], role: ['Rol'], alias: ['Alias'], email: ['Mail'], name: ['Nombre'],
+  target_email: ['Mail'], owner_id: ['Dueño (usuario n°)'], user_id: ['Usuario n°'], paused_at: ['Pausado'],
+  paused_reason: ['Motivo'], tipo: ['Tipo'], businesses: ['Negocios'],
+};
+const ROLES = { owner: 'Dueño', admin: 'Administrador', staff: 'Staff', app_admin: 'Admin de Lazarillo' };
+
+// Campo sin traducción: «precioVenta» / «precio_venta» → «Precio venta».
+const humanizar = (k) => {
+  const t = String(k).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+const etiqueta = (k) => CAMPOS[k]?.[0] || humanizar(k);
+
+function fmtValue(v, k) {
+  if (v == null || v === '') return '—';
   if (typeof v === 'boolean') return v ? 'Sí' : 'No';
-  if (typeof v === 'number') return String(v);
+  if (Array.isArray(v)) return v.length ? v.map((x) => fmtValue(x)).join(', ') : '—';
+  if (typeof v === 'object') return JSON.stringify(v);
+  const tipo = CAMPOS[k]?.[1];
+  const n = Number(v);
+  if (tipo && v !== '' && Number.isFinite(n)) {
+    if (tipo === '$') return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
+    if (tipo === '%') return `${n.toLocaleString('es-AR', { maximumFractionDigits: 2 })} %`;
+    return n.toLocaleString('es-AR', { maximumFractionDigits: 3 });
+  }
+  if (k === 'role') return ROLES[v] || String(v);
+  if (k === 'paused_at' && v === 'now') return 'Sí';
   return String(v);
 }
 
@@ -64,13 +98,13 @@ function DiffDetail({ diff }) {
     <Stack spacing={0.5} sx={{ mt: 1 }}>
       {keys.map(k => (
         <Stack key={k} direction="row" spacing={1} alignItems="baseline">
-          <Typography variant="caption" fontWeight={600} sx={{ minWidth: 120 }}>{k}</Typography>
+          <Typography variant="caption" fontWeight={600} sx={{ minWidth: 140 }}>{etiqueta(k)}</Typography>
           {k in before ? (
             <Typography variant="caption" color="text.secondary">
-              {fmtValue(before[k])} → <strong>{fmtValue(after[k])}</strong>
+              {fmtValue(before[k], k)} → <strong>{fmtValue(after[k], k)}</strong>
             </Typography>
           ) : (
-            <Typography variant="caption" color="text.secondary">{fmtValue(after[k])}</Typography>
+            <Typography variant="caption" color="text.secondary">{fmtValue(after[k], k)}</Typography>
           )}
         </Stack>
       ))}
