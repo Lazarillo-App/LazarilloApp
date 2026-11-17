@@ -531,7 +531,7 @@ export default function ConfigInsumosTab({
                 subtitle="Alta e importación de insumos" />
               <CardBody>
                 <ActionRow icon={<AddIcon />} title="Nuevo insumo"
-                  desc="Alta manual cuando el insumo no llegó de Maxi todavía. Se genera un SKU provisorio que se reemplaza al sincronizar.">
+                  desc="Alta manual cuando el insumo todavía no llegó de tu punto de venta. Se genera un código provisorio que se reemplaza cuando llega.">
                   <PrimaryBtn icon={<AddIcon />} label="Nuevo insumo" onClick={onNuevoInsumo} tc={tc} />
                 </ActionRow>
                 <ActionRow icon={<CloudUploadIcon />} title="Importar desde archivo"
@@ -565,9 +565,9 @@ export default function ConfigInsumosTab({
               <CardBody>
                 <HowItWorks tc={tc} steps={[
                   { n: '1', t: 'Alta manual', d: 'Se genera LAZ-{biz}-{timestamp} como código provisorio.' },
-                  { n: '2', t: 'Sync de Maxi', d: 'Busca coincidencias por nombre y rubro al sincronizar.' },
+                  { n: '2', t: 'Llega del punto de venta', d: 'Busca coincidencias por nombre y rubro.' },
                   { n: '3', t: 'Reconciliación', d: 'Si hay match, reemplaza el SKU por el código oficial.' },
-                  { n: '4', t: 'Sin sync', d: 'Si no llega de Maxi, queda activo con el SKU de Lazarillo.' },
+                  { n: '4', t: 'Si no llega', d: 'Queda activo con el código de Lazarillo.' },
                 ]} />
               </CardBody>
             </Card>
@@ -587,7 +587,7 @@ export default function ConfigInsumosTab({
           <Grid size={{ xs: 12, md: 7 }}>
             <Card>
               <CardHeader icon={<CloudUploadIcon />} title="Importar compras"
-                subtitle="Cuando Maxi no sincroniza o para datos históricos" />
+                subtitle="Si tu punto de venta no está conectado o para datos históricos" />
               <CardBody>
                 <Stack spacing={2.5}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>

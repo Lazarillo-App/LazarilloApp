@@ -360,7 +360,7 @@ export default function ConfigArticulosTab({
               <CardHeader icon={<RestaurantMenuIcon />} title="Acciones" subtitle="Alta e importación de artículos" />
               <CardBody>
                 <ActionRow icon={<AddIcon />} title="Nuevo artículo"
-                  desc="Alta manual cuando el artículo no llegó de Maxi todavía. Se genera un SKU provisorio que se reemplaza al sincronizar.">
+                  desc="Alta manual cuando el artículo todavía no llegó de tu punto de venta. Se genera un código provisorio que se reemplaza cuando llega.">
                   <PrimaryBtn icon={<AddIcon />} label="Nuevo artículo" onClick={onNuevoArticulo} tc={tc} />
                 </ActionRow>
                 <ActionRow icon={<PriceChangeIcon />} title="Listas de precios"
@@ -388,9 +388,9 @@ export default function ConfigArticulosTab({
               <CardBody>
                 <HowItWorks tc={tc} steps={[
                   { n: '1', t: 'Alta manual', d: 'Se genera LAZ-{biz}-{timestamp} como código provisorio.' },
-                  { n: '2', t: 'Sync de Maxi', d: 'Busca coincidencias por nombre y precio al sincronizar.' },
+                  { n: '2', t: 'Llega del punto de venta', d: 'Busca coincidencias por nombre y precio.' },
                   { n: '3', t: 'Reconciliación', d: 'Si hay match, reemplaza el SKU por el código oficial.' },
-                  { n: '4', t: 'Sin sync', d: 'Si no llega de Maxi, queda activo con el SKU de Lazarillo.' },
+                  { n: '4', t: 'Si no llega', d: 'Queda activo con el código de Lazarillo.' },
                 ]} />
               </CardBody>
             </Card>
@@ -398,13 +398,13 @@ export default function ConfigArticulosTab({
 
           <Grid size={{ xs: 12, md: 7 }}>
             <Card>
-              <CardHeader icon={<MenuBookIcon />} title="Importar recetas" subtitle="Excel de recetas, MaxiRest o paso a paso con fotos" />
+              <CardHeader icon={<MenuBookIcon />} title="Importar recetas" subtitle="Desde un Excel o tu punto de venta, y el paso a paso con fotos" />
               <CardBody>
                 <Stack spacing={2}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
                     {/* Antes la tarjeta solo hablaba del ZIP y el import de recetas por Excel quedaba escondido
                         en una pestaña del mismo modal (usuaria 16/11/2026, alta de un negocio a mano). */}
-                    Las recetas (artículo, insumo y cantidad) desde un Excel o desde MaxiRest, y el paso a paso con
+                    Las recetas (artículo, insumo y cantidad) desde un Excel o desde tu punto de venta, y el paso a paso con
                     la foto de cada plato desde un .zip (pares .txt + imagen con el mismo nombre).
                   </Typography>
                   <PrimaryBtn icon={<MenuBookIcon />} label="Importar recetas" onClick={() => setRecetasImportOpen(true)} tc={tc} />
@@ -424,7 +424,7 @@ export default function ConfigArticulosTab({
         <Grid container spacing={2.5}>
           <Grid size={{ xs: 12, md: 7 }}>
             <Card>
-              <CardHeader icon={<CloudUploadIcon />} title="Importar ventas" subtitle="Cuando Maxi no sincroniza o para datos históricos" />
+              <CardHeader icon={<CloudUploadIcon />} title="Importar ventas" subtitle="Si tu punto de venta no está conectado o para datos históricos" />
               <CardBody>
                 <Stack spacing={2.5}>
                   <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>

@@ -411,10 +411,10 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           {/* SKU externo — solo aplica a creación, o edición de un insumo manual
               (uno ya sincronizado con Maxi no procesa este campo en el PUT) */}
           {(!isEdit || isManualInsumo) && (
-            <TextField label="SKU / Código Maxi" size="small" fullWidth
+            <TextField label="Código en tu punto de venta" size="small" fullWidth
             value={form.sku} disabled={saving || !!success}
             onChange={e => setForm(f => ({ ...f, sku: e.target.value }))}
-            placeholder="Opcional — si Maxi trae este código, se fusionan"
+            placeholder="Opcional — si tu punto de venta trae este código, se unen"
             helperText="Dejalo vacío para generar un SKU provisorio (L-)" />
           )}
 
@@ -486,7 +486,7 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
           {!isEdit && (
           <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
             Se generará un SKU provisorio automáticamente (<code>LAZ-...</code>).
-            Cuando Maxi sincronice un insumo con el mismo nombre y rubro, lo reemplazará.
+            Si tu punto de venta trae un insumo con el mismo nombre y rubro, lo reemplaza.
           </Alert>
           )}
         </Stack>
@@ -878,14 +878,14 @@ export function ArticuloNuevoModal({
               (uno ya sincronizado con Maxi no procesa este campo en el PATCH) */}
           {(!isEdit || isManualArticulo) && (
           <TextField
-            label="SKU / Código de Maxi"
+            label="Código en tu punto de venta"
             size="small" fullWidth
             value={form.skuExterno}
             onChange={e => setForm(f => ({ ...f, skuExterno: e.target.value }))}
             placeholder="Ej: 3092"
             helperText={sinSku
-              ? '⚠ Sin SKU el artículo no se sincronizará con Maxi'
-              : 'Se usará para el match con MaxiRest al sincronizar'}
+              ? '⚠ Sin código, el artículo no se va a unir con el de tu punto de venta'
+              : 'Se usa para unirlo con el artículo de tu punto de venta'}
             FormHelperTextProps={{
               sx: { color: sinSku ? '#d97706' : 'text.secondary', fontWeight: sinSku ? 600 : 400 },
             }}
