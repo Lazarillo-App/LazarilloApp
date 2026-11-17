@@ -4,7 +4,7 @@ import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import EditorPlaza from '@/componentes/plazas/EditorPlaza';
 import VincularTV from '@/componentes/plazas/VincularTV';
 import TvOutlinedIcon from '@mui/icons-material/TvOutlined';
-import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar, ToggleButtonGroup, ToggleButton } from '@mui/material';
+import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar, ToggleButtonGroup, ToggleButton, Tooltip } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import VistaPlaza from '@/componentes/plazas/VistaPlaza';
@@ -185,6 +185,15 @@ export default function PlazaPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [armando, setArmando] = useState(false);
+  // Tamaño de las tarjetas (Diego 17/11/2026: «no consideras un zoom para agrandar los productos?»). Solo el
+  // tablero, no el header (el zoom del navegador rompía la navegación). Se recuerda en este navegador.
+  const ZOOMS = [0.8, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
+  const [zoom, setZoom] = useState(() => { try { const z = Number(localStorage.getItem('tableros.zoom')); return ZOOMS.includes(z) ? z : 1; } catch { return 1; } });
+  const cambiarZoom = (paso) => setZoom((z) => {
+    const i = Math.min(ZOOMS.length - 1, Math.max(0, ZOOMS.indexOf(z) + paso));
+    try { localStorage.setItem('tableros.zoom', String(ZOOMS[i])); } catch { /* sin storage */ }
+    return ZOOMS[i];
+  });
   const [receta, setReceta] = useState(null); // { id, nombre } del producto abierto
   const [insumoEq, setInsumoEq] = useState(null); // { id, nombre, articleId }: «+ Crear equivalencia»
   const [aviso, setAviso] = useState('');
@@ -322,6 +331,19 @@ export default function PlazaPage() {
             </ToggleButtonGroup>
           </Stack>
         )}
+        {/* Zoom de las tarjetas: A− 100 % A+ (lo ve cualquiera que mire la plaza). */}
+        {!!data.productos.length && (
+          <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, height: 34, border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+            <Tooltip title="Achicar"><span><Button onClick={() => cambiarZoom(-1)} disabled={zoom === ZOOMS[0]} aria-label="Achicar tarjetas"
+              sx={{ minWidth: 34, height: 34, borderRadius: 0, fontWeight: 700, fontSize: '0.78rem' }}>A−</Button></span></Tooltip>
+            <Box component="button" type="button" onClick={() => { setZoom(1); try { localStorage.setItem('tableros.zoom', '1'); } catch { /* sin storage */ } }} title="Volver al 100 %"
+              sx={{ border: 0, borderLeft: '1px solid', borderRight: '1px solid', borderColor: 'divider', bgcolor: 'transparent', height: 34, width: 60, px: 0, whiteSpace: 'nowrap', font: 'inherit', fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums', color: 'text.secondary', cursor: 'pointer' }}>
+              {Math.round(zoom * 100)}%
+            </Box>
+            <Tooltip title="Agrandar"><span><Button onClick={() => cambiarZoom(1)} disabled={zoom === ZOOMS[ZOOMS.length - 1]} aria-label="Agrandar tarjetas"
+              sx={{ minWidth: 34, height: 34, borderRadius: 0, fontWeight: 700, fontSize: '0.95rem' }}>A+</Button></span></Tooltip>
+          </Stack>
+        )}
         {/* «TV» (Diego 14/11/2026): la TV de la cocina muestra esta plaza sola, todos los días. */}
         {data.puedeArmar && (
           <Button data-tour="tab-tv" size="small" variant="outlined" disableElevation startIcon={<TvOutlinedIcon />} onClick={() => setTv(true)}
@@ -346,7 +368,7 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography data-tour="tab-vacia" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
       ) : (
-        <Box data-tour="tab-vista"><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
+        <Box data-tour="tab-vista" sx={{ zoom }}><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
