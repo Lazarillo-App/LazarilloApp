@@ -229,6 +229,9 @@ export default function PulsoDatos({ puedeActualizar = false }) {
         type="button"
         aria-label={`Datos de ${nombre}: ${LEYENDA[peor]}${puedeActualizar ? ' — actualizar ahora' : ''}`}
         aria-busy={actualizando || undefined}
+        // Con el punto de venta conectado (una PC del kit vinculada): la guía del header explica el
+        // punto solo en ese caso (Diego 17/11/2026).
+        data-pos-conectado={data?.kit ? '1' : undefined}
         onClick={actualizar}
         sx={{ all: 'unset', cursor: puedeActualizar ? (actualizando ? 'progress' : 'pointer') : 'help', display: 'inline-flex', width: 20, height: 20, alignItems: 'center', justifyContent: 'center', borderRadius: '50%', '&:focus-visible': { outline: '2px solid currentColor' } }}
       >
