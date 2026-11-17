@@ -588,6 +588,8 @@ export function DynRow({ row, allCols, visible, side, selectable, checked, sugge
           return <span key={c.key} style={{ ...st, color: C.celesteDeep, cursor: "pointer", fontWeight: 600, textDecoration: "underline", textDecorationColor: "rgba(36,146,200,.35)", textUnderlineOffset: 2 }} onClick={(e) => { e.stopPropagation(); onCliente(row.cliente); }} title={"Ver cuenta corriente de " + row.cliente}>{cellValue(row, c, side)}</span>;
         if (c.key === "cobro" && onToggleForma)
           return <span key={c.key} style={{ ...st, color: C.celesteDeep, cursor: "pointer", textDecoration: "underline", textDecorationColor: "rgba(36,146,200,.35)", textUnderlineOffset: 2 }} onClick={(e) => { e.stopPropagation(); onToggleForma(); }} title="Corregir forma de pago (error de carga)">{cellValue(row, c, side)} ✎</span>;
+        if (c.key === "hora" && row.madrugada)
+          return <span key={c.key} style={{ ...st, color: C.celesteDeep }} title={"Entró a Mercado Pago el " + fmtFecha(row.fechaMp) + " a las " + row.hora + ": cuenta como del día anterior (corte del día)"}>{"↶" + cellValue(row, c, side)}</span>;
         return <span key={c.key} style={st}>{cellValue(row, c, side)}</span>;
       })}
       {isIng && (ccTag || tg) && <span style={{ display: "flex", gap: 6, marginLeft: 8, flexShrink: 0 }}>{ccTag}{tg}</span>}
@@ -609,7 +611,7 @@ export function DynRow({ row, allCols, visible, side, selectable, checked, sugge
       )}
       {tipEditing && (
         <div style={{ padding: "6px 14px 8px 30px", background: "#fff7ec", borderBottom: "1px solid " + C.line }}>
-          <TipEditor value={tip} max={tipImp} onSave={onSaveTip} onTodo={onTodoTip} onQuitar={onQuitarTip} defaultDif={defaultDif} />
+          <TipEditor value={tp.tip} max={tp.tipImp} onSave={onSaveTip} onTodo={onTodoTip} onQuitar={onQuitarTip} defaultDif={defaultDif} />
         </div>
       )}
       {formaEditing && (
