@@ -3,6 +3,7 @@
 // alta_paso = pos | ventas | menu | compras | insumos | tablero. Al volver a entrar con el alta en
 // curso, la app lleva a /alta y el asistente retoma en ese paso (pedido de la usuaria, 09/11).
 import { BusinessesAPI } from '../../servicios/apiBusinesses';
+import { conectaPorApi } from './posLista';
 
 export const PASOS_ALTA = ['ventas', 'menu', 'compras', 'insumos'];
 
@@ -23,6 +24,8 @@ export function avisoDatos(props) {
   if (!['omitido', 'terminado'].includes(ob.alta_estado)) return null; // negocios de antes del alta nueva: nada
   if (ob.avisos_datos_off) return null;
   if (String(ob.pos || '').toLowerCase() === 'maxirest' || props?.maxi?.email) return null;
+  // Fudo (17/11): ventas y compras llegan solas por la API; no se piden archivos.
+  if (conectaPorApi(ob.pos)) return null;
   const ventas = !ob.ventas_subidas;
   const compras = !ob.compras_subidas;
   const volver = ob.alta_estado === 'omitido';
