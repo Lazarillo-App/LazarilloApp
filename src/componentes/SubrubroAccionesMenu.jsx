@@ -5,7 +5,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, Typography, Box, CircularProgress, Divider
+  Button, TextField, Typography, Box, CircularProgress, Divider, useMediaQuery
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -22,6 +22,8 @@ import { useOrganization } from '../context/OrganizationContext';
 import { obtenerAgrupaciones, articuloGroupRuleUpsert } from '../servicios/apiAgrupaciones';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import ExcluirListasModal from './ExcluirListasModal';
+import SelectorBuscable from './SelectorBuscable';
+import CategoryIcon from '@mui/icons-material/Category';
 
 const getNum = (v) => Number(v ?? 0);
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -332,6 +334,31 @@ function SubrubroAccionesMenu({
     }
   }, [renameValue, subDisplayName, treeMode, effectiveBusinessId, notify]);
 
+  // ── Asignar a todos (Diego 16/11/2026): desde el ⋮ de un RUBRO se le pone el mismo SUBRUBRO a todos
+  //    sus artículos, y desde el ⋮ de un SUBRUBRO, el mismo RUBRO. Una sola llamada al servidor.
+  const esRubroUI = treeMode === 'sr-first';
+  const campoAsignar = esRubroUI ? 'subrubro' : 'rubro';
+  const [asignarOpen, setAsignarOpen] = useState(false);
+  const [asignarValor, setAsignarValor] = useState(null);
+  const [asignarOpciones, setAsignarOpciones] = useState([]);
+  const [asignando, setAsignando] = useState(false);
+  const celular = useMediaQuery('(max-width:600px)'); // en el celular: pantalla completa, botones de 44px
+  const openAsignar = useCallback(() => {
+    handleClose();
+    setAsignarValor(null);
+    setTimeout(() => setAsignarOpen(true), 0);
+    httpBiz('/rubros', {}, effectiveBusinessId)
+      .then((d) => {
+        const cats = d?.categorias || [];
+        const vals = campoAsignar === 'rubro'
+          ? cats.map((c) => c?.nombre)
+          : cats.flatMap((c) => (c?.subrubros || []).map((x) => (typeof x === 'string' ? x : x?.nombre)));
+        setAsignarOpciones([...new Set(vals.map((v) => String(v || '').trim()).filter((v) => v && !/^sin (subrubro|rubro|categor[ií]a)$/i.test(v)))]
+          .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' })));
+      })
+      .catch(() => setAsignarOpciones([]));
+  }, [handleClose, effectiveBusinessId, campoAsignar]);
+
   const discontinuadosGroup = useMemo(
     () => (agrupaciones || []).find((g) => isDiscontinuadosGroup(g)) || null,
     [agrupaciones]
@@ -344,6 +371,23 @@ function SubrubroAccionesMenu({
   );
 
   const subName = useMemo(() => norm(subrubro?.nombre || subrubro), [subrubro]);
+  const ejecutarAsignar = async () => {
+    const ids = allArticleIdsForSub;
+    if (!asignarValor || !ids.length) return;
+    setAsignando(true);
+    try {
+      const r = await httpBiz('/articles/clasificacion', { method: 'PUT', body: { ids, campo: campoAsignar, valor: asignarValor } }, effectiveBusinessId);
+      notify?.(`${campoAsignar === 'rubro' ? 'Rubro' : 'Subrubro'} «${asignarValor}» asignado a ${r?.actualizados ?? ids.length} artículo${(r?.actualizados ?? ids.length) === 1 ? '' : 's'}`, 'success');
+      window.dispatchEvent(new CustomEvent('articulos:updated'));
+      window.dispatchEvent(new CustomEvent('business:synced'));
+      setAsignarOpen(false);
+    } catch (e) {
+      notify?.('No se pudo asignar', 'error');
+    } finally {
+      setAsignando(false);
+    }
+  };
+
   const allArticleIdsForSub = useMemo(() => {
     const baseIds = (articuloIds || []).map(getNum).filter(Boolean);
     if (!baseIds.length) return baseIds;
@@ -728,6 +772,10 @@ function SubrubroAccionesMenu({
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Editar nombre</ListItemText>
         </MenuItem>
+        <MenuItem onClick={openAsignar} disabled={!allArticleIdsForSub.length}>
+          <ListItemIcon><CategoryIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>{`Asignar ${campoAsignar} a todos (${allArticleIdsForSub.length})`}</ListItemText>
+        </MenuItem>
         <MenuItem onClick={toggleDiscontinuarBloque}>
           <ListItemIcon><BlockIcon fontSize="small" /></ListItemIcon>
           <ListItemText>{isInDiscontinuadosView ? 'Reactivar (quitar de Discontinuados)' : 'Discontinuar'}</ListItemText>
@@ -765,6 +813,27 @@ function SubrubroAccionesMenu({
           </MenuItem>
         )}
       </Menu>
+
+      {/* ── Asignar rubro / subrubro a todos ── */}
+      <Dialog open={asignarOpen} onClose={() => !asignando && setAsignarOpen(false)} maxWidth="xs" fullWidth fullScreen={celular}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>
+          {`Asignar ${campoAsignar} a ${allArticleIdsForSub.length} artículo${allArticleIdsForSub.length === 1 ? '' : 's'}`}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {`Todos los artículos ${esRubroUI ? 'del rubro' : 'del subrubro'} «${subDisplayName}» van a quedar con este ${campoAsignar}.`}
+          </Typography>
+          <SelectorBuscable label={campoAsignar === 'rubro' ? 'Rubro' : 'Subrubro'} value={asignarValor} opciones={asignarOpciones}
+            onChange={(v) => setAsignarValor(v)} onCrear={(n) => { const v = String(n || '').trim(); if (v) setAsignarValor(v); }}
+            textoCrear={`Crear ${campoAsignar} nuevo…`} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, '& .MuiButton-root': { minHeight: celular ? 44 : undefined } }}>
+          <Button onClick={() => setAsignarOpen(false)} disabled={asignando}>Cancelar</Button>
+          <Button variant="contained" onClick={ejecutarAsignar} disabled={asignando || !asignarValor}>
+            {asignando ? 'Asignando…' : 'Asignar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ── Diálogo de reactivación en bloque ── */}
       <Dialog open={dlgReactivarOpen} onClose={() => setDlgReactivarOpen(false)} maxWidth="sm" fullWidth>
