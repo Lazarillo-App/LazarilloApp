@@ -847,7 +847,10 @@ function SidebarCategorias({
         <ul className="sidebar-draggable-list">
           {loading && <li style={{ opacity: 0.7 }}>Cargando {localListMode === 'by-categoria' ? 'categorías' : 'subrubros'}…</li>}
           {!loading && listaParaMostrar.map((sub) => {
-            const keyStr = String(sub?.subrubro || (localListMode === 'by-categoria' ? 'Sin categoría' : 'Sin subrubro'));
+            // Vacío: en la vista RUBRO falta el rubro y en SUBRUBRO falta el subrubro (Diego 16/11/2026: decía al revés).
+            // (el servidor ya los manda como «Sin subrubro» / «Sin categoría»: se renombran igual).
+            const vacio = !String(sub?.subrubro || '').trim() || /^sin (subrubro|rubro|categor[ií]a)$/i.test(String(sub?.subrubro).trim());
+            const keyStr = vacio ? (localListMode === 'by-categoria' ? 'Sin subrubro' : 'Sin rubro') : String(sub.subrubro);
             const active = categoriaSeleccionada?.subrubro === sub?.subrubro;
             const monto = montoArticulosSub(sub);
             const isScrollVisible = !active && visibleSubrubro &&
