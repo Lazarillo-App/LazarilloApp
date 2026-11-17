@@ -8,7 +8,7 @@ import { showAlert } from '@/servicios/appAlert';
 import { showPrompt } from '@/servicios/appPrompt';
 import { PlazasAPI } from '@/servicios/apiPlazas';
 
-export default function EditorPlaza({ abierto, sector, sectores = [], puedeCrearSector = false, plaza, onCerrar, onGuardado }) {
+export default function EditorPlaza({ abierto, sector, sectores = [], sectorInicial = null, puedeCrearSector = false, plaza, onCerrar, onGuardado }) {
   // Sin sector fijo (desde Tableros): se elige entre los sectores donde la persona puede crear plazas.
   // Dueño/admin también pueden crear uno ahí mismo (Diego 17/11/2026): «+ Crear sector» arriba de la lista.
   const [secs, setSecs] = React.useState(sectores);
@@ -70,7 +70,8 @@ export default function EditorPlaza({ abierto, sector, sectores = [], puedeCrear
     setNombre(plaza?.nombre || '');
     setElegidos((plaza?.productos || []).map((p) => ({ id: p.articleId, nombre: p.nombre || `#${p.articleId}` })));
     setQ('');
-    if (!sector) setSectorId((v) => v || sectores[0]?.id || '');
+    // Desde el «+» de un sector (chips o mapa) llega ese sector elegido.
+    if (!sector) setSectorId((v) => sectorInicial || v || sectores[0]?.id || '');
     setAgrupFiltro('');
     PlazasAPI.articulos('').then((r) => { setArticulos(r.articulos); setAgrupaciones(r.agrupaciones); })
       .catch(() => { setArticulos([]); setAgrupaciones([]); });
