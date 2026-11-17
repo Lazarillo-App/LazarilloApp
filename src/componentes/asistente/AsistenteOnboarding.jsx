@@ -2802,7 +2802,38 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
   const [posExtra, setPosExtra] = useState([]);   // POS sumados por la comunidad
   const [customName, setCustomName] = useState(""); // nombre cuando elige "Otro"
   useEffect(() => { loadPosExtra().then(setPosExtra); }, []);
-  const nextOpen = (from) => { let n = from; while (n <= 3 && integrar[STEPKEY[n]]) n++; return n <= 3 ? n : 5; };
+
+  // POS conectado = alta terminada (usuaria 17/11): con cualquier POS que se conecta solo, apenas la
+  // conexión anda se va directo a la tabla con los datos, sin pasos de carga manual.
+  //  - Fudo: cuando la conexión queda «conectado».
+  //  - MaxiRest: cuando aparece una PC vinculada (se mira cada 15 s mientras está elegido MaxiRest).
+  const entrando = useRef(false);
+  const entrarConPos = async (nombre) => {
+    if (entrando.current) return;
+    entrando.current = true;
+    if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", nombre); } catch { /* sigue igual */ } }
+    onDone?.();
+  };
+  useEffect(() => {
+    if (posView && conectaPorApi(pos) && fudoEst?.conectado) entrarConPos(pos);
+  }, [posView, pos, fudoEst?.conectado]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!posView || pos !== "Maxirest" || !businessId) return undefined;
+    let vivo = true;
+    const mirar = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const r = await fetch(`${API_BASE}/businesses/${businessId}/kit/pcs`, { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), "X-Business-Id": String(businessId) } });
+        const j = r.ok ? await r.json() : null;
+        if (vivo && (j?.pcs || []).some((p) => !p.revocado_en)) entrarConPos("Maxirest");
+      } catch { /* se reintenta en la próxima vuelta */ }
+    };
+    mirar();
+    const t = setInterval(mirar, 15000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [posView, pos, businessId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const nextOpen =(from) => { let n = from; while (n <= 3 && integrar[STEPKEY[n]]) n++; return n <= 3 ? n : 5; };
   useEffect(() => { if (posDone && step <= 3 && integrar[STEPKEY[step]]) setStep(nextOpen(step)); }, [step, posDone]);
 
   // Insumos (vista tabla + subir, igual que menú)
@@ -3023,7 +3054,7 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
                   <li>Listo: la primera carga tarda unos minutos; después se actualiza solo cada día.</li>
                 </ol>
               </div>
-              <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>Bajalo en la PC donde está MaxiRest, abrí “INSTALAR EN ESTA PC” y entrá con tu usuario de Lazarillo. Tus ventas, menú y compras llegan solos, sin subir archivos.</div>
+              <div style={{ fontSize: 13, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>Bajalo en la PC donde está MaxiRest, abrí “INSTALAR EN ESTA PC” y entrá con tu usuario de Lazarillo. Tus ventas, menú y compras llegan solos, sin subir archivos. Apenas la PC quede vinculada, te llevo directo a tus artículos.</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <Btn accent={marca.primary} onClick={descargarInstalador} disabled={bajandoKit}>{bajandoKit ? "Preparando…" : "⬇ Instalar actualizador"}</Btn>
                 <Btn ghost small accent={marca.primary} onClick={async () => {
@@ -3040,22 +3071,12 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
             // lo deja tildado, también artículos, insumos, recetas y compras.
             <div>
               <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta onEstado={setFudoEst}
-                onConectado={async () => { if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } } }} />
+                onConectado={() => entrarConPos(pos)} />
               {fudoEst?.conectado ? (
-                // Conectado (usuaria 17/11): lo que trae Fudo ya está en Lazarillo → directo a verlo, como
-                // «Ya lo instalé: ir a mis artículos» de MaxiRest. Nada de carga manual.
-                <>
-                  <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
-                    {fudoEst.sincronizando ? "Fudo todavía está mandando datos: podés entrar igual, van apareciendo solos." : "Listo: lo que tenías en Fudo ya está en Lazarillo."}{" "}
-                    Lo que quede sin vincular lo ves en <b>Configuración › Conexiones › Fudo</b>.
-                  </div>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <Btn accent={marca.primary} onClick={async () => {
-                      if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } }
-                      onDone?.();
-                    }}>Ver mis artículos →</Btn>
-                  </div>
-                </>
+                // Conectado: el efecto de arriba ya lleva a la tabla; esto se ve un instante.
+                <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
+                  Listo, te llevo a tus artículos… lo que falte de Fudo va apareciendo solo.
+                </div>
               ) : (
                 <>
                   <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
