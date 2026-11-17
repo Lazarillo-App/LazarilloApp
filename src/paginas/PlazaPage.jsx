@@ -76,7 +76,9 @@ export function TablerosInicio() {
         <Typography color="text.secondary" sx={{ fontSize: '0.9rem', mt: 0.75, mb: 1.5 }}>
           Una plaza es un puesto de despacho: un sector de la cocina o de la barra (Ensaladas, Freidora, Frozen). Su tablero es la lámina de armado de sus productos, para que la comunicación no falle.
         </Typography>
-        {t.puedeCrear && <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>}
+        {t.puedeCrear
+          ? <Button variant="contained" disableElevation onClick={() => setCreando(true)} sx={{ height: 36 }}>+ Crear plaza</Button>
+          : <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>Las plazas las crea el dueño, un admin o el jefe de cocina de su sector.</Typography>}
         {conReceta != null && (
           <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', mt: 1 }}>
             {conReceta > 0
