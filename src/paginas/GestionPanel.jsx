@@ -473,9 +473,9 @@ function GestionPanelContenido() {
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
       {/* Con gastos pero sin ninguna venta en el año: falta conectar el punto de venta (14/11/2026). */}
-      {verPanel && !sinDatosPanel && ventas.data && !(ventas.data.rows || []).length && !busquedaActiva && (
+      {verPanel && !posConectado && !sinDatosPanel && ventas.data && !(ventas.data.rows || []).length && !busquedaActiva && (
         <Box sx={{ mb: 2 }}>
-          <PrimerPaso soloVentas posConectado={posConectado} onConectar={() => navigate('/configuracion?tab=7')} />
+          <PrimerPaso soloVentas onConectar={() => navigate('/configuracion?tab=7')} />
         </Box>
       )}
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}

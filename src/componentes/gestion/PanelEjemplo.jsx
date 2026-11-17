@@ -23,39 +23,37 @@ const egresos = VENTAS.map((_, i) => RUBROS.reduce((a, r) => a + valorRubro(r, i
 const M = (v) => `$ ${v.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} M`;
 
 // Tarjeta del primer paso. soloVentas: ya hay gastos cargados pero ninguna venta (falta conectar el PDV).
-// posConectado (17/11/2026): el POS ya está conectado → no se ofrece conectarlo, se avisa que los
-// datos aparecen después de la primera lectura y el botón lleva a ver la conexión.
-export function PrimerPaso({ onCargar, onConectar, puedeCargar, soloVentas = false, posConectado = null }) {
+export function PrimerPaso({ onCargar, onConectar, puedeCargar, soloVentas = false }) {
   return (
     <Box data-tour="panel-primer-paso" sx={{ display: 'flex', alignItems: 'center', gap: 2, p: soloVentas ? 1.5 : 2, borderRadius: 3, border: '1px solid #5BC2EA', bgcolor: '#eef8fd' }}>
       <Box component="img" src={ANT.presenta} alt="" sx={{ height: soloVentas ? 52 : 76, width: 'auto', flexShrink: 0 }} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: soloVentas ? 14.5 : 16 }}>
-          {posConectado ? `${posConectado} ya está conectado` : soloVentas ? 'Faltan tus ventas' : 'Tu panel todavía no tiene datos'}
+          {soloVentas ? 'Faltan tus ventas' : 'Tu panel todavía no tiene datos'}
         </Typography>
         <Typography sx={{ fontSize: 13.5, color: 'text.secondary', mt: 0.5 }}>
-          {posConectado
-            ? <>Lazarillo lee {posConectado} todos los días: tus <b>ventas</b> y <b>compras</b> aparecen acá después de la primera lectura. Si la conexión recién se hizo, dale unos minutos.{!soloVentas && puedeCargar ? ' Mientras, podés cargar un gasto.' : ''}</>
-            : soloVentas
+          {soloVentas
             ? <>Ya cargaste gastos. Conectá tu punto de venta y las <b>ventas</b> entran solas: así el panel calcula <b>qué te queda</b> cada mes.</>
             : <>Cuando conectes tu punto de venta, las <b>ventas</b> y las <b>compras</b> entran solas y acá ves cuánto vendiste, en qué gastaste y <b>qué te queda</b> cada mes. Mientras, podés cargar tu primer gasto. Abajo tenés un ejemplo de cómo se ve.</>}
         </Typography>
       </Box>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0 }}>
-        <Button variant={posConectado ? 'outlined' : 'contained'} disableElevation onClick={onConectar} sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>{posConectado ? 'Ver la conexión' : 'Conectar mi punto de venta'}</Button>
+        <Button variant="contained" disableElevation onClick={onConectar} sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>Conectar mi punto de venta</Button>
         {puedeCargar && !soloVentas && <Button variant="outlined" onClick={onCargar} sx={{ textTransform: 'none', fontWeight: 700, borderRadius: 2 }}>+ Cargar un gasto</Button>}
       </Box>
     </Box>
   );
 }
 
+// posConectado (usuaria 17/11/2026): con el POS ya conectado no va la tarjeta del primer paso (no hay
+// nada que conectar); queda solo la vista previa de ejemplo hasta que llegue la primera lectura.
 export default function PanelEjemplo({ onCargar, onConectar, puedeCargar, posConectado = null }) {
   const celda = { fontSize: 12.5, py: 0.9, px: 1, textAlign: 'right', whiteSpace: 'nowrap', borderColor: 'divider' };
   const nombre = { fontSize: 12.5, py: 0.9, px: 1.5, whiteSpace: 'nowrap', borderColor: 'divider' };
   const gris = { display: 'block', fontSize: 10.5, color: 'text.secondary', fontWeight: 400, mt: 0.25 };
   return (
     <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <PrimerPaso onCargar={onCargar} onConectar={onConectar} puedeCargar={puedeCargar} posConectado={posConectado} />
+      {!posConectado && <PrimerPaso onCargar={onCargar} onConectar={onConectar} puedeCargar={puedeCargar} />}
 
       {/* Vista previa de EJEMPLO: atenuada y sin interacción */}
       <Box aria-hidden data-tour="panel-ejemplo">
