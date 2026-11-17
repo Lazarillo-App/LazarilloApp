@@ -272,6 +272,12 @@ export default function PlazaPage() {
     await PlazasAPI.editar(id, data.plaza.nombre, productos.map((x) => Number(x.articleId)));
     try { window.dispatchEvent(new CustomEvent('plazas:changed')); } catch { /* sin evento */ }
   };
+  // Orden de las tarjetas (arrastrando en «Armar»): se ve al toque y se guarda atrás; si falla, vuelve.
+  const ordenarProductos = async (lista) => {
+    const previa = data.productos;
+    setData((d) => ({ ...d, productos: lista }));
+    try { await guardarProductos(lista); } catch (e) { setError(e.message); setData((d) => ({ ...d, productos: previa })); }
+  };
   const quitarProducto = async (prod) => {
     const idx = data.productos.findIndex((x) => x.articleId === prod.articleId);
     const resto = data.productos.filter((x) => x.articleId !== prod.articleId);
@@ -329,7 +335,7 @@ export default function PlazaPage() {
           <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.15rem', lineHeight: 1.2 }}>{data.plaza.nombre}</Typography>
           <Typography variant="caption" color="text.secondary">
             {data.plaza.sectorNombre} · {data.productos.length} producto{data.productos.length !== 1 ? 's' : ''}
-            {armando ? ' · arrastrá para ordenar, tocá un color para cambiarlo, ✕ para quitar un producto' : ''}
+            {armando ? ' · ⋮⋮ arrastrá para ordenar · tocá un color para cambiarlo · ✕ quita' : ''}
           </Typography>
         </Box>
         {error && <Alert severity="error" onClose={() => setError(null)} sx={{ py: 0 }}>{error}</Alert>}
@@ -382,7 +388,7 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography data-tour="tab-vacia" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
       ) : (
-        <Box data-tour="tab-vista" sx={{ zoom }}><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
+        <Box data-tour="tab-vista" sx={{ zoom }}><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onOrdenar={ordenarProductos} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
