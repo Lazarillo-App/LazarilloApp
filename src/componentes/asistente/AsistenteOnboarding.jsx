@@ -12,7 +12,8 @@ import { showPrompt } from "../../servicios/appPrompt";
 import { PASOS_ALTA, guardarAlta } from "./altaEstado";
 import AltaManual from "./AltaManual";
 import { abrirChatAnthony } from "./chatEvento";
-import { POS_BASE, POS_OTRO, POS_NINGUNO } from "./posLista";
+import { POS_BASE, POS_OTRO, POS_NINGUNO, conectaPorApi } from "./posLista";
+import FudoConexion from "@/componentes/configuracion/FudoConexion";
 import { useAjuste } from "@/hooks/useAjustes";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
@@ -2993,7 +2994,7 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
     return (
       <>
         <AnthonyDice pose="saluda" size={80} accent={marca.primary}>
-          Contame: <b>¿con qué sistema cobrás hoy?</b><br />Si es MaxiRest, traigo tus datos solo. Si no, los cargamos juntos en dos pasos.
+          Contame: <b>¿con qué sistema cobrás hoy?</b><br />Si es MaxiRest o Fudo, traigo tus datos solo. Si no, los cargamos juntos en dos pasos.
         </AnthonyDice>
         <Panel titulo={null}>
           <Lbl>Tu sistema de cobro (POS)</Lbl>
@@ -3032,6 +3033,22 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
                 <Btn ghost small accent={marca.primary} onClick={cargarManual}>Prefiero subir archivos</Btn>
               </div>
               {kitMsg && <div style={{ fontSize: 12.5, color: kitMsg.startsWith("✓") ? "#15803d" : C.danger, marginTop: 10 }}>{kitMsg}</div>}
+            </div>
+          ) : conectaPorApi(pos) ? (
+            // Fudo (17/11): se conecta por su API con dos claves; las ventas llegan solas. Los artículos
+            // se cargan igual (de Fudo solo traemos ventas) y después se vinculan en Conexiones.
+            <div>
+              <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta
+                onConectado={async () => { if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } } }} />
+              <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
+                Después cargás tus artículos y, en <b>Configuración › Conexiones › Fudo</b>, vinculás cada producto de Fudo con su artículo (te sugerimos cuál es). Si no tenés las claves a mano, conectalo después desde ahí mismo.
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Btn accent={marca.primary} onClick={async () => {
+                  if (businessId) { try { await BusinessesAPI.setOnboardingFlag(businessId, "pos", pos); } catch { /* sigue igual */ } }
+                  cargarManual();
+                }}>Seguir con mis artículos →</Btn>
+              </div>
             </div>
           ) : !pos ? null : pos === POS_NINGUNO ? (
             // Sin POS: un solo camino, sin "Conectar por API" ni "Lo subo manualmente" (usuaria 11/11).

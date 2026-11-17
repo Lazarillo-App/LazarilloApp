@@ -8,3 +8,8 @@ export const POS_NINGUNO = "Ninguno / lo llevo en papel o planilla";
 export const POS_CON_ACTUALIZADOR = ["Maxirest"];
 export const tieneActualizador = (pos) =>
   POS_CON_ACTUALIZADOR.some((p) => p.toLowerCase() === String(pos || "").trim().toLowerCase());
+
+// POS que se conectan solos por su API, sin instalar nada: el cliente pega sus claves (17/11/2026).
+export const POS_CON_API = ["Fudo"];
+export const conectaPorApi = (pos) =>
+  POS_CON_API.some((p) => p.toLowerCase() === String(pos || "").trim().toLowerCase());

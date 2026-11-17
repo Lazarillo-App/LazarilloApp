@@ -21,9 +21,10 @@ import { showConfirm } from '@/servicios/appConfirm';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { useBusiness } from '@/context/BusinessContext';
 import { abrirChatAnthony } from '@/componentes/asistente/chatEvento';
-import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador } from '@/componentes/asistente/posLista';
+import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador, conectaPorApi } from '@/componentes/asistente/posLista';
 import MercadoPagoCaja from './MercadoPagoCaja';
 import MercadoLibreCaja from './MercadoLibreCaja';
+import FudoConexion from './FudoConexion';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 // Valor del desplegable a partir del POS guardado (un nombre que no está en la lista es "Otro").
@@ -162,7 +163,9 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
   const sel = valorSelect(elegido);
   const nombrePos = sel === POS_OTRO ? (pos === POS_OTRO ? otroNombre.trim() : elegido) : elegido;
   // Con una PC ya vinculada es MaxiRest seguro: no se pregunta nada.
+  // Fudo (17/11): se conecta por su API con las claves del cliente, sin PC ni instalador.
   const modo = activas.length > 0 || tieneActualizador(elegido) ? 'actualizador'
+    : conectaPorApi(elegido) ? 'api'
     : !elegido ? 'sin_elegir'
     : elegido === POS_NINGUNO ? 'ninguno'
     : 'otro';
@@ -175,7 +178,7 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
         <Caja titulo="Tu sistema de cobro">
           <Stack spacing={1.5} sx={{ px: 2, py: 1.5 }}>
             <Typography variant="body2" color="text.secondary">
-              Hoy se conecta solo <b>MaxiRest</b>, con un actualizador que se instala en su PC. Los demás sistemas se van a ir sumando.
+              Hoy se conectan solos <b>MaxiRest</b> (con un actualizador que se instala en su PC) y <b>Fudo</b> (con dos claves, sin instalar nada). Los demás sistemas se van a ir sumando.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'center' }}>
               <TextField select size="small" label="¿Con qué sistema cobrás?" value={sel} sx={{ minWidth: 280 }}
@@ -202,6 +205,8 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
           </Stack>
         </Caja>
       )}
+
+      {modo === 'api' && <FudoConexion businessId={businessId} themeColor={themeColor} />}
 
       {modo === 'ninguno' && (
         <Alert severity="info">
