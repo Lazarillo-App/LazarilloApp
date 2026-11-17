@@ -51,6 +51,12 @@ export function TablerosInicio() {
   const [conReceta, setConReceta] = useState(null); // productos con receta del negocio (dato real del primer paso)
   const [ej, setEj] = useState(0); // qué tablero de ejemplo se muestra
   useEffect(() => { setT(null); PlazasAPI.tablero().then(setT).catch(() => setT({ plazas: [], puedeCrear: false, sectores: [] })); }, [activeId]);
+  // Sector creado desde el editor: se vuelve a pedir la lista sin vaciar la pantalla.
+  useEffect(() => {
+    const recargar = () => PlazasAPI.tablero().then(setT).catch(() => {});
+    window.addEventListener('plazas:changed', recargar);
+    return () => window.removeEventListener('plazas:changed', recargar);
+  }, [activeId]);
   useEffect(() => {
     if (!t || t.plazas.length) return;
     PlazasAPI.articulos().then((r) => setConReceta(r.articulos.length)).catch(() => setConReceta(null));
