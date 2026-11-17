@@ -49,7 +49,7 @@ function QueTraer({ valor, onCambio, deshabilitado, themeColor }) {
 const PASOS = [
   <>En Fudo entrá a <b>Configuración › Integraciones › API Pública General</b> y tocá <b>Habilitar API Pública General</b>. Si te pregunta para qué la vas a usar, marcá <i>gestión de stock, inventario y compras</i> y <i>tablero con métricas</i>.</>,
   <>Andá a <b>Configuración › Equipo › Usuarios</b> y tocá <b>+ Nuevo</b>. Usuario: <b>lazarillo</b> · Nombre: <b>Lazarillo API</b> · Rol: <b>admin</b> · <b>sin</b> marcar Superusuario. Poné una contraseña cualquiera y un mail tuyo.</>,
-  <>Abrí ese usuario nuevo desde la lista. Abajo, en <b>API</b>, vas a ver la <b>API Key</b> y el <b>API Secret</b> «Sin asignar»: generá el secret.</>,
+  <>Tocá ese usuario nuevo en la lista y después <b>Editar</b> (abajo a la derecha). En la sección <b>API</b>, al lado de <b>API Secret</b>, tocá <b>Establecer</b>. Ahí ves la <b>API Key</b> y el secret nuevo.</>,
   <>Copiá las dos claves acá abajo. <b>Ojo:</b> Fudo muestra el secret una sola vez, pegalo antes de cerrar esa ventana.</>,
 ];
 
