@@ -10,6 +10,7 @@ import SuperPedidos from '@/componentes/super/SuperPedidos';
 import SuperTablero from '@/componentes/super/SuperTablero';
 import SuperGuia from '@/componentes/super/SuperGuia';
 import SuperFunciones from '@/componentes/super/SuperFunciones';
+import SuperSoporte from '@/componentes/super/SuperSoporte';
 import SuperManual from '@/componentes/super/SuperManual';
 import { T, FT, FB, cargarFuentes } from '@/componentes/ui/temaDiego';
 import SuperAjustes from '@/componentes/super/SuperAjustes';
@@ -17,7 +18,7 @@ import SuperChatConfig from '@/componentes/super/SuperChatConfig';
 import SuperUsuariosSection from '@/componentes/SuperUsuariosSection';
 import { SuperAPI } from '@/servicios/apiSoporte';
 
-const PESTANAS = [['pedidos', 'Pedidos'], ['tareas', 'Pendientes de desarrollo'], ['funciones', 'Funciones por negocio'], ['guia', 'Guía del proyecto'], ['manual', 'Manual'], ['ajustes', 'Ajustes a medida'], ['chat', 'Chat y avisos'], ['super', 'Super usuarios']];
+const PESTANAS = [['pedidos', 'Pedidos'], ['tareas', 'Pendientes de desarrollo'], ['funciones', 'Funciones por negocio'], ['soporte', 'Soporte de cuentas'], ['guia', 'Guía del proyecto'], ['manual', 'Manual'], ['ajustes', 'Ajustes a medida'], ['chat', 'Chat y avisos'], ['super', 'Super usuarios']];
 
 export default function SuperPanel() {
   const { user } = useAuth() || {};
@@ -60,6 +61,7 @@ export default function SuperPanel() {
       {tab === 'pedidos' && <SuperPedidos pedidoInicial={pedido} onPedidoAbierto={alAbrirPedido} catalogo={catalogo} />}
       {tab === 'tareas' && <SuperTablero key={tarea || 'tablero'} tareaInicial={tarea} />}
       {tab === 'funciones' && <SuperFunciones />}
+      {tab === 'soporte' && <SuperSoporte />}
       {tab === 'guia' && <SuperGuia />}
       {tab === 'manual' && <SuperManual />}
       {tab === 'ajustes' && <SuperAjustes catalogo={catalogo} onCatalogo={setCatalogo} />}

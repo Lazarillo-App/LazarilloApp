@@ -78,6 +78,7 @@ export function rutaDeAviso(a) {
   if (a.tarea_id) return `/super?tab=tareas&tarea=${a.tarea_id}`;
   if (a.tipo === 'tarea' || a.tipo === 'nota') return '/super?tab=tareas';
   if (a.tipo === 'ajuste') return '/super?tab=ajustes';
+  if (a.tipo === 'soporte') return '/super?tab=soporte';
   if (a.pedido_id) return `/super?pedido=${a.pedido_id}`;
   return '/super';
 }

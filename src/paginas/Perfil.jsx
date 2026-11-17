@@ -1034,6 +1034,26 @@ function PerfilContenido() {
 }
 
 /* ── Mi equipo (/equipo): la gestión del equipo, separada del perfil (Diego 15/11/2026) ── */
+// Soporte Lazarillo (tablero #104, 17/11/2026): el dueño tiene que saber que el equipo de Lazarillo
+// puede entrar a su cuenta. Lo prende o suelta un super usuario desde Panel super › Soporte de cuentas.
+function LineaSoporteLazarillo() {
+  const { organization } = useOrganization() || {};
+  if (!organization?.soporte_activo) return null;
+  return (
+    <Stack direction="row" spacing={1.25} alignItems="flex-start"
+      sx={{ mb: 2.5, p: 1.5, borderRadius: 2, bgcolor: '#5BC2EA14', border: '1px solid #5BC2EA55' }}>
+      <AdminPanelSettingsIcon sx={{ color: '#1E87B5', fontSize: 22, mt: '1px' }} />
+      <Box>
+        <Typography variant="body2" fontWeight={700}>Soporte Lazarillo activo</Typography>
+        <Typography variant="body2" color="text.secondary">
+          El equipo de Lazarillo puede entrar a tu cuenta para ayudarte, sin sumarse a tu equipo.
+          Si preferís que no, pedilo desde el chat de Anthony.
+        </Typography>
+      </Box>
+    </Stack>
+  );
+}
+
 export function MiEquipo() {
   return (
     <Box className="zoom-reset" sx={{ maxWidth: 960, mx: 'auto', p: { xs: 2, md: 3 } }}>
@@ -1041,6 +1061,7 @@ export function MiEquipo() {
         <GroupsIcon sx={{ color: tc, fontSize: 26 }} />
         <Typography variant="h5" fontWeight={800}>Mi equipo</Typography>
       </Stack>
+      <LineaSoporteLazarillo />
       <TeamSection />
     </Box>
   );

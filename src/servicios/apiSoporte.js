@@ -46,6 +46,9 @@ export const SuperAPI = {
   guardarFunciones: (businessId, ocultos, antes) => http('/superusuarios/funciones', { method: 'PUT', withBusinessId: false, body: { business_id: businessId, ocultos, antes } }),
   // Avisos del panel (solapa "Admins" de la campana).
   actividad: () => http('/superusuarios/actividad', { withBusinessId: false, cache: false }),
+  // Soporte Lazarillo por cuenta (tablero #103): listar y soltar / volver a activar.
+  soporteCuentas: () => http('/superusuarios/soporte-cuentas', { withBusinessId: false, cache: false }),
+  cambiarSoporte: (orgId, activo) => http(`/superusuarios/soporte-cuentas/${orgId}`, { method: 'PATCH', withBusinessId: false, body: { activo } }),
   actividadVista: () => http('/superusuarios/actividad/visto', { method: 'POST', withBusinessId: false }),
   // Guía del proyecto: qué queremos lograr y cómo trabajamos (14/11/2026).
   guia: () => http('/superusuarios/guia', { withBusinessId: false, cache: false }),
