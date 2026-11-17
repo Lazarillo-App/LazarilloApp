@@ -12,6 +12,22 @@ const C = {
 };
 const FB = "'Archivo', sans-serif";
 
+// ¿Hay otro negocio en la cartera con empleados para compartir? (Diego 17/11/2026: en un negocio
+// solo, «Usar la nómina de otro negocio» no tiene que aparecer). null = todavía no se sabe.
+export function useNominaParaUsar(activo, bizId) {
+  const [hay, setHay] = useState(null);
+  useEffect(() => {
+    if (!activo) { setHay(null); return undefined; }
+    let vivo = true;
+    setHay(null);
+    RrhhAPI.candidatosNomina()
+      .then((r) => { if (vivo) setHay((r.negocios || []).some((n) => n.empleados > 0)); })
+      .catch(() => { if (vivo) setHay(false); });
+    return () => { vivo = false; };
+  }, [activo, bizId]);
+  return hay;
+}
+
 export default function ListaNegociosNomina({ onVinculado, onCancelar }) {
   const [estado, setEstado] = useState('cargando'); // cargando | lista | guardando | error
   const [negocios, setNegocios] = useState([]);
@@ -20,7 +36,7 @@ export default function ListaNegociosNomina({ onVinculado, onCancelar }) {
   useEffect(() => {
     let vivo = true;
     RrhhAPI.candidatosNomina()
-      .then((r) => { if (vivo) { setNegocios(r.negocios || []); setEstado('lista'); } })
+      .then((r) => { if (vivo) { setNegocios((r.negocios || []).filter((n) => n.empleados > 0)); setEstado('lista'); } })
       .catch((e) => { if (vivo) { setMsg(e?.data?.message || e.message || 'No se pudo leer tu cartera.'); setEstado('error'); } });
     return () => { vivo = false; };
   }, []);
@@ -46,7 +62,7 @@ export default function ListaNegociosNomina({ onVinculado, onCancelar }) {
         {estado === 'cargando' && <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: C.text3 }}>Buscando los negocios de tu cartera…</div>}
         {estado === 'error' && <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: C.bad }}>{msg}</div>}
         {(estado === 'lista' || estado === 'guardando') && !negocios.length && (
-          <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: C.text3 }}>No hay otros negocios en tu cartera.</div>
+          <div style={{ padding: 12, fontFamily: FB, fontSize: 12.5, color: C.text3 }}>No hay otro negocio de tu cartera con empleados cargados.</div>
         )}
         {(estado === 'lista' || estado === 'guardando') && negocios.map((n, i) => {
           const usable = n.empleados > 0;
