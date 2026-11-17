@@ -148,7 +148,8 @@ export default function ArticulosMain(props) {
   const [addMembersModal, setAddMembersModal] = useState(null);
   // Unidades: Todo / Ventas / Stock (Diego 17/11/2026, pendiente #109). Se recuerda por navegador.
   const [unidadesModo, setUnidadesModoState] = useState(() => {
-    try { const v = localStorage.getItem('lz-unidades-modo'); return ['todo', 'ventas', 'stock'].includes(v) ? v : 'ventas'; } catch { return 'ventas'; }
+    // Por defecto Todo (ventas + salidas de stock), Diego 17/11/2026.
+    try { const v = localStorage.getItem('lz-unidades-modo'); return ['todo', 'ventas', 'stock'].includes(v) ? v : 'todo'; } catch { return 'todo'; }
   });
   const setUnidadesModo = useCallback((v) => {
     setUnidadesModoState(v);
