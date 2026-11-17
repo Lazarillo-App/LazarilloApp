@@ -22,7 +22,7 @@ import { RrhhAPI, negocioActual } from '../servicios/apiRrhh';
 import { useBusiness } from '../context/BusinessContext';
 import { useNavigate } from 'react-router-dom';
 import { useBranch } from '../hooks/useBranch';
-import ListaNegociosNomina from '../componentes/RrhhNominaCompartida';
+import ListaNegociosNomina, { useNominaParaUsar } from '../componentes/RrhhNominaCompartida';
 import SpotlightTour from '../componentes/SpotlightTour';
 import { usePasosHeader, refTour } from '../componentes/asistente/pasosHeader';
 import { useSectorGuia } from '../componentes/asistente/guias';
@@ -129,6 +129,8 @@ export default function RrhhCronogramas() {
     return () => window.removeEventListener('keydown', onKey);
   }, [maximizado]);
   const [eligiendoNomina, setEligiendoNomina] = useState(false);
+  // ¿Hay otro negocio de la cartera con empleados? Solo se pregunta si este no tiene nómina.
+  const hayNominaOtra = useNominaParaUsar(!!config && !(config.empleados || []).length, activeBusinessId);
   const [turnoSel, setTurnoSel] = useState(null);         // turno en edición ({ turnoId } o { nuevo: true })
   const [espacioSel, setEspacioSel] = useState(null);     // espacio en edición ({ id } o { nuevo: true })
   const [destelloHoy, setDestelloHoy] = useState(false);  // al apretar HOY la columna se ilumina un momento
@@ -1031,13 +1033,16 @@ export default function RrhhCronogramas() {
           <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 20, color: T.text, marginBottom: 8 }}>Arranquemos con los cronogramas</div>
           <div style={{ fontFamily: FB, fontSize: 13.5, color: T.text2, marginBottom: 18 }}>
             {sinReplica
-              ? 'Este negocio no está integrado con tu PDV, así que la nómina no entra sola: usá la de otro negocio de tu cartera o cargala a mano.'
-              : 'Todavía no hay empleados. La nómina de MaxiRest entra sola; si falta alguien, dalo de alta en Nómina.'}
+              ? (hayNominaOtra
+                ? 'Este negocio no está integrado con tu POS, así que la nómina no entra sola: usá la de otro negocio de tu cartera o cargala a mano.'
+                : 'Este negocio no está integrado con tu POS, así que la nómina no entra sola: cargá a tu equipo en Nómina.')
+              : 'Todavía no hay empleados. La nómina de tu POS entra sola; si falta alguien, dalo de alta en Nómina.'}
           </div>
           {!eligiendoNomina ? (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <Boton grande activo onClick={() => setEligiendoNomina(true)}>Usar la nómina de otro negocio</Boton>
-              <Boton grande onClick={() => navigate('/rrhh/nomina')}>Cargarla a mano</Boton>
+              {/* solo si otro negocio de la cartera tiene empleados (Diego 17/11/2026) */}
+              {hayNominaOtra && <Boton grande activo onClick={() => setEligiendoNomina(true)}>Usar la nómina de otro negocio</Boton>}
+              <Boton grande activo={!hayNominaOtra} onClick={() => navigate('/rrhh/nomina')}>{hayNominaOtra ? 'Cargarla a mano' : 'Cargar mi equipo'}</Boton>
             </div>
           ) : (
             <ListaNegociosNomina
