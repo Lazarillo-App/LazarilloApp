@@ -4,7 +4,7 @@ import { Drawer, Box, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import logoLight from '@/assets/brand/logo-light.png';
 import { useAccess } from '@/context/AccessContext';
-import { useAjuste } from '@/hooks/useAjustes';
+import { useFuncionesOcultas, estaOculta } from '@/funciones';
 
 // Módulo → sección de los roles a medida (lo que el rol no ve, no aparece).
 const SECCION_DE_MODULO = {
@@ -79,8 +79,9 @@ export default function ModulosDrawer({ open, onClose }) {
   const [query, setQuery] = React.useState('');
   const { puedeVer } = useAccess() || {};
   // Ajuste a medida (13/11): módulos que el equipo ocultó para este cliente/negocio.
-  const ocultos = useAjuste('modulos_ocultos', []);
-  const visible = (m) => !(Array.isArray(ocultos) && ocultos.includes(m.id)) && (!SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]));
+  // Funciones por negocio (17/11): área o función oculta para este negocio.
+  const ocultos = useFuncionesOcultas();
+  const visible = (m) => !estaOculta(ocultos, m.id) && (!SECCION_DE_MODULO[m.id] || !puedeVer || puedeVer(SECCION_DE_MODULO[m.id]));
 
   const q = sinAcentos(query.trim());
   const grupos = GROUPS.map((g) => ({ ...g, modules: g.modules.filter((m) => visible(m) && coincide(m, q)) }))

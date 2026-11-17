@@ -62,6 +62,7 @@ import AceptarInvitacion from './paginas/AceptarInvitacion';
 import AltaPorQR from './paginas/AltaPorQR';
 import SelectorNegocio from './paginas/SelectorNegocio';
 import SuperPanel from './paginas/SuperPanel';
+import { FuncionVisible } from './funciones';
 import AvisoAjuste from './componentes/soporte/AvisoAjuste';
 
 import './css/global.css';
@@ -324,24 +325,24 @@ export default function App() {
                 </Route>
                 {/* Operación › Tableros (Diego 12/11/2026): una pestaña por plaza de despacho, con su lámina
                     de armado. /plaza/:id queda como atajo viejo. */}
-                <Route path="/tableros" element={<RequireSeccion seccion="recetas"><TablerosInicio /></RequireSeccion>} />
-                <Route path="/tableros/:id" element={<RequireSeccion seccion="recetas"><PlazaPage /></RequireSeccion>} />
+                <Route path="/tableros" element={<FuncionVisible id="tableros"><RequireSeccion seccion="recetas"><TablerosInicio /></RequireSeccion></FuncionVisible>} />
+                <Route path="/tableros/:id" element={<FuncionVisible id="tableros"><RequireSeccion seccion="recetas"><PlazaPage /></RequireSeccion></FuncionVisible>} />
                 <Route path="/plaza/:id" element={<PlazaViejaRedirect />} />
                 <Route
                   path="/agrupacioneslist"
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}
                 />
                 {/* ── RRHH › Cronogramas (Etapa 1) ── */}
-                <Route path="/rrhh/cronogramas" element={<RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhCronogramas /></RequireSeccion></RequireAdminOrOwner>} />
-                <Route path="/rrhh/nomina" element={<RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhNomina /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/rrhh/cronogramas" element={<FuncionVisible id="rrhh"><RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhCronogramas /></RequireSeccion></RequireAdminOrOwner></FuncionVisible>} />
+                <Route path="/rrhh/nomina" element={<FuncionVisible id="rrhh"><RequireAdminOrOwner><RequireSeccion seccion="rrhh"><RrhhNomina /></RequireSeccion></RequireAdminOrOwner></FuncionVisible>} />
                 {/* ── Panel de Gestión (port de lazarillo_gestion; solo owner/admin) ── */}
                 <Route path="/m" element={<RequireAdminOrOwner><RequireSeccion seccion="resultados"><GestionMovil /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/mercadopago/vuelta" element={<RequireAdminOrOwner><MercadoPagoVuelta /></RequireAdminOrOwner>} />
                 <Route path="/mercadolibre/vuelta" element={<RequireAdminOrOwner><MercadoLibreVuelta /></RequireAdminOrOwner>} />
-                <Route path="/conciliacion" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Conciliacion /></Suspense></RequireAdminOrOwner>} />
-                <Route path="/movimientos-bancarios" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><MovimientosBancarios /></Suspense></RequireAdminOrOwner>} />
-                <Route path="/clientes" element={<RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Clientes /></Suspense></RequireAdminOrOwner>} />
-                <Route path="/gestion" element={<RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner>} />
+                <Route path="/conciliacion" element={<FuncionVisible id="conciliacion"><RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Conciliacion /></Suspense></RequireAdminOrOwner></FuncionVisible>} />
+                <Route path="/movimientos-bancarios" element={<FuncionVisible id="movimientos-bancarios"><RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><MovimientosBancarios /></Suspense></RequireAdminOrOwner></FuncionVisible>} />
+                <Route path="/clientes" element={<FuncionVisible id="clientes"><RequireAdminOrOwner><Suspense fallback={<div style={{ padding: 32 }}>Cargando…</div>}><Clientes /></Suspense></RequireAdminOrOwner></FuncionVisible>} />
+                <Route path="/gestion" element={<FuncionVisible id="resultados"><RequireAdminOrOwner><RequireSeccion seccion={['resultados', 'carga']}><PanelOCelular /></RequireSeccion></RequireAdminOrOwner></FuncionVisible>} />
                 <Route path="/gestion/conceptos" element={<RequireAdminOrOwner><RequireSeccion seccion="conceptos"><GestionConceptos /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/gestion/medios-pago" element={<RequireAdminOrOwner><RequireSeccion seccion="medios"><GestionMediosPago /></RequireSeccion></RequireAdminOrOwner>} />
                 <Route path="/perfil" element={<Perfil activeBusinessId={activeBusinessId} />} />
