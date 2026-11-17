@@ -41,6 +41,9 @@ export const SuperAPI = {
   borrarAjuste: (id) => http(`/superusuarios/ajustes/${id}`, { method: 'DELETE', withBusinessId: false }),
   buscarAlcance: (tipo, q) => http(`/superusuarios/buscar-alcance${qs({ tipo, q })}`, { withBusinessId: false, cache: false }),
   superusuarios: () => http('/superusuarios', { withBusinessId: false, cache: false }),
+  // Funciones por negocio (17/11/2026). ocultos null = el negocio vuelve al default.
+  funciones: () => http('/superusuarios/funciones', { withBusinessId: false, cache: false }),
+  guardarFunciones: (businessId, ocultos, antes) => http('/superusuarios/funciones', { method: 'PUT', withBusinessId: false, body: { business_id: businessId, ocultos, antes } }),
   // Avisos del panel (solapa "Admins" de la campana).
   actividad: () => http('/superusuarios/actividad', { withBusinessId: false, cache: false }),
   actividadVista: () => http('/superusuarios/actividad/visto', { method: 'POST', withBusinessId: false }),
