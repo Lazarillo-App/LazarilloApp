@@ -56,6 +56,9 @@ export const GestionAPI = {
   // ── Resultados, tarjetas KPI y bloque Operación (paso 3) ──
   // Todos llevan `sucursal` (undefined = todas, 'principal', o el id de la sucursal).
   // Sin rubro · por qué (Diego 06/11/2026): lo que cae en Sin rubro, agrupado por causa.
+  // «Organizá tus gastos» (17/11/2026): rubros de insumo y proveedores → concepto de caja.
+  organizar: () => api(`${base()}/organizar`),
+  organizarProveedor: (id, concepto) => api(`${base()}/organizar/proveedor/${id}`, { method: 'PUT', body: { concepto } }),
   sinRubro: ({ anio, sucursal }) => api(`${base()}/sin-rubro${qs({ anio, sucursal })}`),
   // body: { concepto } (siempre el mismo) o { alternativas: [{ etiqueta, concepto }, …] } (depende de la compra)
   sinRubroRubroInsumo: (codigo, body) => api(`${base()}/sin-rubro/rubro-insumo/${encodeURIComponent(codigo)}`, { method: 'PUT', body }),
