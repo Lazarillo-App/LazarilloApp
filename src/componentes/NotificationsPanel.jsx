@@ -27,6 +27,8 @@ import UndoIcon from '@mui/icons-material/Undo';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { showAlert } from '@/servicios/appAlert';
 import { useAccess } from '@/context/AccessContext';
 import { useAuth } from '@/context/AuthContext';
 import { ScopeGestion } from '@/gestion/compat';
@@ -112,6 +114,22 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   const { activeBusinessId } = useBusiness() || {};
   const businessId = Number(businessIdProp ?? activeBusinessId) || null;
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  // Aumentos de precios borrados que ya se deshicieron (tablero #10).
+  const [aumentosDeshechos, setAumentosDeshechos] = useState(() => new Set());
+  const deshacerAumento = async (notif) => {
+    const m = notif.metadata || {};
+    if (!businessId || !m.fecha) return;
+    try {
+      const q = m.sucursal != null ? `?sucursal=${encodeURIComponent(m.sucursal)}` : '';
+      await http(`/businesses/${businessId}/gestion/dashboard/canasta/aumentos${q}`, { method: 'POST', body: { fecha: m.fecha } });
+      setAumentosDeshechos((x) => new Set(x).add(notif.id));
+      queryClient.invalidateQueries({ queryKey: ['gestionCanasta'] });
+      showAlert('Listo: el aumento volvió a quedar anotado.', 'success');
+    } catch {
+      showAlert('No se pudo deshacer. Anotalo de nuevo desde Tu canasta.', 'error');
+    }
+  };
 
   const [open, setOpen] = useState(false);
   const botonRef = React.useRef(null);
@@ -355,6 +373,7 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     if (notif?.source === 'ui') {
       const kind = notif.kind;
       if (kind === 'discontinue') return '⛔';
+      if (kind === 'aumento_borrado') return '🏷️';
       if (kind === 'group_create') return '🆕';
       if (kind === 'group_delete') return '🗑️';
       if (kind === 'group_rename') return '✏️';
@@ -638,6 +657,18 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
           {notif.message && <Typography sx={{ fontSize: 11.5, color: 'text.secondary', whiteSpace: 'pre-line' }}>{notif.message}</Typography>}
           {deEquipo(notif) && notif.metadata?.actor_nombre && (
             <Typography sx={{ fontSize: 11, color: 'text.disabled' }}>por {notif.metadata.actor_nombre}</Typography>
+          )}
+          {notif.kind === 'aumento_borrado' && (
+            <Box sx={{ display: 'flex', gap: 1.5, mt: 0.25 }}>
+              {aumentosDeshechos.has(notif.id)
+                ? <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'success.main' }}>Deshecho ✓</Typography>
+                : (
+                  <Box component="button" type="button" onClick={(e) => { e.stopPropagation(); deshacerAumento(notif); }}
+                    sx={{ border: 0, bgcolor: 'transparent', p: 0, cursor: 'pointer', font: 'inherit', fontSize: 11, fontWeight: 600, color: '#b45309' }}>
+                    Deshacer ›
+                  </Box>
+                )}
+            </Box>
           )}
           {(canUndo(notif) || getGotoId(notif) != null) && (
             <Box sx={{ display: 'flex', gap: 1.5, mt: 0.25 }}>
