@@ -67,6 +67,7 @@ export const GestionAPI = {
   proyeccion: ({ year, sucursal }) => api(`${base()}/dashboard/proyeccion${qs({ year, sucursal })}`),
   // Facturas que se repiten todos los meses, por PDV (Diego 18/11/2026).
   recurrentes: ({ sucursal }) => api(`${base()}/dashboard/recurrentes${qs({ sucursal })}`),
+  clientesRecurrentesPos: ({ sucursal }) => api(`${base()}/dashboard/recurrentes/clientes${qs({ sucursal })}`),
   guardarRecurrentes: ({ sucursal, clientes }) => api(`${base()}/dashboard/recurrentes${qs({ sucursal })}`, { method: 'PUT', body: { clientes } }),
   equilibrio: ({ year, sucursal }) => api(`${base()}/dashboard/equilibrio${qs({ year, sucursal })}`),
   equilibrioVariables: ({ anio, mes, sucursal }) => api(`${base()}/dashboard/equilibrio/variables${qs({ anio, mes, sucursal })}`),

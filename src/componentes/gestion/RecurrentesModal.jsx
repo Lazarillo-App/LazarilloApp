@@ -36,6 +36,7 @@ function mesAMes(f, mesActual) {
   const cuentan = filas.filter((x) => x.espera);
   return { filas, n: cuentan.length, promedio: cuentan.length ? Math.round(cuentan.reduce((a, x) => a + x.imp, 0) / cuentan.length) : 0 };
 }
+const sinAcentos = (t) => String(t || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
 const iguales = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 export default function RecurrentesModal({ open, onClose }) {
@@ -47,7 +48,21 @@ export default function RecurrentesModal({ open, onClose }) {
     enabled: open && !!businessId,
   });
   const [filas, setFilas] = useState([]);
-  const [nuevo, setNuevo] = useState(null); // { nombre, esperado }
+  const [nuevo, setNuevo] = useState(null); // { q, cliente, nombre, esperado }
+  const [listaAbierta, setListaAbierta] = useState(false);
+  // Clientes de las ventas del PDV (informe 22 en MaxiRest): solo se puede agregar uno que facturó.
+  const { data: delPos, isLoading: cargandoPos } = useQuery({
+    queryKey: ['gestionRecurrentesClientes', businessId, sucursal],
+    queryFn: () => GestionAPI.clientesRecurrentesPos({ sucursal }),
+    enabled: open && !!nuevo && !!businessId,
+    staleTime: 5 * 60_000,
+  });
+  const candidatos = useMemo(() => {
+    if (!nuevo) return [];
+    const ya = new Set(filas.map((f) => f.cliente));
+    const t = sinAcentos(nuevo.q);
+    return (delPos?.clientes ?? []).filter((c) => !ya.has(c.cliente) && (!t || sinAcentos(c.nombre).includes(t))).slice(0, 60);
+  }, [delPos, nuevo, filas]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
   useEffect(() => {
@@ -74,10 +89,11 @@ export default function RecurrentesModal({ open, onClose }) {
       if (!f.configurado && !mesesCambiaron && !montoCambio) continue;
       clientes.push({ cliente: f.cliente, nombre: f.nombre, meses: mesesCambiaron ? f.meses : null, esperado: montoCambio ? monto : null });
     }
-    if (nuevo?.nombre?.trim()) {
+    if (nuevo?.q?.trim() && !nuevo.cliente) { setError('Elegí el cliente de la lista (son los que tienen ventas en este PDV).'); return; }
+    if (nuevo?.cliente) {
       const monto = aNumero(nuevo.esperado);
       if (!monto) { setError('Poné cuánto factura por mes el cliente nuevo.'); return; }
-      clientes.push({ cliente: nuevo.nombre, nombre: nuevo.nombre.trim(), meses: Array(12).fill(true), esperado: monto });
+      clientes.push({ cliente: nuevo.cliente, nombre: nuevo.nombre, meses: Array(12).fill(true), esperado: monto });
     }
     if (!clientes.length) { onClose(); return; }
     setGuardando(true); setError(null);
@@ -187,11 +203,31 @@ export default function RecurrentesModal({ open, onClose }) {
             {filas.length > 0 && <div>«Se espera» es lo del último mes que facturó; si lo cambiás, queda fijo hasta que lo vuelvas a tocar.</div>}
           </Box>
           {editable && (nuevo ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2.5, pt: 1.5 }}>
-              <Box component="input" autoFocus placeholder="Nombre del cliente como figura en el POS" value={nuevo.nombre}
-                onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
-                sx={{ flex: 1, height: 40, border: '1px solid #d7dbe0', borderRadius: 2, px: 1.25, fontSize: 13.5, outline: 0 }} />
-              <Box sx={{ display: 'flex', alignItems: 'center', height: 40, width: 150, border: '1px solid #d7dbe0', borderRadius: 2, px: 1 }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'flex-start' }, gap: 1, px: 2.5, pt: 1.5 }}>
+              <Box sx={{ flex: 1, minWidth: 0, order: { xs: 0, sm: 0 } }}>
+                <Box component="input" autoFocus placeholder="Buscá el cliente en las ventas del PDV" value={nuevo.q}
+                  onFocus={() => setListaAbierta(true)}
+                  onChange={(e) => { setNuevo({ ...nuevo, q: e.target.value, cliente: null }); setListaAbierta(true); }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setListaAbierta(false); } }}
+                  sx={{ width: '100%', boxSizing: 'border-box', height: 40, border: `1px solid ${nuevo.cliente ? CELESTE : '#d7dbe0'}`, borderRadius: 2, px: 1.25, fontSize: 13.5, outline: 0, fontFamily: 'inherit' }} />
+                {listaAbierta && !nuevo.cliente && (
+                  <Box ref={(el) => el?.scrollIntoView?.({ block: 'nearest' })} sx={{ mt: 0.5, maxHeight: 240, overflowY: 'auto', bgcolor: '#fff', border: '1px solid #e2e5e9', borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,.12)' }}>
+                    {cargandoPos ? <Box sx={{ p: 1.5, fontSize: 12.5, color: 'text.secondary' }}>Buscando clientes…</Box>
+                      : !candidatos.length ? <Box sx={{ p: 1.5, fontSize: 12.5, color: 'text.secondary' }}>No hay ventas con ese cliente en este PDV.</Box>
+                      : candidatos.map((c) => (
+                        <Box key={c.cliente} component="button" type="button"
+                          onClick={() => { setNuevo({ q: capital(c.nombre), cliente: c.cliente, nombre: c.nombre, esperado: String(c.ultimo) }); setListaAbierta(false); }}
+                          sx={{ all: 'unset', boxSizing: 'border-box', width: '100%', display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: { xs: 0.25, sm: 2 }, minHeight: 44, py: { xs: 0.75, sm: 0 }, px: 1.5, cursor: 'pointer', fontSize: 13, '&:hover': { bgcolor: 'action.hover' } }}>
+                          <Box sx={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capital(c.nombre)}</Box>
+                          <Box sx={{ flexShrink: 0, fontSize: 11.5, color: '#8a8f98', fontVariantNumeric: 'tabular-nums' }}>
+                            {c.meses} de 12 meses · {capital(NOMBRE_MES[Number(c.ultimoMes.slice(5)) - 1]).slice(0, 3)} {pesos(c.ultimo)}
+                          </Box>
+                        </Box>
+                      ))}
+                  </Box>
+                )}
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', height: 40, width: { xs: 'auto', sm: 150 }, border: '1px solid #d7dbe0', borderRadius: 2, px: 1 }}>
                 <Box component="span" sx={{ fontSize: 13, color: 'text.secondary', mr: 0.5 }}>$</Box>
                 <Box component="input" inputMode="numeric" placeholder="por mes" value={nuevo.esperado}
                   onChange={(e) => setNuevo({ ...nuevo, esperado: e.target.value })}
@@ -199,7 +235,7 @@ export default function RecurrentesModal({ open, onClose }) {
               </Box>
             </Box>
           ) : (
-            <Box component="button" type="button" onClick={() => setNuevo({ nombre: '', esperado: '' })}
+            <Box component="button" type="button" onClick={() => { setNuevo({ q: '', cliente: null, nombre: '', esperado: '' }); setListaAbierta(true); }}
               sx={{ all: 'unset', cursor: 'pointer', color: '#2a88ad', fontWeight: 600, fontSize: 13, px: 2.5, pt: 1.5 }}>+ Agregar cliente</Box>
           ))}
           {error && <Box sx={{ px: 2.5, pt: 1, fontSize: 12.5, color: 'error.main' }}>{error}</Box>}
