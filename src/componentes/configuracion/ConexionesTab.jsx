@@ -25,6 +25,7 @@ import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador, conectaPorApi } fro
 import MercadoPagoCaja from './MercadoPagoCaja';
 import MercadoLibreCaja from './MercadoLibreCaja';
 import FudoConexion from './FudoConexion';
+import ArcaCaja from './ArcaCaja';
 import { downwardMenuProps } from '@/utils/menuProps';
 
 // Valor del desplegable a partir del POS guardado (un nombre que no está en la lista es "Otro").
@@ -328,6 +329,8 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
       {/* Billeteras y bancos (14/11): Mercado Pago, para la conciliación */}
       <MercadoPagoCaja businessId={businessId} themeColor={themeColor} />
       <MercadoLibreCaja businessId={businessId} themeColor={themeColor} />
+      {/* ARCA (18/11): la PC del negocio trae Mis Comprobantes › Recibidos */}
+      <ArcaCaja businessId={businessId} />
     </Stack>
   );
 }
