@@ -99,7 +99,7 @@ export default function RecurrentesModal({ open, onClose }) {
           {!filas.length && !nuevo && (
             <Box sx={{ px: 2.5, py: 3, fontSize: 13.5, color: 'text.secondary' }}>
               Lazarillo no encontró clientes que facturen todos los meses en este PDV.
-              <Box sx={{ fontSize: 12, mt: 0.5 }}>Se detectan solos: un cliente que en 3 de los últimos 4 meses facturó entre el 2 % y el 15 % del mes.</Box>
+              <Box sx={{ fontSize: 12, mt: 0.5 }}>Se detectan solos: un cliente que, desde que apareció, factura entre el 1 % y el 15 % de las ventas del mes en 2 de cada 3 meses (mínimo 3 veces).</Box>
             </Box>
           )}
           {filas.length > 0 && (
