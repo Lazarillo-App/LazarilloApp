@@ -66,6 +66,9 @@ export function ProyeccionIngresos({ p, children }) {
     ['Regla de 3', p.reglaDeTres],
     ...(p.cierreAnioAnterior != null ? [[`${mesNombre.slice(0, 3)} ${p.anio - 1} cerró`, p.cierreAnioAnterior]] : []),
   ];
+  // Facturas que se repiten todos los meses (Diego 18/11/2026: el colegio y la escuelita de FC).
+  const recur = p.recurrentes ?? [];
+  const recPend = recur.reduce((a, r) => a + r.pendiente, 0);
   const errOtros = p.backtest ? [...otrosDe(p).map((m) => p.backtest.errores[m]).filter((x) => x != null), ...(p.backtest.errorReglaDeTres != null ? [p.backtest.errorReglaDeTres] : [])] : [];
 
   const contenido = (
@@ -80,8 +83,21 @@ export function ProyeccionIngresos({ p, children }) {
         <Box sx={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: `${pctFacturado}%`, background: RAYADO }} />
       </Box>
       <Fila izq={`Facturado al ${ddmm(p.corte)}`} der={fmtMillones(p.facturado)} />
-      <Fila izq={`Faltan ${p.diasRestantes} días (${p.restantesPorDia.map((d) => `${d.cantidad} ${DIA_SEMANA_CORTO[d.dow]}`).join(', ')})`} der={`+${fmtMillones(p.estimadoRestante)}`} />
+      <Fila izq={`Faltan ${p.diasRestantes} días (${p.restantesPorDia.map((d) => `${d.cantidad} ${DIA_SEMANA_CORTO[d.dow]}`).join(', ')})`} der={`+${fmtMillones(p.estimadoRestante - recPend)}`} />
+      {recPend > 0 && <Fila izq="Facturas que se repiten" der={`+${fmtMillones(recPend)}`} />}
       <Box sx={{ opacity: 0.7, mt: 0.5 }}>Cómo: {como}</Box>
+      {recur.length > 0 && (
+        <Box sx={{ mt: 0.75, pt: 0.75, borderTop: '1px solid rgba(255,255,255,.2)', fontSize: 11 }}>
+          <Tenue sx={{ mb: 0.25 }}>Facturas que se repiten todos los meses</Tenue>
+          {recur.map((r) => (
+            <Box key={r.cliente} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+              <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capital(r.cliente)}</Box>
+              <Box component="b" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.pendiente > 0 ? `falta ${fmtMillones(r.pendiente)}` : `✓ ${fmtMillones(r.ya)}`}</Box>
+            </Box>
+          ))}
+          <Tenue sx={{ mt: 0.25 }}>Se espera lo que facturaron el mes pasado. No cuentan para el ritmo del día a día.</Tenue>
+        </Box>
+      )}
       {p.fechasRestantes?.length > 0 && (
         <Box sx={{ mt: 0.75, pt: 0.75, borderTop: '1px solid rgba(255,255,255,.2)', fontSize: 11 }}>
           <Tenue sx={{ mb: 0.25 }}>Fechas especiales que faltan</Tenue>
