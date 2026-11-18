@@ -3,7 +3,8 @@
 // proyección de cierre de Ingresos y de Egresos, el chico de Resultado OP / Gastos / Ventas y el
 // del Punto de equilibrio. FaltaCargarTip llega con el módulo Sin carga.
 
-import React from 'react';
+import React, { useState } from 'react';
+import RecurrentesModal from './RecurrentesModal';
 import { Box, Tooltip } from '@mui/material';
 import { fmtMillones, DIA_SEMANA_CORTO } from '@/gestion/proyeccion';
 
@@ -54,6 +55,7 @@ const Tenue = ({ children, sx }) => <Box sx={{ opacity: 0.6, ...sx }}>{children}
 // la proyección de cierre. Compacto: el número arriba, una línea por idea y los otros cálculos en
 // una grilla chica.
 export function ProyeccionIngresos({ p, children }) {
+  const [editarRec, setEditarRec] = useState(false);
   const mesLargo = new Date(Date.UTC(p.anio, p.mes - 1, 1)).toLocaleDateString('es-AR', { month: 'long', timeZone: 'UTC' });
   const mesNombre = mesLargo.charAt(0).toUpperCase() + mesLargo.slice(1);
   const pctFacturado = Math.min(100, (p.facturado / p.proyeccion) * 100);
@@ -88,14 +90,20 @@ export function ProyeccionIngresos({ p, children }) {
       <Box sx={{ opacity: 0.7, mt: 0.5 }}>Cómo: {como}</Box>
       {recur.length > 0 && (
         <Box sx={{ mt: 0.75, pt: 0.75, borderTop: '1px solid rgba(255,255,255,.2)', fontSize: 11 }}>
-          <Tenue sx={{ mb: 0.25 }}>Facturas que se repiten todos los meses</Tenue>
-          {recur.map((r) => (
-            <Box key={r.cliente} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-              <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capital(r.cliente)}</Box>
-              <Box component="b" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.pendiente > 0 ? `falta ${fmtMillones(r.pendiente)}` : `✓ ${fmtMillones(r.ya)}`}</Box>
-            </Box>
-          ))}
-          <Tenue sx={{ mt: 0.25 }}>Se espera lo que facturaron el mes pasado. No cuentan para el ritmo del día a día.</Tenue>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.25 }}>
+            <Tenue>Facturas que se repiten</Tenue>
+            <Box component="button" type="button" onClick={() => setEditarRec(true)} sx={{ all: 'unset', cursor: 'pointer', color: CELESTE, fontWeight: 600 }}>Editar</Box>
+          </Box>
+          {recur.map((r) => {
+            const no = r.esteMes === false && !(r.ya > 0);
+            return (
+              <Box key={r.cliente} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, opacity: no ? 0.55 : 1 }}>
+                <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capital(r.nombre || r.cliente)}</Box>
+                <Box component="b" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{no ? `${nombreMes(p.anio, p.mes).toLowerCase()} no` : r.pendiente > 0 ? `falta ${fmtMillones(r.pendiente)}` : `✓ ${fmtMillones(r.ya)}`}</Box>
+              </Box>
+            );
+          })}
+          <Tenue sx={{ mt: 0.25 }}>Solo en los meses marcados. Se espera lo del último mes. No cuentan para el ritmo del día a día.</Tenue>
         </Box>
       )}
       {p.fechasRestantes?.length > 0 && (
@@ -127,7 +135,12 @@ export function ProyeccionIngresos({ p, children }) {
       )}
     </Box>
   );
-  return <Tip ancho={300} contenido={contenido}>{children}</Tip>;
+  return (
+    <>
+      <Tip ancho={300} contenido={contenido}>{children}</Tip>
+      {editarRec && <RecurrentesModal open onClose={() => setEditarRec(false)} />}
+    </>
+  );
 }
 
 // Egresos del mes en curso: proyección de cierre con el cálculo del celu.
