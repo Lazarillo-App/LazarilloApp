@@ -46,7 +46,7 @@ import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
 import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
 import { TareasSidebar, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
-import { Badge, Drawer } from '@mui/material';
+import { Badge, Button, Drawer } from '@mui/material';
 import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
@@ -159,6 +159,16 @@ function GestionPanelContenido() {
   useEffect(() => { guardarEstado(activeBusinessId, estado); }, [activeBusinessId, estado]);
 
   const cambiar = (parcial) => setEstado((e) => ({ ...e, ...parcial }));
+
+  // Zoom propio del Panel (tablero #110, Diego 17/11/2026: Martín no ve bien y el zoom del navegador le
+  // rompe la navegación). Agranda las tarjetas y el contenido de la tabla, no el header ni las barras.
+  // Se recuerda en este navegador, como el de las plazas de Tableros.
+  const [zoomPanel, setZoomPanel] = useState(() => { try { const z = Number(localStorage.getItem('panel.zoom')); return ZOOMS_PANEL.includes(z) ? z : 1; } catch { return 1; } });
+  const cambiarZoom = (paso) => setZoomPanel((z) => {
+    const i = paso === 0 ? ZOOMS_PANEL.indexOf(1) : Math.min(ZOOMS_PANEL.length - 1, Math.max(0, ZOOMS_PANEL.indexOf(z) + paso));
+    try { localStorage.setItem('panel.zoom', String(ZOOMS_PANEL[i])); } catch { /* sin storage */ }
+    return ZOOMS_PANEL[i];
+  });
 
   // Roles a medida (sin rol a medida, se ve todo como siempre).
   const { puedeVer = () => true, oculto = () => false } = useAccess() || {};
@@ -477,7 +487,7 @@ function GestionPanelContenido() {
         </Box>
       )}
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      {verPanel && mostrarTarjetas && <Box ref={refsTour.tarjetas}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
+      {verPanel && mostrarTarjetas && <Box ref={refsTour.tarjetas} sx={{ zoom: zoomPanel }}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
 
       {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3,
         // Maximizada: ocupa toda la ventana, debajo de los modales (zIndex 1300) para que el detalle se abra encima.
@@ -521,6 +531,8 @@ function GestionPanelContenido() {
             <SearchIcon sx={{ fontSize: 15 }} />
             <span>Buscar</span>
           </Box>}
+          {/* A− 100 % A+ (tablero #110): al lado de pantalla completa, así se ve también maximizado. */}
+          {!panelVacio && <ZoomPanel zoom={zoomPanel} onCambiar={cambiarZoom} />}
           <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
             <IconButton size="small" data-tour="panel-completa" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
               sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: "divider" }}>
@@ -529,6 +541,7 @@ function GestionPanelContenido() {
           </Tooltip>
           </Stack>
         </Stack>}
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', zoom: zoomPanel }}>
         {panelVacio && (
           <PanelEjemplo
             puedeCargar={verCarga}
@@ -580,6 +593,7 @@ function GestionPanelContenido() {
           />
           </BloqueSeguro>
         )}
+        </Box>
       </Paper>}
       <BloqueSeguro nombre="el detalle de compras"><ComprasDetalleModal filter={detalleFilter} onClose={() => setDetalleFilter(null)} /></BloqueSeguro>
       <BloqueSeguro nombre="el detalle de ventas"><VentasDetalleModal filter={ventasFilter} onClose={() => setVentasFilter(null)} /></BloqueSeguro>
@@ -610,5 +624,22 @@ function ChipBusqueda({ busqueda, onQuitar }) {
         </IconButton>
       </Box>
     </Box>
+  );
+}
+
+const ZOOMS_PANEL = [0.8, 0.9, 1, 1.15, 1.3, 1.5];
+
+/** A− 100 % A+ del Panel (tablero #110), igual al de las plazas de Tableros. Tocar el % vuelve a 100. */
+function ZoomPanel({ zoom, onCambiar }) {
+  const b = { minWidth: 32, height: 30, borderRadius: 0, fontWeight: 700, color: 'text.secondary' };
+  return (
+    <Stack direction="row" alignItems="center" data-tour="panel-zoom" sx={{ flexShrink: 0, height: 32, border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+      <Tooltip title="Achicar"><span><Button onClick={() => onCambiar(-1)} disabled={zoom === ZOOMS_PANEL[0]} aria-label="Achicar el panel" sx={{ ...b, fontSize: '0.75rem' }}>A−</Button></span></Tooltip>
+      <Box component="button" type="button" onClick={() => onCambiar(0)} title="Volver al 100 %"
+        sx={{ border: 0, borderLeft: 1, borderRight: 1, borderColor: 'divider', bgcolor: 'transparent', height: 30, width: 52, px: 0, font: 'inherit', fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums', color: 'text.secondary', cursor: 'pointer' }}>
+        {Math.round(zoom * 100)}%
+      </Box>
+      <Tooltip title="Agrandar"><span><Button onClick={() => onCambiar(1)} disabled={zoom === ZOOMS_PANEL[ZOOMS_PANEL.length - 1]} aria-label="Agrandar el panel" sx={{ ...b, fontSize: '0.9rem' }}>A+</Button></span></Tooltip>
+    </Stack>
   );
 }
