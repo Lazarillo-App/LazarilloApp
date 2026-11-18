@@ -10,10 +10,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GestionAPI } from '@/servicios/apiGestion';
 import { usePanelGestion } from '@/gestion/panelContext';
 
-const LETRA = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const LETRA = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const NOMBRE_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const CELESTE = '#5BC2EA';
-const COLS = 'minmax(150px, 1fr) 372px 136px 32px';
+const COLS = 'minmax(150px, 1fr) 488px 150px 32px';
 const pesos = (n) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
 const aNumero = (t) => { const n = Number(String(t).replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '')); return Number.isFinite(n) ? n : null; };
 const capital = (t) => String(t || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
@@ -77,12 +77,12 @@ export default function RecurrentesModal({ open, onClose }) {
 
   const sxMes = (on) => ({
     width: '100%', height: 30, borderRadius: '6px', border: 0, p: 0, cursor: editable ? 'pointer' : 'default',
-    fontSize: 11.5, fontWeight: on ? 700 : 500, bgcolor: on ? CELESTE : '#f1f1ef', color: on ? '#fff' : '#b5b5b5',
+    fontSize: 12, fontWeight: on ? 700 : 500, bgcolor: on ? CELESTE : '#f1f1ef', color: on ? '#fff' : '#b5b5b5',
     fontFamily: 'inherit', '&:disabled': { cursor: 'default' },
   });
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth={false} slotProps={{ paper: { sx: { width: 'min(820px, 96vw)', borderRadius: 3, m: { xs: 0, sm: 4 }, maxHeight: { xs: '100%', sm: 'calc(100% - 64px)' }, height: { xs: '100%', sm: 'auto' }, ...{ '@media (max-width:599px)': { width: '100%', maxWidth: '100%', borderRadius: 0 } } } } }}>
+    <Dialog open={open} onClose={onClose} maxWidth={false} slotProps={{ paper: { sx: { width: 'min(940px, 96vw)', borderRadius: 3, m: { xs: 0, sm: 4 }, maxHeight: { xs: '100%', sm: 'calc(100% - 64px)' }, height: { xs: '100%', sm: 'auto' }, ...{ '@media (max-width:599px)': { width: '100%', maxWidth: '100%', borderRadius: 0 } } } } }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, px: 2.5, py: 2, borderBottom: '1px solid #e8e8e6' }}>
         <Box>
           <Box sx={{ fontSize: 17, fontWeight: 700 }}>Facturas que se repiten</Box>
@@ -109,12 +109,12 @@ export default function RecurrentesModal({ open, onClose }) {
                 <span>Cliente</span><span>Meses en que factura</span><Box sx={{ textAlign: 'center' }}>Se espera por mes</Box><span />
               </Box>
               {filas.map((f, i) => (
-                <Box key={f.cliente} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: COLS }, gridTemplateAreas: { xs: '"n x" "m m" "e e"', sm: '"n m e x"' }, columnGap: 1.5, rowGap: 1, alignItems: 'center', py: 1.25, borderTop: '1px solid #f1f1ef', opacity: f.quitar ? 0.4 : 1 }}>
-                  <Box sx={{ gridArea: 'n', minWidth: 0, fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.nombre}>
-                    {capital(f.nombre)}
+                <Box key={f.cliente} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: COLS }, gridTemplateAreas: { xs: '"n x" "m m" "e e"', sm: '"n m e x"' }, columnGap: 1.5, rowGap: 1, alignItems: 'start', py: 1.25, borderTop: '1px solid #f1f1ef', opacity: f.quitar ? 0.4 : 1 }}>
+                  <Box sx={{ gridArea: 'n', minWidth: 0, minHeight: 40, display: 'flex', flexDirection: 'column', justifyContent: 'center', fontSize: 13.5, fontWeight: 600 }} title={f.nombre}>
+                    <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{capital(f.nombre)}</Box>
                     {f.quitar && <Box sx={{ fontSize: 11, fontWeight: 400, color: 'text.secondary' }}>no se espera más</Box>}
                   </Box>
-                  <Box sx={{ gridArea: 'm', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '4px' }}>
+                  <Box sx={{ gridArea: 'm', pt: { sm: '5px' }, display: 'grid', gridTemplateColumns: { xs: 'repeat(6, 1fr)', sm: 'repeat(12, 1fr)' }, gap: '4px' }}>
                     {f.meses.map((on, k) => (
                       <Tooltip key={k} title={`${capital(NOMBRE_MES[k])}: ${on ? 'se espera' : 'no se espera'}${on !== f.sugeridos[k] ? ' (cambiado a mano)' : ''}`}>
                         <Box component="button" type="button" disabled={!editable || f.quitar} onClick={() => tocarMes(i, k)}
@@ -122,13 +122,33 @@ export default function RecurrentesModal({ open, onClose }) {
                       </Tooltip>
                     ))}
                   </Box>
-                  <Box sx={{ gridArea: 'e', display: 'flex', alignItems: 'center', height: 40, border: '1px solid #d7dbe0', borderRadius: 2, px: 1.25, bgcolor: editable ? '#fff' : '#fafafa' }}>
+                  <Box sx={{ gridArea: 'e' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', height: 40, border: '1px solid #d7dbe0', borderRadius: 2, px: 1.25, bgcolor: editable ? '#fff' : '#fafafa' }}>
                     <Box component="span" sx={{ fontSize: 13, color: 'text.secondary', mr: 0.5 }}>$</Box>
                     <Box component="input" inputMode="numeric" disabled={!editable || f.quitar} value={Number(aNumero(f.monto) ?? 0).toLocaleString('es-AR')}
                       onChange={(e) => cambiar(i, { monto: e.target.value })}
                       sx={{ border: 0, outline: 0, width: '100%', minWidth: 0, textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', bgcolor: 'transparent', color: 'text.primary' }} />
                   </Box>
-                  <Box sx={{ gridArea: 'x', display: 'flex', justifyContent: 'center' }}>
+                  {f.historial?.length > 0 && (
+                    <Tooltip placement="bottom" title={
+                      <Box sx={{ fontSize: 12, minWidth: 200 }}>
+                        <Box sx={{ opacity: 0.7, mb: 0.5 }}>Facturado mes a mes · promedio de {f.historial.length} {f.historial.length === 1 ? 'mes' : 'meses'}</Box>
+                        {f.historial.map((h) => (
+                          <Box key={h.mes} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, fontVariantNumeric: 'tabular-nums' }}>
+                            <span>{capital(NOMBRE_MES[Number(h.mes.slice(5)) - 1]).slice(0, 3)} {h.mes.slice(2, 4)}</span><span>{pesos(h.imp)}</span>
+                          </Box>
+                        ))}
+                        {editable && <Box sx={{ opacity: 0.7, mt: 0.5 }}>Tocá para usar el promedio.</Box>}
+                      </Box>
+                    }>
+                      <Box component="button" type="button" onClick={() => { if (editable && !f.quitar) cambiar(i, { monto: String(f.promedio) }); }}
+                        sx={{ all: 'unset', display: 'block', width: '100%', textAlign: 'center', whiteSpace: 'nowrap', mt: 0.5, fontSize: 11.5, color: '#8a8f98', cursor: editable ? 'pointer' : 'default', '&:hover': editable ? { color: '#2a88ad' } : {} }}>
+                        Promedio {pesos(f.promedio)}
+                      </Box>
+                    </Tooltip>
+                  )}
+                  </Box>
+                  <Box sx={{ gridArea: 'x', display: 'flex', justifyContent: 'center', pt: { sm: '4px' } }}>
                     {editable && (
                       <Tooltip title={f.quitar ? 'Volver a esperarlo' : 'No es una factura que se repite'}>
                         <IconButton size="small" onClick={() => cambiar(i, { quitar: !f.quitar })} sx={{ color: '#9ca3af' }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
