@@ -47,7 +47,7 @@ export function serieIndicador(p) {
     const valor = valorDe(anio, mes);
     const ant = out.length ? out[out.length - 1].valor : null;
     // Mes con personal a medio cargar completado con el último mes completo (tarjetas.js): se marca.
-    const est = !!p.meses.find((x) => x.anio === anio && x.mes === mes)?.personalEstimado && CON_PERSONAL.has(p.clave);
+    const est = !(k === 0 && p.actual?.proyectado) && !!p.meses.find((x) => x.anio === anio && x.mes === mes)?.personalEstimado && CON_PERSONAL.has(p.clave);
     out.push({ anio, mes, valor, dif: difContra(p.clave, valor, ant), proyectado: k === 0 && !!p.actual?.proyectado, estimado: est });
   }
   return out.slice(1);

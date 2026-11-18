@@ -21,6 +21,7 @@ import { equilibrioMes, equilibrioProyectado, pctVariableReciente } from '@/gest
 import { alertasDelMes, conPersonalCompleto, mesCerrado, mesesCerrados, tarjetasDelMes } from '@/gestion/tarjetas';
 import { serieIndicador, sentido, INFO_INDICADOR } from '@/gestion/evolucion';
 import { resumirCanasta } from '@/gestion/canasta';
+import { indicadores } from '@/gestion/indicadores';
 import { CanastaDetalle, CanastaMini } from './CanastaTarjeta';
 import { ProyeccionIngresos } from './tooltipsProyeccion';
 import { useAccess } from '@/context/AccessContext';
@@ -196,6 +197,7 @@ export default function KpiTarjetas() {
         <Evolucion
           clave={abierta} anio={year} mesHasta={t.mes} meses={anual.meses} mesesAnt={anualAnt?.meses ?? []}
           variablePorMes={eq?.porMes ?? null} onCerrar={() => setAbierta(null)}
+          proyectado={enCurso ? { mes: enCurso, ventas: ventasProy, gastos: egrProy.total, rubros: egrProy.rubros, equilibrio: eqProy?.equilibrio ?? null } : null}
         />
       )}
       <Snackbar open={!!aviso} autoHideDuration={3000} onClose={() => setAviso(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
@@ -307,7 +309,7 @@ function Tarjeta({ titulo, activa, deshabilitada, onClick, children }) {
 }
 
 // Evolución de la tarjeta tocada, a todo el ancho (como en el celu): barras de los últimos 3/6/9/12 meses.
-function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onCerrar }) {
+function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onCerrar, proyectado }) {
   const [n, setN] = useState(6);
   // Mismo criterio que las tarjetas (Diego 06/11/2026: "en la barra dice una cosa y en el número otra"):
   // el personal a medio cargar se completa con el último mes completo y la barra queda marcada.
@@ -315,6 +317,18 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
     ...[...mesesAnt].sort((a, b) => a.mes - b.mes).map((m) => ({ ...m, anio: anio - 1 })),
     ...[...meses].sort((a, b) => a.mes - b.mes).map((m) => ({ ...m, anio })),
   ]);
+  // Mes en curso proyectado al cierre (Diego 18/11/2026), a continuación del último mes cerrado:
+  // ventas y gastos de la tarjeta de proyección; food cost / personal / mix con los rubros proyectados.
+  const conProy = proyectado && proyectado.mes === mesHasta + 1 && proyectado.ventas > 0 ? proyectado : null;
+  const hasta = { anio, mes: conProy ? conProy.mes : mesHasta };
+  const nn = conProy ? n + 1 : n;
+  const valorProy = (k) => {
+    if (!conProy) return null;
+    const i = indicadores(conProy.ventas, conProy.rubros);
+    const res = conProy.ventas - conProy.gastos;
+    return { ...i, gastos: conProy.gastos, resultado: res, rentabilidad: res / conProy.ventas }[k];
+  };
+  const actualDe = (k) => (conProy ? { valor: valorProy(k), proyectado: true } : undefined);
   let serie;
   let titulo;
   let plata;
@@ -322,14 +336,15 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
   if (clave === 'equilibrio') {
     // Barras = ventas; marca = equilibrio del mes (solo el año que se mira: las variables vienen por año).
     titulo = 'Ventas y punto de equilibrio'; plata = true; claveSentido = 'ventas';
-    serie = serieIndicador({ meses: todos, clave: 'ventas', hasta: { anio, mes: mesHasta }, n }).map((p) => {
+    serie = serieIndicador({ meses: todos, clave: 'ventas', hasta, n: nn, actual: actualDe('ventas') }).map((p) => {
+      if (p.proyectado) return { ...p, marca: conProy.equilibrio, estimado: false };
       const m = p.anio === anio ? todos.find((x) => x.anio === anio && x.mes === p.mes) : null;
       const e = m && variablePorMes ? equilibrioMes(m.ventas, m.rubros.reduce((s, r) => s + r.total, 0), variablePorMes[p.mes]?.total ?? 0) : null;
       return { ...p, marca: e?.equilibrio ?? null, estimado: !!m?.personalEstimado };
     });
   } else {
     titulo = INFO_INDICADOR[clave].titulo; plata = INFO_INDICADOR[clave].tipo === 'plata'; claveSentido = clave;
-    serie = serieIndicador({ meses: todos, clave, hasta: { anio, mes: mesHasta }, n });
+    serie = serieIndicador({ meses: todos, clave, hasta, n: nn, actual: actualDe(clave) });
   }
   // Misma escala para barras y marca; la más baja arranca en 25% para que se vean las diferencias
   // sin exagerarlas (como en el celu).
@@ -364,9 +379,10 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
               <Box sx={{ position: 'relative', height: 144, width: '100%', maxWidth: 72 }}>
                 {x.valor != null && (
                   <>
-                    <Box title={x.estimado ? 'Estimado: el personal del mes está a medio cargar; se usa el del último mes completo.' : undefined}
+                    <Box title={x.proyectado ? 'Proyección al cierre del mes en curso (ventas proyectadas y gastos estimados).' : x.estimado ? 'Estimado: el personal del mes está a medio cargar; se usa el del último mes completo.' : undefined}
                       sx={{ position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '6px 6px 0 0', bgcolor: x.valor < 0 ? '#f87171' : CELESTE, height: `${alto(x.valor) * 0.82}%`,
-                        ...(x.estimado ? { opacity: 0.55, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px)' } : {}) }} />
+                        ...(x.proyectado ? { bgcolor: x.valor < 0 ? '#fee2e2' : `${CELESTE}33`, border: `2px dashed ${x.valor < 0 ? '#f87171' : CELESTE}`, borderBottom: 0, boxSizing: 'border-box' }
+                          : x.estimado ? { opacity: 0.55, backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px)' } : {}) }} />
                     <Box component="span" sx={{ position: 'absolute', left: -12, right: -12, textAlign: 'center', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums', bottom: `calc(${alto(x.valor) * 0.82}% + 2px)` }}>{fmt(x.valor)}{x.estimado ? '*' : ''}</Box>
                   </>
                 )}
@@ -375,7 +391,7 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
                 )}
               </Box>
               <Box component="span" sx={{ mt: 0.5, height: 16, fontSize: 11, color: 'text.secondary' }}>
-                {MES[x.mes - 1].slice(0, 3).toLowerCase()}{x.anio !== anio ? ` ${String(x.anio).slice(2)}` : ''}
+                {MES[x.mes - 1].slice(0, 3).toLowerCase()}{x.anio !== anio ? ` ${String(x.anio).slice(2)}` : ''}{x.proyectado ? ' proy.' : ''}
               </Box>
               <Box component="span" sx={{ height: 16, fontSize: 10.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: s === 'bueno' ? VERDE : s === 'malo' ? ROJO : 'text.secondary' }}>
                 {x.dif != null && Math.abs(x.dif) >= 0.05 ? `${x.dif > 0 ? '▲' : '▼'}${Math.abs(x.dif).toLocaleString('es-AR', { maximumFractionDigits: 1 })}${plata ? '%' : ''}` : ''}
@@ -385,6 +401,7 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
         })}
       </Box>
       {clave === 'equilibrio' && <Box sx={{ mt: 0.5, fontSize: 11.5, color: 'text.secondary' }}>Barra = ventas · línea negra = punto de equilibrio del mes (con los gastos variables configurados).</Box>}
+      {conProy && <Box sx={{ mt: 0.5, fontSize: 11.5, color: 'text.secondary' }}>Punteada = {MES[conProy.mes - 1].toLowerCase()} proyectado al cierre (ventas proyectadas y gastos estimados, como la tarjeta de proyección).</Box>}
       {serie.some((x) => x.estimado) && <Box sx={{ mt: 0.5, fontSize: 11.5, color: 'text.secondary' }}>* rayada = personal a medio cargar: se usa el del último mes completo hasta que se cargue.</Box>}
     </Box>
   );
