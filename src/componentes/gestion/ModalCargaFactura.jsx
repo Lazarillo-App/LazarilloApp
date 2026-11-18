@@ -515,6 +515,9 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
   const porPeriodo = [];
   (filas || []).forEach((f) => { const g = porPeriodo.find((x) => x.p === f.periodo); if (g) g.filas.push(f); else porPeriodo.push({ p: f.periodo, filas: [f] }); });
   const tieneActual = porPeriodo.some((g) => g.p === periodo);
+  // Total de cada mes (usuaria 18/11/2026: «que según el mes abajo aparezca el total, así no lo sumo a mano»).
+  const totalDe = (g) => g.filas.reduce((s, f) => s + (Number(f.importe) || 0), 0);
+  const delPeriodo = porPeriodo.find((g) => g.p === periodo);
   return (
     <div style={caja}>
       <div style={{ fontWeight: 700, fontSize: 15.5 }}>Últimas cargas · {concepto}</div>
@@ -526,7 +529,10 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
           {porPeriodo.map((g) => (
             <div key={g.p} data-periodo={g.p} role="button" title={`Cargar en ${nombrePeriodo(g.p)}`} onClick={() => onPeriodo && onPeriodo(g.p)}
               style={{ marginTop: 6, borderRadius: 8, padding: "4px 7px", cursor: "pointer", border: "1px solid transparent", ...(g.p === periodo ? { background: "#fdf8ef", border: "1px solid #f0d9a8" } : {}) }}>
-              <b style={{ display: "block" }}>{nombrePeriodo(g.p)}{g.p === periodo ? <span style={{ fontWeight: 400, color: "#8a5a00" }}> · ya tiene carga</span> : null}</b>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <b style={{ flex: 1 }}>{nombrePeriodo(g.p)}{g.p === periodo ? <span style={{ fontWeight: 400, color: "#8a5a00" }}> · ya tiene carga</span> : null}</b>
+                {g.filas.length > 1 && <span title={`Total de ${nombrePeriodo(g.p)}`} style={{ fontSize: 13, color: C.gris, whiteSpace: "nowrap" }}>{g.filas.length} cargas · <b style={{ color: "#555" }}>{$fmt(totalDe(g))}</b></span>}
+              </div>
               {g.filas.map((f, k) => (
                 // Columnas fijas: texto | origen (L = Lazarillo, MX = MaxiRest) | importe — siempre alineados.
                 <div key={k} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 26px 120px 22px 22px", gap: 6, alignItems: "center", borderBottom: "1px dashed #eee", padding: "3px 0" }}>
@@ -559,8 +565,14 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
             </div>
           ))}
         </div>
+        {delPeriodo && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee", fontSize: 15.5 }}>
+            <span>Total de {nombrePeriodo(periodo)} <span style={{ color: C.gris, fontSize: 13.5 }}>· {delPeriodo.filas.length} carga{delPeriodo.filas.length === 1 ? "" : "s"}</span></span>
+            <b>{$fmt(totalDe(delPeriodo))}</b>
+          </div>
+        )}
         {mediana != null && (<>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee" }}><span>Habitual (mediana últimas {ult6.length})</span><b>{$fmt(mediana)}</b></div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: delPeriodo ? "none" : "1px solid #eee" }}><span>Habitual (mediana últimas {ult6.length})</span><b>{$fmt(mediana)}</b></div>
           <div style={{ textAlign: "right", marginTop: 3 }}><span role="button" onClick={() => onUsar(filas[0])} title="Trae importe, detalle y medio de pago de la última carga" style={{ color: C.cel, fontWeight: 600, fontSize: 13.5, cursor: "pointer" }}>usar el último ({$fmt(filas[0].importe)}{filas[0].detalle ? ` · ${filas[0].detalle}` : ""}) ›</span></div>
         </>)}
       </>)}
