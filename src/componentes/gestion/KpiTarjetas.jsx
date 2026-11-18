@@ -22,6 +22,7 @@ import { alertasDelMes, conPersonalCompleto, mesCerrado, mesesCerrados, tarjetas
 import { serieIndicador, sentido, INFO_INDICADOR } from '@/gestion/evolucion';
 import { resumirCanasta } from '@/gestion/canasta';
 import { CanastaDetalle, CanastaMini } from './CanastaTarjeta';
+import { ProyeccionIngresos } from './tooltipsProyeccion';
 import { useAccess } from '@/context/AccessContext';
 
 const MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -157,7 +158,8 @@ export default function KpiTarjetas() {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
                 <div>
                   <Box sx={{ fontSize: 11.5, color: 'text.secondary' }}>Ventas proy.</Box>
-                  <Grande color="#0369a1">{fmtMillones(ventasProy)}</Grande>
+                  {/* El mismo detalle de la celda de Ingresos del mes en curso (Diego 18/11/2026). */}
+                  <Grande color="#0369a1"><ProyeccionIngresos p={proy}>{fmtMillones(ventasProy)}</ProyeccionIngresos></Grande>
                   <Chico color="text.secondary">real {fmtMillones(proy.facturado)} al {proy.corte.slice(8, 10)}/{proy.corte.slice(5, 7)}</Chico>
                 </div>
                 {ver('resultado') && <Box sx={{ textAlign: 'right' }}>
