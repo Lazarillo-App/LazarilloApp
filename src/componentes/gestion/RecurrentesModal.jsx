@@ -17,6 +17,25 @@ const COLS = 'minmax(150px, 1fr) 488px 150px 32px';
 const pesos = (n) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
 const aNumero = (t) => { const n = Number(String(t).replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '')); return Number.isFinite(n) ? n : null; };
 const capital = (t) => String(t || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+// Mes a mes desde que apareció hasta el mes pasado (Diego 18/11/2026): un mes esperado sin factura va
+// en 0 (rojo) y cuenta en el promedio, porque a veces se olvidan de emitir y después se juntan dos.
+// Los meses apagados no se esperan: se muestran grises y no cuentan.
+function mesAMes(f, mesActual) {
+  if (!f.historial?.length) return { filas: [], promedio: 0, n: 0 };
+  const hoy = new Date();
+  const anio = mesActual > hoy.getMonth() + 1 ? hoy.getFullYear() - 1 : hoy.getFullYear();
+  const fin = anio * 12 + (mesActual - 1); // mes en curso (no entra)
+  const [y0, m0] = f.historial[0].mes.split('-').map(Number);
+  const imp = new Map(f.historial.map((h) => [h.mes, h.imp]));
+  const filas = [];
+  for (let t = y0 * 12 + m0 - 1; t < fin; t++) {
+    const mes = `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+    const v = imp.get(mes) ?? 0;
+    filas.push({ mes, imp: v, espera: !!f.meses[t % 12] || v > 0 });
+  }
+  const cuentan = filas.filter((x) => x.espera);
+  return { filas, n: cuentan.length, promedio: cuentan.length ? Math.round(cuentan.reduce((a, x) => a + x.imp, 0) / cuentan.length) : 0 };
+}
 const iguales = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 export default function RecurrentesModal({ open, onClose }) {
@@ -129,24 +148,25 @@ export default function RecurrentesModal({ open, onClose }) {
                       onChange={(e) => cambiar(i, { monto: e.target.value })}
                       sx={{ border: 0, outline: 0, width: '100%', minWidth: 0, textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', bgcolor: 'transparent', color: 'text.primary' }} />
                   </Box>
-                  {f.historial?.length > 0 && (
+                  {f.historial?.length > 0 && (() => { const h12 = mesAMes(f, mes); return (
                     <Tooltip placement="bottom" title={
                       <Box sx={{ fontSize: 12, minWidth: 200 }}>
-                        <Box sx={{ opacity: 0.7, mb: 0.5 }}>Facturado mes a mes · promedio de {f.historial.length} {f.historial.length === 1 ? 'mes' : 'meses'}</Box>
-                        {f.historial.map((h) => (
-                          <Box key={h.mes} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, fontVariantNumeric: 'tabular-nums' }}>
-                            <span>{capital(NOMBRE_MES[Number(h.mes.slice(5)) - 1]).slice(0, 3)} {h.mes.slice(2, 4)}</span><span>{pesos(h.imp)}</span>
+                        <Box sx={{ opacity: 0.7, mb: 0.5 }}>Facturado mes a mes · promedio de {h12.n} {h12.n === 1 ? 'mes' : 'meses'}</Box>
+                        {h12.filas.map((h) => (
+                          <Box key={h.mes} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, fontVariantNumeric: 'tabular-nums', ...(!h.espera ? { opacity: 0.45 } : h.imp === 0 ? { color: '#ff8a80', fontWeight: 700 } : {}) }}>
+                            <span>{capital(NOMBRE_MES[Number(h.mes.slice(5)) - 1]).slice(0, 3)} {h.mes.slice(2, 4)}</span><span>{h.espera ? pesos(h.imp) : 'no se espera'}</span>
                           </Box>
                         ))}
+                        {h12.filas.some((h) => h.espera && h.imp === 0) && <Box sx={{ opacity: 0.7, mt: 0.5 }}>En rojo: meses sin factura (cuentan como 0).</Box>}
                         {editable && <Box sx={{ opacity: 0.7, mt: 0.5 }}>Tocá para usar el promedio.</Box>}
                       </Box>
                     }>
-                      <Box component="button" type="button" onClick={() => { if (editable && !f.quitar) cambiar(i, { monto: String(f.promedio) }); }}
+                      <Box component="button" type="button" onClick={() => { if (editable && !f.quitar) cambiar(i, { monto: String(h12.promedio) }); }}
                         sx={{ all: 'unset', display: 'block', width: '100%', textAlign: 'center', whiteSpace: 'nowrap', mt: 0.5, fontSize: 11.5, color: '#8a8f98', cursor: editable ? 'pointer' : 'default', '&:hover': editable ? { color: '#2a88ad' } : {} }}>
-                        Promedio {pesos(f.promedio)}
+                        Promedio {pesos(h12.promedio)}
                       </Box>
                     </Tooltip>
-                  )}
+                  ); })()}
                   </Box>
                   <Box sx={{ gridArea: 'x', display: 'flex', justifyContent: 'center', pt: { sm: '4px' } }}>
                     {editable && (
