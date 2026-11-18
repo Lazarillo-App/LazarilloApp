@@ -92,7 +92,7 @@ export function ProyeccionIngresos({ p, children }) {
         <Box sx={{ mt: 0.75, pt: 0.75, borderTop: '1px solid rgba(255,255,255,.2)', fontSize: 11 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.25 }}>
             <Tenue>Facturas que se repiten</Tenue>
-            <Box component="button" type="button" onClick={() => setEditarRec(true)} sx={{ all: 'unset', cursor: 'pointer', color: CELESTE, fontWeight: 600 }}>Editar</Box>
+            <Box component="button" type="button" onClick={(e) => { e.stopPropagation(); setEditarRec(true); }} sx={{ all: 'unset', cursor: 'pointer', color: CELESTE, fontWeight: 600 }}>Editar</Box>
           </Box>
           {recur.map((r) => {
             const no = r.esteMes === false && !(r.ya > 0);
@@ -138,7 +138,9 @@ export function ProyeccionIngresos({ p, children }) {
   return (
     <>
       <Tip ancho={300} contenido={contenido}>{children}</Tip>
-      {editarRec && <RecurrentesModal open onClose={() => setEditarRec(false)} />}
+      {/* El modal vive dentro de la celda (árbol de React): sus clics no tienen que llegar a la celda,
+          que abre el Detalle de ventas. */}
+      {editarRec && <span onClick={(e) => e.stopPropagation()}><RecurrentesModal open onClose={() => setEditarRec(false)} /></span>}
     </>
   );
 }

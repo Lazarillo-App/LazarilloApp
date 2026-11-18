@@ -13,6 +13,7 @@ import { usePanelGestion } from '@/gestion/panelContext';
 const LETRA = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
 const NOMBRE_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const CELESTE = '#5BC2EA';
+const COLS = 'minmax(150px, 1fr) 372px 136px 32px';
 const pesos = (n) => `$ ${Math.round(n).toLocaleString('es-AR')}`;
 const aNumero = (t) => { const n = Number(String(t).replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '')); return Number.isFinite(n) ? n : null; };
 const capital = (t) => String(t || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
@@ -74,14 +75,14 @@ export default function RecurrentesModal({ open, onClose }) {
     }
   }
 
-  const sxMes = (on, sugerido) => ({
-    width: 30, height: 30, borderRadius: '7px', border: 0, p: 0, cursor: editable ? 'pointer' : 'default',
+  const sxMes = (on) => ({
+    width: '100%', height: 30, borderRadius: '6px', border: 0, p: 0, cursor: editable ? 'pointer' : 'default',
     fontSize: 11.5, fontWeight: on ? 700 : 500, bgcolor: on ? CELESTE : '#f1f1ef', color: on ? '#fff' : '#b5b5b5',
-    outline: !on && !sugerido ? 'none' : undefined,
+    fontFamily: 'inherit', '&:disabled': { cursor: 'default' },
   });
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth={false} slotProps={{ paper: { sx: { width: 'min(760px, 96vw)', borderRadius: 3 } } }}>
+    <Dialog open={open} onClose={onClose} maxWidth={false} slotProps={{ paper: { sx: { width: 'min(820px, 96vw)', borderRadius: 3, m: { xs: 0, sm: 4 }, maxHeight: { xs: '100%', sm: 'calc(100% - 64px)' }, height: { xs: '100%', sm: 'auto' }, ...{ '@media (max-width:599px)': { width: '100%', maxWidth: '100%', borderRadius: 0 } } } } }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2, px: 2.5, py: 2, borderBottom: '1px solid #e8e8e6' }}>
         <Box>
           <Box sx={{ fontSize: 17, fontWeight: 700 }}>Facturas que se repiten</Box>
@@ -93,7 +94,7 @@ export default function RecurrentesModal({ open, onClose }) {
       {isLoading || !data ? (
         <Box sx={{ py: 6, display: 'grid', placeItems: 'center' }}><CircularProgress size={28} /></Box>
       ) : (
-        <Box sx={{ overflowX: 'auto' }}>
+        <Box sx={{ flex: 1, overflowY: 'auto' }}>
           {!editable && <Box sx={{ px: 2.5, pt: 1.5, fontSize: 12.5, color: '#b45309' }}>Estás mirando todas las sucursales: elegí una para corregir los meses (cada PDV tiene sus clientes).</Box>}
           {!filas.length && !nuevo && (
             <Box sx={{ px: 2.5, py: 3, fontSize: 13.5, color: 'text.secondary' }}>
@@ -102,47 +103,40 @@ export default function RecurrentesModal({ open, onClose }) {
             </Box>
           )}
           {filas.length > 0 && (
-            <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
-              <thead>
-                <tr>
-                  <Box component="th" sx={{ textAlign: 'left', pl: 2.5, py: 1, fontSize: 11, color: 'text.secondary', fontWeight: 600 }}>Cliente</Box>
-                  {LETRA.map((l, k) => <Box component="th" key={k} sx={{ width: 34, textAlign: 'center', fontSize: 11, color: k === mes - 1 ? 'text.primary' : 'text.secondary', fontWeight: k === mes - 1 ? 800 : 600 }}>{l}</Box>)}
-                  <Box component="th" sx={{ width: 130, textAlign: 'center', fontSize: 11, color: 'text.secondary', fontWeight: 600 }}>Se espera</Box>
-                  <th style={{ width: 36 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((f, i) => (
-                  <Box component="tr" key={f.cliente} sx={{ borderTop: '1px solid #f1f1ef', opacity: f.quitar ? 0.4 : 1 }}>
-                    <Box component="td" sx={{ pl: 2.5, py: 1, fontSize: 13.5, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.nombre}>
-                      {capital(f.nombre)}{f.quitar && <Box component="span" sx={{ fontSize: 11, color: 'text.secondary' }}> · no se espera más</Box>}
-                    </Box>
-                    {f.meses.map((on, k) => (
-                      <Box component="td" key={k} sx={{ textAlign: 'center' }}>
-                        <Tooltip title={`${capital(NOMBRE_MES[k])}: ${on ? 'se espera' : 'no se espera'}${on !== f.sugeridos[k] ? ' (cambiado a mano)' : ''}`}>
-                          <Box component="button" type="button" disabled={!editable || f.quitar} onClick={() => tocarMes(i, k)}
-                            sx={{ ...sxMes(on, f.sugeridos[k]), ...(k === mes - 1 && !on ? { boxShadow: '0 0 0 2px #f59e0b' } : {}) }}>{LETRA[k]}</Box>
-                        </Tooltip>
-                      </Box>
-                    ))}
-                    <Box component="td" sx={{ textAlign: 'center', px: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', height: 40, width: 120, mx: 'auto', border: '1px solid #d7dbe0', borderRadius: 2, px: 1, bgcolor: editable ? '#fff' : '#fafafa' }}>
-                        <Box component="span" sx={{ fontSize: 13, color: 'text.secondary', mr: 0.5 }}>$</Box>
-                        <Box component="input" inputMode="numeric" disabled={!editable || f.quitar} value={Number(aNumero(f.monto) ?? 0).toLocaleString('es-AR')}
-                          onChange={(e) => cambiar(i, { monto: e.target.value })}
-                          sx={{ border: 0, outline: 0, width: '100%', textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', bgcolor: 'transparent' }} />
-                      </Box>
-                    </Box>
-                    <Box component="td" sx={{ textAlign: 'center', pr: 1 }}>
-                      {editable && (
-                        <Tooltip title={f.quitar ? 'Volver a esperarlo' : 'No es una factura que se repite'}>
-                          <IconButton size="small" onClick={() => cambiar(i, { quitar: !f.quitar })} sx={{ color: '#9ca3af' }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
-                        </Tooltip>
-                      )}
-                    </Box>
+            // Grilla de divs (no <table>): el tema del negocio pinta los <thead> de la app.
+            <Box sx={{ px: { xs: 2, sm: 2.5 }, pt: 1 }}>
+              <Box sx={{ display: { xs: 'none', sm: 'grid' }, gridTemplateColumns: COLS, columnGap: 1.5, pb: 0.75, fontSize: 11, fontWeight: 600, color: 'text.secondary' }}>
+                <span>Cliente</span><span>Meses en que factura</span><Box sx={{ textAlign: 'center' }}>Se espera por mes</Box><span />
+              </Box>
+              {filas.map((f, i) => (
+                <Box key={f.cliente} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr auto', sm: COLS }, gridTemplateAreas: { xs: '"n x" "m m" "e e"', sm: '"n m e x"' }, columnGap: 1.5, rowGap: 1, alignItems: 'center', py: 1.25, borderTop: '1px solid #f1f1ef', opacity: f.quitar ? 0.4 : 1 }}>
+                  <Box sx={{ gridArea: 'n', minWidth: 0, fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.nombre}>
+                    {capital(f.nombre)}
+                    {f.quitar && <Box sx={{ fontSize: 11, fontWeight: 400, color: 'text.secondary' }}>no se espera más</Box>}
                   </Box>
-                ))}
-              </tbody>
+                  <Box sx={{ gridArea: 'm', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '4px' }}>
+                    {f.meses.map((on, k) => (
+                      <Tooltip key={k} title={`${capital(NOMBRE_MES[k])}: ${on ? 'se espera' : 'no se espera'}${on !== f.sugeridos[k] ? ' (cambiado a mano)' : ''}`}>
+                        <Box component="button" type="button" disabled={!editable || f.quitar} onClick={() => tocarMes(i, k)}
+                          sx={{ ...sxMes(on), ...(k === mes - 1 ? { boxShadow: on ? '0 0 0 2px #fff, 0 0 0 3px #2a88ad' : '0 0 0 2px #f59e0b' } : {}) }}>{LETRA[k]}</Box>
+                      </Tooltip>
+                    ))}
+                  </Box>
+                  <Box sx={{ gridArea: 'e', display: 'flex', alignItems: 'center', height: 40, border: '1px solid #d7dbe0', borderRadius: 2, px: 1.25, bgcolor: editable ? '#fff' : '#fafafa' }}>
+                    <Box component="span" sx={{ fontSize: 13, color: 'text.secondary', mr: 0.5 }}>$</Box>
+                    <Box component="input" inputMode="numeric" disabled={!editable || f.quitar} value={Number(aNumero(f.monto) ?? 0).toLocaleString('es-AR')}
+                      onChange={(e) => cambiar(i, { monto: e.target.value })}
+                      sx={{ border: 0, outline: 0, width: '100%', minWidth: 0, textAlign: 'right', fontSize: 13.5, fontVariantNumeric: 'tabular-nums', bgcolor: 'transparent', color: 'text.primary' }} />
+                  </Box>
+                  <Box sx={{ gridArea: 'x', display: 'flex', justifyContent: 'center' }}>
+                    {editable && (
+                      <Tooltip title={f.quitar ? 'Volver a esperarlo' : 'No es una factura que se repite'}>
+                        <IconButton size="small" onClick={() => cambiar(i, { quitar: !f.quitar })} sx={{ color: '#9ca3af' }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </Box>
+              ))}
             </Box>
           )}
           <Box sx={{ px: 2.5, pt: 1, fontSize: 11.5, color: '#8a8f98', lineHeight: 1.5 }}>
@@ -175,9 +169,9 @@ export default function RecurrentesModal({ open, onClose }) {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, p: 2, mt: 1, borderTop: '1px solid #e8e8e6' }}>
         <Box sx={{ fontSize: 12, color: '#8a8f98' }}>Cada cambio queda en Notificaciones.</Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="outlined" onClick={onClose} sx={{ height: 36, textTransform: 'none' }}>Cancelar</Button>
+          <Button variant="outlined" onClick={onClose} sx={{ height: { xs: 44, sm: 36 }, textTransform: 'none' }}>Cancelar</Button>
           <Button variant="contained" disabled={guardando || !editable || !data} onClick={guardar}
-            sx={{ height: 36, textTransform: 'none', bgcolor: CELESTE, boxShadow: 'none', '&:hover': { bgcolor: '#4ab0d8', boxShadow: 'none' } }}>
+            sx={{ height: { xs: 44, sm: 36 }, textTransform: 'none', bgcolor: CELESTE, boxShadow: 'none', '&:hover': { bgcolor: '#4ab0d8', boxShadow: 'none' } }}>
             {guardando ? 'Guardando…' : 'Guardar'}
           </Button>
         </Box>
