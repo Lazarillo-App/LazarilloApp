@@ -7,7 +7,7 @@ import TvOutlinedIcon from '@mui/icons-material/TvOutlined';
 import { Box, Typography, Button, CircularProgress, Alert, Stack, Snackbar, ToggleButtonGroup, ToggleButton, Tooltip } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import CheckIcon from '@mui/icons-material/Check';
-import VistaPlaza from '@/componentes/plazas/VistaPlaza';
+import VistaPlaza, { casillasDe } from '@/componentes/plazas/VistaPlaza';
 import { PLAZAS_EJEMPLO } from '@/componentes/plazas/ejemploPlaza';
 import { useTableros, sectoresDe, pedirNuevaPlaza } from '@/componentes/plazas/useTableros';
 import { PlazasAPI } from '@/servicios/apiPlazas';
@@ -269,7 +269,8 @@ export default function PlazaPage() {
   // ✕ en la tarjeta (modo Armar): sale de la plaza al toque y se guarda atrás; «Deshacer» lo vuelve a
   // poner en el mismo lugar. Su ficha (orden, colores, renglones extra) queda guardada en el servidor.
   const guardarProductos = async (productos) => {
-    await PlazasAPI.editar(id, data.plaza.nombre, productos.map((x) => Number(x.articleId)));
+    // Con sus lugares: [articleId | null] — la posición es la casilla, null es un lugar libre.
+    await PlazasAPI.casillas(id, casillasDe(productos).map((x) => (x ? Number(x.articleId) : null)));
     try { window.dispatchEvent(new CustomEvent('plazas:changed')); } catch { /* sin evento */ }
   };
   // Orden de las tarjetas (arrastrando en «Armar»): se ve al toque y se guarda atrás; si falla, vuelve.
@@ -289,8 +290,11 @@ export default function PlazaPage() {
     const q = quitado;
     setQuitado(null);
     if (!q) return;
-    const lista = [...data.productos];
-    lista.splice(Math.min(q.idx, lista.length), 0, q.producto);
+    // Vuelve a su lugar; si mientras tanto alguien lo ocupó, va al final.
+    const ocupado = data.productos.some((x) => Number(x.casilla) === Number(q.producto.casilla));
+    const max = data.productos.reduce((m, x) => Math.max(m, Number(x.casilla) || 0), 0);
+    const lista = [...data.productos, ocupado ? { ...q.producto, casilla: max + 1 } : q.producto]
+      .sort((a, b) => (Number(a.casilla) || 0) - (Number(b.casilla) || 0));
     setData((d) => ({ ...d, productos: lista }));
     try { await guardarProductos(lista); } catch (e) { setError(e.message); cargar(); }
   };
@@ -335,7 +339,7 @@ export default function PlazaPage() {
           <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.15rem', lineHeight: 1.2 }}>{data.plaza.nombre}</Typography>
           <Typography variant="caption" color="text.secondary">
             {data.plaza.sectorNombre} · {data.productos.length} producto{data.productos.length !== 1 ? 's' : ''}
-            {armando ? ' · ⋮⋮ arrastrá para ordenar · tocá un color para cambiarlo · ✕ quita' : ''}
+            {armando ? ' · ⋮⋮ arrastrá a cualquier lugar · tocá un color para cambiarlo · ✕ quita' : ''}
           </Typography>
         </Box>
         {error && <Alert severity="error" onClose={() => setError(null)} sx={{ py: 0 }}>{error}</Alert>}

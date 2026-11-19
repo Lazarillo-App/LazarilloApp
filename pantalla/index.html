@@ -151,8 +151,13 @@
       $('nombre').textContent = (r.plaza && r.plaza.nombre) || '';
       $('sector').textContent = (r.plaza && r.plaza.sectorNombre) || '';
       var prods = r.productos || [], html = '';
+      // Lugares libres de la plaza (casilla sin producto): se dejan vacíos, igual que en el tablero.
+      var ult = 0;
       for (var i = 0; i < prods.length; i++) {
         var p = prods[i], filas = '';
+        var cas = Number(p.casilla) || (ult + 1);
+        for (var k = ult + 1; k < cas; k++) html += '<div class="tarjeta"></div>';
+        ult = Math.max(ult, cas);
         for (var j = 0; j < (p.renglones || []).length; j++) filas += renglon(p.renglones[j]);
         // Observación del producto (la última de su receta), debajo del nombre.
         var obsP = p.obs ? '<div class="obsp">&#8627; ' + esc(p.obs) + '</div>' : '';

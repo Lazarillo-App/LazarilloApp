@@ -384,14 +384,47 @@ function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false
   );
 }
 
-// Ordenar las tarjetas arrastrando (Diego 17/11/2026: «en editar poder mover los productos tipo drag entre ellos»).
-// Mismo criterio que los renglones: pointer events (mouse y touch), la grilla se reordena EN VIVO, la tarjeta
-// levantada queda donde va a caer (borde celeste + sombra) y las demás se corren con animación. Esc cancela.
-// El destino es la tarjeta cuyo centro (medido al agarrar) está más cerca del puntero.
-function useArrastreTarjetas(productos, onOrdenar) {
+// Lugares de la plaza (Diego 19/11/2026: «al mover un producto no necesariamente otro tiene que ocupar su
+// lugar»). Cada producto tiene su CASILLA (1, 2, 3…) y puede haber casillas vacías: el producto se suelta en
+// un lugar libre y el suyo queda vacío. Si se suelta sobre otro, se corren solo los que hace falta hasta el
+// lugar libre más cercano (los demás no se mueven).
+export function casillasDe(productos) {
+  const s = [];
+  (productos || []).forEach((p) => {
+    let c = Number(p.casilla) > 0 ? Number(p.casilla) - 1 : s.length;
+    if (s[c]) c = s.length;
+    s[c] = p;
+  });
+  return Array.from({ length: s.length }, (_, i) => s[i] || null);
+}
+// Lleva lo que está en la casilla `desde` a la casilla `hasta` (vista previa y resultado son lo mismo).
+const moverACasilla = (casillas, desde, hasta) => {
+  const s = [...casillas];
+  const x = s[desde];
+  s[desde] = null;
+  if (!s[hasta]) { s[hasta] = x; return s; }
+  // Lugar libre más cercano a `hasta` (a igual distancia, del lado de donde viene el producto).
+  const libre = (k) => k >= s.length || (k >= 0 && !s[k]);
+  let h = s.length;
+  for (let d = 1; d <= s.length; d++) {
+    const [p1, p2] = desde < hasta ? [hasta - d, hasta + d] : [hasta + d, hasta - d];
+    if (p1 >= 0 && libre(p1)) { h = p1; break; }
+    if (p2 >= 0 && libre(p2)) { h = p2; break; }
+  }
+  if (h < hasta) for (let k = h; k < hasta; k++) s[k] = s[k + 1];
+  else for (let k = h; k > hasta; k--) s[k] = s[k - 1];
+  s[hasta] = x;
+  return s;
+};
+
+// Arrastrar las tarjetas (pointer events: mouse y touch). La grilla se acomoda EN VIVO: la tarjeta levantada
+// queda donde va a caer (borde celeste + sombra) y las que se corren lo hacen con animación. Esc cancela.
+// El destino es la casilla (tarjeta o lugar libre) cuyo centro, medido al agarrar, está más cerca del puntero.
+function useArrastreTarjetas(base, onSoltar) {
   const [arr, setArr] = useState(null); // { key, desde, hasta, centros }
   const arrRef = useRef(null);
   arrRef.current = arr;
+  const grilla = useRef(null);
   const nodos = useRef(new Map());
   const antes = useRef(new Map());
   const medir = () => { const m = new Map(); nodos.current.forEach((el, k) => { if (el) { const b = el.getBoundingClientRect(); m.set(k, [b.left, b.top]); } }); return m; };
@@ -411,8 +444,8 @@ function useArrastreTarjetas(productos, onOrdenar) {
   const agarrar = (e, i) => {
     if (e.button != null && e.button !== 0) return;
     e.preventDefault();
-    const centros = productos.map((p) => { const b = nodos.current.get(p.articleId)?.getBoundingClientRect(); return b ? [b.left + b.width / 2, b.top + b.height / 2] : [0, 0]; });
-    setArr({ key: productos[i].articleId, desde: i, hasta: i, centros });
+    const centros = [...(grilla.current?.children || [])].map((el) => { const b = el.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; });
+    setArr({ key: base[i].articleId, desde: i, hasta: i, centros });
   };
   useEffect(() => {
     if (!arr) return undefined;
@@ -424,7 +457,7 @@ function useArrastreTarjetas(productos, onOrdenar) {
     };
     const alSoltar = () => {
       const a = arrRef.current; setArr(null);
-      if (a && a.hasta !== a.desde) onOrdenar?.(moverEn(productos, a.desde, a.hasta));
+      if (a && a.hasta !== a.desde) onSoltar?.(moverACasilla(base, a.desde, a.hasta));
     };
     const alTecla = (e) => { if (e.key === 'Escape') setArr(null); };
     document.body.style.cursor = 'grabbing'; document.body.style.userSelect = 'none';
@@ -435,23 +468,42 @@ function useArrastreTarjetas(productos, onOrdenar) {
       window.removeEventListener('pointermove', alMover); window.removeEventListener('pointerup', alSoltar);
       window.removeEventListener('pointercancel', alSoltar); window.removeEventListener('keydown', alTecla);
     };
-  }, [!!arr, productos]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lista = arr ? moverEn(productos, arr.desde, arr.hasta) : productos;
-  return { arr, lista, agarrar, nodos };
+  }, [!!arr, base]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lista = arr ? moverACasilla(base, arr.desde, arr.hasta) : base;
+  return { arr, lista, agarrar, nodos, grilla };
+}
+
+// Lugar libre: en «Armar», recuadro punteado donde se puede soltar; mirando, espacio vacío (en el celular,
+// con una sola columna, no ocupa lugar).
+function Hueco({ armando }) {
+  return (
+    <Box aria-hidden={!armando} sx={{ gridRow: 'span 2', minHeight: 120, borderRadius: 2, alignSelf: 'stretch',
+      display: armando ? 'flex' : { xs: 'none', sm: 'block' }, alignItems: 'center', justifyContent: 'center',
+      ...(armando ? { border: '2px dashed #d3dbe3', color: '#a0aab5', fontSize: '0.75rem', fontWeight: 600 } : null) }}>
+      {armando ? 'Lugar libre' : null}
+    </Box>
+  );
 }
 
 export default function VistaPlaza({ productos, armando = false, mostrarPlaza, onOrdenar, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
-  const { arr, lista, agarrar, nodos } = useArrastreTarjetas(productos, onOrdenar);
+  // Casillas con sus lugares libres; en «Armar» suma uno al final para poder correr un producto ahí.
+  const base = React.useMemo(() => {
+    const c = casillasDe(productos);
+    return armando && onOrdenar ? [...c, null] : c;
+  }, [productos, armando, onOrdenar]);
+  // Al soltar: cada producto con su casilla nueva (los lugares vacíos del final no se guardan).
+  const soltar = (casillas) => onOrdenar?.(casillas.map((p, i) => (p ? { ...p, casilla: i + 1 } : null)).filter(Boolean));
+  const { arr, lista, agarrar, nodos, grilla } = useArrastreTarjetas(base, soltar);
   return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
-      {lista.map((p) => (
+    <Box ref={grilla} sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', columnGap: 3, rowGap: 3.5, alignItems: 'start' }}>
+      {lista.map((p, i) => (!p ? <Hueco key={`h${i}`} armando={armando && !!onOrdenar} /> : (
         <Tarjeta key={p.articleId} p={p} armando={armando} mostrarPlaza={mostrarPlaza}
           cardRef={(el) => { if (el) nodos.current.set(p.articleId, el); else nodos.current.delete(p.articleId); }}
           levantada={arr?.key === p.articleId} arrastreTarjetas={!!arr}
-          onAgarrarTarjeta={armando && onOrdenar && productos.length > 1 ? (e) => agarrar(e, productos.findIndex((x) => x.articleId === p.articleId)) : null}
+          onAgarrarTarjeta={armando && onOrdenar ? (e) => agarrar(e, base.findIndex((x) => x?.articleId === p.articleId)) : null}
           onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
           onAliasIngrediente={onAliasIngrediente} onOcultarIngrediente={onOcultarIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
-      ))}
+      )))}
     </Box>
   );
 }

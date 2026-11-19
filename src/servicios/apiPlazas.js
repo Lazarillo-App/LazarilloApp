@@ -15,6 +15,8 @@ export const PlazasAPI = {
   },
   async crear(sectorId, nombre, articleIds) { return ok(await httpBiz('/plazas', { method: 'POST', body: { sectorId, nombre, articleIds } }), 'No se pudo crear la plaza'); },
   async editar(id, nombre, articleIds) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds } }), 'No se pudo guardar la plaza'); },
+  // Lugares de los productos (Diego 19/11/2026): [articleId | null], null = lugar libre.
+  async casillas(id, casillas) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { casillas } }), 'No se pudo guardar el orden'); },
   // Qué muestra la plaza por defecto ('peso' | 'obs' | 'ambos'); cada ingrediente puede tener el suyo.
   async mostrar(id, mostrar) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { mostrar } }), 'No se pudo guardar'); },
   // TVs de la plaza (Vincular TV): el código lo muestra la TV en /pantalla.
