@@ -238,6 +238,7 @@ export default function Navbar() {
       window.removeEventListener('business:auto-sync-done', onDone);
     };
   }, []);
+
   const logout = () => {
     const uid = getUser()?.id || null;
     localStorage.removeItem('token');
