@@ -113,6 +113,10 @@ export default function RecetaModal({
   promoGroupIds = new Set(),   // artículos que VIVEN en la agrupación Promociones (movidos antes del 11/11)
   priceLists = [],
   priceListsByList = {},
+  // Nuevo precio tal como lo ve la tabla en este momento (lo recién tipeado o lo guardado).
+  // priceListsByList se recarga recién después de guardar y volver a pedir todo, así que el modal
+  // abierto enseguida mostraba el precio viejo (Diego 19/11/2026).
+  precioManualDe = null,
   modoInsumo = false,
   saltarSelector = false,   // cascada / tabla artículos: abrir directo sin la vista de 4 opciones
   initialTab = null,        // buscador (lupa) del header: preservar la pestaña desde la que se buscó
@@ -340,7 +344,10 @@ export default function RecetaModal({
   // de la columna de la tabla).
   const [precioNuevoProd, setPrecioNuevoProd] = useState(null);
   useEffect(() => { setPrecioNuevoProd(null); }, [open, articulo?.id]);
-  const precioManualGuardado = Number(priceListsByList?._base?.byArticle?.[String(articulo?.id)]?.precioManual) || 0;
+  const precioManualTabla = precioManualDe ? Number(precioManualDe(articulo?.id)) : NaN;
+  const precioManualGuardado = precioManualTabla > 0
+    ? precioManualTabla
+    : (Number(priceListsByList?._base?.byArticle?.[String(articulo?.id)]?.precioManual) || 0);
   const precioActual = Number(precioNuevoProd) > 0
     ? Number(precioNuevoProd)
     : (precioManualGuardado > 0 ? precioManualGuardado : Number(articulo?.precio || 0));
@@ -967,7 +974,8 @@ export default function RecetaModal({
     // que usa la columna "Nuevo precio" de la tabla. priceListsByList._base venía incompleto.
     // Nuevo precio de la lista principal (precio_manual) si se definió; sino, precio de venta.
     const baseEntry = priceListsByList?._base?.byArticle?.[String(articleRefId)];
-    const nuevoPrecio = Number(baseEntry?.precioManual ?? baseEntry?.precio_manual);
+    const deTabla = precioManualDe ? Number(precioManualDe(articleRefId)) : NaN;
+    const nuevoPrecio = deTabla > 0 ? deTabla : Number(baseEntry?.precioManual ?? baseEntry?.precio_manual);
     const precioBase = nuevoPrecio > 0 ? nuevoPrecio : (Number(art?.precio) || 0);
     // Si hay otra lista elegida, aplicar su ajuste
     if (listaSinPromo && calcPrecioPorLista) {
@@ -981,7 +989,7 @@ export default function RecetaModal({
       return Number(r?.precio) || precioBase;
     }
     return precioBase;
-  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList, preciosArticuloPromo]);
+  }, [allArticulos, listaSinPromo, calcPrecioPorLista, priceListsByList, preciosArticuloPromo, precioManualDe]);
 
   /* ── Cargar receta ── */
   useEffect(() => {
@@ -3658,6 +3666,7 @@ export default function RecetaModal({
             recetasElaborados={localRecetasElaborados}
             priceLists={priceLists}
             priceListsByList={priceListsByList}
+            precioManualDe={precioManualDe}
             onSaved={(saved) => {
               popElaborado();
               // Avisar a los modales padre que este elaborado cambió su costo,
