@@ -162,7 +162,7 @@ export default function AnthonyChat() {
     const d = pendienteRef.current;
     if (!cfg || !d) return;
     pendienteRef.current = null;
-    const op = cfg.chat.opciones.find((o) => o.id === d.opcion);
+    const op = d.opcion === PEDIDO_DESARROLLO ? opcionDePedido(cfg.chat.opciones) : cfg.chat.opciones.find((o) => o.id === d.opcion);
     if (op) elegir(op, d.respuesta || '');
   }, [cfg, aviso]);
 
@@ -269,7 +269,12 @@ export default function AnthonyChat() {
         {vista === 'guias' ? (
           <Guias ruta={location.pathname} onVer={(g, sector) => { setAbierto(false); pedirGuia(g, navigate, sector); }} onManual={() => { setAbierto(false); navigate('/manual'); }} />
         ) : vista === 'pedidos' ? (
-          <MisPedidos onSinLeer={actualizarSinLeer} />
+          <MisPedidos onSinLeer={actualizarSinLeer} onCrear={() => {
+            // «+ Crear pedido de desarrollo» (Diego 19/11/2026): pasa al chat con la opción de pedido elegida.
+            reiniciar(); setVista('chat');
+            const op = cfg ? opcionDePedido(cfg.chat.opciones) : null;
+            if (op) elegir(op); else { pendienteRef.current = { opcion: PEDIDO_DESARROLLO }; setAviso((n) => n + 1); }
+          }} />
         ) : (
           <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }} onPaste={alPegar}>
             {!chat && !error && <div style={burbuja(true)}>Un segundo…</div>}
@@ -464,8 +469,12 @@ function ChatGrande({ captura, tipo, setTipo, mensaje, setMensaje, titulo, pedid
   );
 }
 
+// La opción del chat para pedir un cambio o algo nuevo: la de tipo «pedido» (o la de id «cambio»).
+const PEDIDO_DESARROLLO = '__pedido_desarrollo';
+const opcionDePedido = (opciones = []) => opciones.find((o) => o.tipo === 'pedido') || opciones.find((o) => o.id === 'cambio') || null;
+
 // "Mis pedidos": estado de cada pedido y la charla con el equipo.
-function MisPedidos({ onSinLeer }) {
+function MisPedidos({ onSinLeer, onCrear }) {
   const [pedidos, setPedidos] = useState(null);
   const [abiertoId, setAbiertoId] = useState(null);
   const [texto, setTexto] = useState('');
@@ -492,6 +501,13 @@ function MisPedidos({ onSinLeer }) {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Primer ítem (Diego 19/11/2026): pedir un desarrollo sin pasar por el menú del chat. */}
+      {onCrear && (
+        <button type="button" onClick={onCrear}
+          style={{ ...opcionBtn, minHeight: 44, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: AZUL, background: '#f3f8fc', borderStyle: 'dashed' }}>
+          <span style={{ fontSize: 17, lineHeight: 1 }}>+</span> Crear pedido de desarrollo
+        </button>
+      )}
       {pedidos === null && <div style={burbuja(true)}>Un segundo…</div>}
       {pedidos?.length === 0 && <div style={burbuja(true)}>Todavía no mandaste ningún pedido. Cuando lo hagas, acá vas a ver en qué estado está y lo que te responda el equipo.</div>}
       {pedidos?.map((p) => {
