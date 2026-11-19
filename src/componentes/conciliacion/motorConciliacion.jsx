@@ -278,11 +278,16 @@ export function parseFacturasCC(rows) {
     const cli = String(r["CLINOMBRE"] || "").trim();
     if (!cli) return;
     if (/^NC/i.test(String(r["COMPROBANT"] || "").trim())) return; // notas de crédito = anulaciones
-    const total = Math.round(Number(String(r["TOTAL"] || r["IMPORTE"] || 0).replace(/[^\d.-]/g, "")) || 0);
+    // IMPORTE = lo que el cliente debe/pagó (neto de descuentos, ej. SOCIO 20%); TOTAL es el
+    // bruto antes del descuento. Usar TOTAL inflaba la cuenta: montaldo (Comercio) daba saldo
+    // $260.060 contra $6.300 de MaxiRest — la diferencia eran solo los descuentos (19/11/2026).
+    const num = (x) => Math.round(Number(String(x == null ? "" : x).replace(/[^\d.-]/g, "")) || 0);
+    const bruto = num(r["TOTAL"]);
+    const total = r["IMPORTE"] != null && r["IMPORTE"] !== "" ? num(r["IMPORTE"]) : bruto;
     if (!total) return;
     const cu = String(r["COBRO"] || "").toUpperCase();
     const c = (cu.includes("CTA") || cu.includes("CORRIENTE")) ? "cc" : (cu.includes("EFECTIVO") ? "efec" : (cu.includes("MERCADOPAGO") ? "mp" : "otro"));
-    out.push({ id: "f" + i, cli, comp: String(r["COMPROBANT"] || "").trim(), total, fecha: excelSerialToISO(r["FECHA"]), hora: horaExcel(r["HORA"]), c });
+    out.push({ id: "f" + i, cli, comp: String(r["COMPROBANT"] || "").trim(), total, bruto: bruto || total, fecha: excelSerialToISO(r["FECHA"]), hora: horaExcel(r["HORA"]), c });
   });
   return out;
 }
