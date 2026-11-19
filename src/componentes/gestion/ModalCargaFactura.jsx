@@ -266,7 +266,12 @@ const AvisoLinea = ({ a, onCorregir, onAceptar }) => {
 };
 // Insumo sin concepto de caja (Diego 06/11/2026). Diego 07/11: se avisa pero deja guardar — data entry
 // puede no saber a qué corresponde; queda en Sin rubro para que lo resuelva el administrador.
-const AvisoSinConcepto = ({ rubro, lazarillo, elegido }) => (
+const AvisoSinConcepto = ({ rubro, lazarillo, elegido, cadaCompra }) => cadaCompra ? (
+  <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px", padding: "6px 10px", borderRadius: 8, fontSize: 12,
+    background: elegido ? "#f3fafd" : "#fdf8ef", border: `1px solid ${elegido ? "#bfe0f0" : "#f0d9a8"}`, color: elegido ? "#2a6f8f" : "#8a5a00" }}>
+    <span>{rubro ? <>«{rubro}»</> : "Este rubro"} <b>se decide en cada compra</b>: {elegido ? "esta va con el concepto elegido en «Caja»." : "elegí el concepto en «Caja» (o dejalo: queda en Sin rubro)."}</span>
+  </div>
+) : (
   <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px", padding: "6px 10px", borderRadius: 8, fontSize: 12,
     background: "#fdf8ef", border: "1px solid #f0d9a8", color: "#8a5a00" }}>
     <span>⚠ <b>Sin concepto de caja asociado</b>: {lazarillo ? "el insumo todavía no tiene concepto" : rubro ? <>el rubro «{rubro}» no tiene concepto</> : "el insumo no tiene rubro"}.{" "}
@@ -615,7 +620,9 @@ function ModalNuevaCarga(props) {
   // IVA e II guardados en la última carga de Lazarillo mandan sobre los de MaxiRest (Diego 06/11/2026).
   const recDe = (t, k) => (maestros.recordados || []).find((r) => r.t === t && String(r.k) === String(k));
   const MAESTRO_INSUMOS = [...maestros.insumos, ...insNuevos].map((i) => { const r = recDe("insumo", i.codigo); return { codigo: i.codigo, nombre: i.nombre, medida: i.medida, concepto: nomConcepto(i.codCga), rubro: i.rubro || null, unit: i.unit,
-    alternativas: Array.isArray(i.alternativas) && i.alternativas.length >= 2 ? i.alternativas.map((a) => ({ etiqueta: a.etiqueta, codigo: String(a.codigo) })) : null,
+    // «Cada compra» (Diego 19/11/2026): una opción marca sin concepto = se elige libre en cada compra.
+    alternativas: Array.isArray(i.alternativas) && i.alternativas.filter((a) => a.codigo).length >= 2 ? i.alternativas.filter((a) => a.codigo).map((a) => ({ etiqueta: a.etiqueta, codigo: String(a.codigo) })) : null,
+    cadaCompra: Array.isArray(i.alternativas) && i.alternativas.some((a) => !a.codigo),
     alic: r && r.alic != null ? r.alic : i.alic, ii: r && r.ii != null ? r.ii || null : i.ii || null, envases: conCambios(i.envases || [], envCambios[String(i.codigo)] || []) }; });
   const medidasUsadas = Object.entries(MAESTRO_INSUMOS.reduce((a, x) => { const m = String(x.medida || "").trim(); if (m) a[m] = (a[m] || 0) + 1; return a; }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12).map(([m]) => m);
@@ -660,6 +667,7 @@ function ModalNuevaCarga(props) {
     if (l.tipo !== "insumo" || !l.item) return null;
     const m = MAESTRO_INSUMOS.find((x) => x.nombre === l.item);
     if (m && m.alternativas) return { alternativas: m.alternativas };
+    if (m && m.cadaCompra) return { rubro: m.rubro, cadaCompra: true, elegido: !!codConcepto(l.conc) };
     return m && !m.concepto ? { rubro: m.rubro, lazarillo: /^L\d+$/.test(String(m.codigo)), elegido: !!codConcepto(l.conc) } : null;
   };
   const medidaDe = (nombre) => (MAESTRO_INSUMOS.find((i) => i.nombre === nombre) || {}).medida || "";
