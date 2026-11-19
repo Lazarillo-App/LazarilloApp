@@ -90,6 +90,23 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
     });
   }, [diaFoco]);
   const fmtF = (d) => { if (!d) return "—"; const p = d.split("-"); return p[2] + " " + (["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][parseInt(p[1]) - 1] || ""); };
+  // PERÍODO del modal: Todo · Este mes · Mes anterior · Este año · Personalizado.
+  // Filtra las dos listas y Facturado/Cobrado; el Saldo es el acumulado al cierre
+  // del período (lo que la cuenta debía ese día). El estado de cada compra se
+  // calcula siempre con toda la historia.
+  const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const hoy = new Date();
+  const [per, setPer] = React.useState("todo");
+  const [perD, setPerD] = React.useState(iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)));
+  const [perH, setPerH] = React.useState(iso(hoy));
+  const rango = per === "mes" ? [iso(new Date(hoy.getFullYear(), hoy.getMonth(), 1)), iso(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0))]
+    : per === "ant" ? [iso(new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)), iso(new Date(hoy.getFullYear(), hoy.getMonth(), 0))]
+    : per === "anio" ? [hoy.getFullYear() + "-01-01", hoy.getFullYear() + "-12-31"]
+    : per === "pers" ? [perD || "0000-00-00", perH || "9999-12-31"]
+    : null;
+  const enRango = (d) => !rango || (d && d >= rango[0] && d <= rango[1]);
+  const hastaR = (d) => !rango || (d && d <= rango[1]);
+  const fmtFA = (d) => { const p = d.split("-"); return p[2] + "/" + p[1] + "/" + p[0].slice(2); };
   // contado (efec/MP) = pagada al momento; CTA CTE = FIFO con las cobranzas del 72.
   // El FIFO se calcula en orden cronológico; después se ordena solo para mostrar.
   let rest = c.cob72 || 0;
@@ -107,11 +124,16 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
   const valF = (f, k) => k === "fecha" ? (f.fecha || "") + (f.hora || "") : k === "comp" ? (f.comp || "") : k === "medio" ? (medioLbl[f.c] || "") : k === "imp" ? f.total : k === "estado" ? ordEst[f.estado] : "";
   const valC = (x, k) => k === "fecha" ? (x.fecha || "") : k === "medio" ? (x.medio || "") : k === "imp" ? x.imp : "";
   const cmp = (va, vb) => typeof va === "number" ? va - vb : String(va).localeCompare(String(vb));
-  const listF = fEst.slice().sort((a, b) => sF.d * cmp(valF(a, sF.k), valF(b, sF.k)) || -cmp(valF(a, "fecha"), valF(b, "fecha")));
-  const listC = c.cob.slice().sort((a, b) => sC.d * cmp(valC(a, sC.k), valC(b, sC.k)) || -cmp(valC(a, "fecha"), valC(b, "fecha")));
-  const totImp = fEst.filter((f) => f.estado !== "pagada").length;
-  const nDiaF = diaFoco ? fEst.filter((f) => f.fecha === diaFoco).length : 0;
-  const nDiaC = diaFoco ? c.cob.filter((k) => k.fecha === diaFoco).length : 0;
+  const fVis = fEst.filter((f) => enRango(f.fecha));
+  const cVis = c.cob.filter((k) => enRango(k.fecha));
+  const kFact = rango ? fVis.reduce((a, f) => a + f.total, 0) : c.facturado;
+  const kCob = rango ? fVis.filter((f) => f.c !== "cc").reduce((a, f) => a + f.total, 0) + cVis.reduce((a, k) => a + k.imp, 0) : c.cobrado;
+  const kSaldo = rango ? (c.fact.filter((f) => hastaR(f.fecha)).reduce((a, f) => a + f.total, 0) - c.fact.filter((f) => f.c !== "cc" && hastaR(f.fecha)).reduce((a, f) => a + f.total, 0) - c.cob.filter((k) => hastaR(k.fecha)).reduce((a, k) => a + k.imp, 0)) : c.saldo;
+  const listF = fVis.slice().sort((a, b) => sF.d * cmp(valF(a, sF.k), valF(b, sF.k)) || -cmp(valF(a, "fecha"), valF(b, "fecha")));
+  const listC = cVis.slice().sort((a, b) => sC.d * cmp(valC(a, sC.k), valC(b, sC.k)) || -cmp(valC(a, "fecha"), valC(b, "fecha")));
+  const totImp = fVis.filter((f) => f.estado !== "pagada").length;
+  const nDiaF = diaFoco ? fVis.filter((f) => f.fecha === diaFoco).length : 0;
+  const nDiaC = diaFoco ? cVis.filter((k) => k.fecha === diaFoco).length : 0;
   const marca = { background: "#5BC2EA1f", boxShadow: "inset 3px 0 0 " + C.celeste };
   const marcaSel = { background: "#1a9c6e1a", boxShadow: "inset 4px 0 0 " + C.green, outline: "1px solid #1a9c6e55", outlineOffset: -1 };
   const compSel = selComp ? fEst.find((f) => nComp(f.comp) === selComp) : null;
@@ -139,10 +161,25 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.12)", color: C.white, cursor: "pointer", fontSize: 18 }}>×</button>
         </div>
+        <div data-tour="cc-periodo" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "12px 18px 0", flexShrink: 0 }}>
+          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".4px", color: C.txt3, fontWeight: 800, marginRight: 4 }}>Período</span>
+          {[["todo", "Todo"], ["mes", "Este mes"], ["ant", "Mes anterior"], ["anio", "Este año"], ["pers", "Personalizado"]].map(([k, l]) => (
+            <button key={k} onClick={() => setPer(k)}
+              style={{ height: 30, padding: "0 12px", borderRadius: 15, cursor: "pointer", fontFamily: "'Archivo',sans-serif", fontSize: 12, fontWeight: 700, border: "1px solid " + (per === k ? C.celeste : C.line2), background: per === k ? "#5BC2EA1f" : C.white, color: per === k ? C.celesteDeep : C.txt2, whiteSpace: "nowrap" }}>{l}</button>
+          ))}
+          {per === "pers" && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 4 }}>
+              <input type="date" value={perD} max={perH || undefined} onChange={(e) => setPerD(e.target.value)} style={{ height: 30, boxSizing: "border-box", padding: "0 8px", borderRadius: 8, border: "1px solid " + C.line2, fontFamily: "'Archivo',sans-serif", fontSize: 12, color: C.txt }} />
+              <span style={{ fontSize: 12, color: C.txt3 }}>al</span>
+              <input type="date" value={perH} min={perD || undefined} onChange={(e) => setPerH(e.target.value)} style={{ height: 30, boxSizing: "border-box", padding: "0 8px", borderRadius: 8, border: "1px solid " + C.line2, fontFamily: "'Archivo',sans-serif", fontSize: 12, color: C.txt }} />
+            </span>
+          )}
+          {rango && <span style={{ marginLeft: "auto", fontSize: 11.5, color: C.txt3, whiteSpace: "nowrap" }}>{fmtFA(rango[0])} – {fmtFA(rango[1])}</span>}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, padding: "14px 18px", flexShrink: 0 }}>
-          {[["Facturado", c.facturado, C.tinta], ["Cobrado", c.cobrado, C.green], ["Saldo", c.saldo, c.saldo > 0 ? C.amber : C.green]].map(([l, v, col]) => (
+          {[["Facturado", kFact, C.tinta], ["Cobrado", kCob, C.green], [rango ? "Saldo al " + fmtFA(rango[1] < iso(hoy) ? rango[1] : iso(hoy)) : "Saldo", kSaldo, kSaldo > 0 ? C.amber : C.green]].map(([l, v, col]) => (
             <div key={l} style={{ background: C.white, border: "1px solid " + C.line2, borderRadius: 10, padding: "9px 14px" }}>
-              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".4px", color: C.txt3, fontWeight: 700 }}>{l}</div>
+              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".4px", color: C.txt3, fontWeight: 700 }}>{l}{rango && !l.startsWith("Saldo") ? <span style={{ fontWeight: 600, textTransform: "none", letterSpacing: 0 }}> · en el período</span> : null}</div>
               <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 18, color: col }}>{fmt(v)}</div>
             </div>
           ))}
@@ -162,7 +199,7 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
         {/* listas: cada columna scrollea por su cuenta, con títulos fijos y ordenables */}
         <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1.35fr 1fr", gridTemplateRows: "minmax(0, 1fr)", margin: "0 18px 18px", border: "1px solid " + C.line2, borderRadius: 10, overflow: "hidden", background: C.white }}>
           <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid " + C.line }}>
-            <div style={titulo}><span>Compras ({fEst.length}){nDiaF > 0 && <span style={{ color: C.celesteDeep }}> · {nDiaF} del {fmtF(diaFoco)}</span>}</span>{totImp > 0 && <span style={{ color: C.amber }}>{totImp} con saldo</span>}</div>
+            <div style={titulo}><span>Compras ({fVis.length}){nDiaF > 0 && <span style={{ color: C.celesteDeep }}> · {nDiaF} del {fmtF(diaFoco)}</span>}</span>{totImp > 0 && <span style={{ color: C.amber }}>{totImp} con saldo</span>}</div>
             <div style={colHead}>
               <Th label="Fecha" k="fecha" s={sF} set={setSF} w={78} />
               <Th label="Comprobante" k="comp" s={sF} set={setSF} flex />
@@ -180,11 +217,11 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
                   <span style={{ width: 84, flexShrink: 0, textAlign: "right", fontFamily: "'Sora',sans-serif", fontWeight: 700, color: C.tinta }}>{fmt(f.total)}</span>
                   <span style={{ width: 58, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}><span style={{ fontSize: 8.5, fontWeight: 800, borderRadius: 5, padding: "1px 5px", textTransform: "uppercase", background: f.estado === "pagada" ? "#1a9c6e1c" : f.estado === "parcial" ? "#c77d081c" : "#d94f631c", color: f.estado === "pagada" ? C.green : f.estado === "parcial" ? C.amber : C.red }}>{f.estado}</span></span>
                 </div>
-              )) : <div style={{ padding: "12px 14px", fontSize: 12.5, color: C.txt3 }}>Sin ventas en el período cargado</div>}
+              )) : <div style={{ padding: "12px 14px", fontSize: 12.5, color: C.txt3 }}>{rango ? "Sin compras en este período" : "Sin ventas en el período cargado"}</div>}
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <div style={titulo}><span>Cobranzas ({c.cob.length}){nDiaC > 0 && <span style={{ color: C.celesteDeep }}> · {nDiaC} del {fmtF(diaFoco)}</span>}</span></div>
+            <div style={titulo}><span>Cobranzas ({cVis.length}){nDiaC > 0 && <span style={{ color: C.celesteDeep }}> · {nDiaC} del {fmtF(diaFoco)}</span>}</span></div>
             <div style={colHead}>
               <Th label="Fecha" k="fecha" s={sC} set={setSC} w={58} />
               <Th label="Medio / pagador" k="medio" s={sC} set={setSC} flex />
@@ -211,7 +248,7 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
                   <span style={{ flex: 1, minWidth: 0, color: C.txt2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{k.conc && k.pagador ? <span title="Pagador del movimiento de banco con que se concilió">{k.pagador}</span> : k.medio}{k.conc && <span title="Conciliada con su pago" style={{ fontSize: 9, fontWeight: 800, color: C.green, marginLeft: 6 }}>✓ conciliada</span>}</span>
                   <span style={{ width: 90, flexShrink: 0, textAlign: "right", fontFamily: "'Sora',sans-serif", fontWeight: 700, color: C.green }}>{fmt(k.imp)}</span>
                 </div>
-              )) : <div style={{ padding: "12px 14px", fontSize: 12.5, color: C.txt3 }}>Sin cobranzas</div>}
+              )) : <div style={{ padding: "12px 14px", fontSize: 12.5, color: C.txt3 }}>{rango ? "Sin cobranzas en este período" : "Sin cobranzas"}</div>}
             </div>
           </div>
         </div>
