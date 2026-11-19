@@ -111,7 +111,10 @@ export default function BuscadorPanel({ open, onClose, onElegir }) {
     if (!item) return;
     if (item.kind === 'categoria') { setTipo(item.tipo); setActivo(0); return; }
     if (item.kind === 'sugerencia') {
-      onElegir({ param: item.s.param, value: item.s.value, label: item.s.label, sucursal: sucursalDestino(item.s.sucursales) });
+      // Año de la última compra en la sucursal a la que se va (la que se mira si tiene compras).
+      const lista = item.s.sucursales ?? [];
+      const ent = lista.find(esActual) ?? lista[0];
+      onElegir({ param: item.s.param, value: item.s.value, label: item.s.label, sucursal: sucursalDestino(lista), hastaAnio: ent?.anio });
     } else if (item.kind === 'contiene') {
       onElegir({ param: 'observacionQuery', value: item.opcion.query, label: item.opcion.label });
     } else if (item.kind === 'observacion') {
