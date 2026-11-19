@@ -472,25 +472,21 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
                   const verConc = verConcCC.has(g.d);
                   const lista = verConc ? [...pendCC, ...concCC] : pendCC;
                   const fC = (d) => d ? fmtFecha(d).slice(0, 5).replace("-", "/") : "";
-                  const motivo = (r) => r.estado === "impaga" ? "sin cobro en el ERP"
-                    : r.estado === "erp" ? "ERP: cobrada " + fC(r.cobroFecha) + " · falta en banco"
-                    : r.estado === "galicia" ? "ERP: cobrada por Galicia " + fC(r.cobroFecha) + " · banco no cargado"
-                    : r.estado === "otro" ? "cobro de ticket anterior" + (r.ticketFecha ? " (" + fC(r.ticketFecha) + ")" : "") + " · falta en banco"
-                    : "saldada" + (r.cobroFecha ? " " + fC(r.cobroFecha) : "") + ((r.formas || []).some((f) => f !== "banco") ? " · " + r.formas.filter((f) => f !== "banco").join("/") : "");
+                  const motivo = (r) => r.saldado ? "conciliado" : "cobro por Mercado Pago";
                   return (
                   <div>
                     <div onClick={(e) => { e.stopPropagation(); onToggleCC && onToggleCC(g.d); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 16px", borderBottom: "1px solid " + C.line, cursor: "pointer", background: "#7c5fd30c", opacity: g.isCenter ? 1 : 0.62 }}>
                       <span style={{ color: C.txt3, fontSize: 10, width: 10, flexShrink: 0 }}>{open ? "▾" : "▸"}</span>
                       <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", color: "#7c5fd3" }}>{"🧾"} Cuenta corriente</span>
-                      <span style={{ fontSize: 11, color: C.txt3 }}>{pendCC.length ? pendCC.length + " impaga" + (pendCC.length === 1 ? "" : "s") : "todas saldadas"}</span>
+                      <span style={{ fontSize: 11, color: C.txt3 }}>{pendCC.length ? pendCC.length + " cobro" + (pendCC.length === 1 ? "" : "s") + " sin conciliar" : "cobros conciliados"}</span>
                       {concCC.length > 0 && <span onClick={(e) => { e.stopPropagation(); setVerConcCC((s) => { const n = new Set(s); n.has(g.d) ? n.delete(g.d) : n.add(g.d); return n; }); if (!open && onToggleCC) onToggleCC(g.d); }}
-                        title={verConc ? "Ocultar las ya saldadas" : "Ver las ya saldadas (" + fmt(totConc) + ")"}
-                        style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", background: verConc ? "#1a9c6e" : "#1a9c6e1c", color: verConc ? C.white : C.green, borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>{"✓"} {concCC.length} saldada{concCC.length === 1 ? "" : "s"} {verConc ? "▴" : "▾"}</span>}
+                        title={verConc ? "Ocultar los ya conciliados" : "Ver los ya conciliados (" + fmt(totConc) + ")"}
+                        style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", background: verConc ? "#1a9c6e" : "#1a9c6e1c", color: verConc ? C.white : C.green, borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>{"✓"} {concCC.length} conciliado{concCC.length === 1 ? "" : "s"} {verConc ? "▴" : "▾"}</span>}
                       <span style={{ marginLeft: "auto", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 12.5, color: pendCC.length ? "#7c5fd3" : C.txt3 }}>{fmt(totPend)}</span>
                     </div>
                     {open && lista.map((r) => { const clic = onCliente && r.cliente && (!tieneCuentaFn || tieneCuentaFn(r.cliente)); const conc = r.saldado; const selec = r.cobroIds.length > 0; const sel = selec && selCC && r.cobroIds.every((id) => selCC.has(id)); return (
                       <div key={r.key} onClick={(e) => { e.stopPropagation(); if (!conc && selec && onToggleCCSel) onToggleCCSel(r.cobroIds); }}
-                        title={r.estado === "impaga" ? "El ERP no tiene cobro de este ticket: queda impaga hasta que se cobre" : r.estado === "erp" ? "Tildalo para conciliar su cobro con el pago del banco" : r.estado === "galicia" ? "Se cobró por Banco Galicia: se va a conciliar cuando carguemos ese banco" : ""}
+                        title={r.saldado ? "Cobro de cuenta corriente ya conciliado con el banco" : "Cobro de su cuenta corriente (paga " + (r.comp || "un ticket") + (r.ticketFecha ? " del " + fC(r.ticketFecha) : "") + "). Tildalo junto con la venta del día y el pago del banco para conciliarlos."}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 14px", borderBottom: "1px solid " + C.line, fontSize: 12, cursor: !conc && selec ? "pointer" : "default", background: sel ? "#5BC2EA14" : (conc ? "#1a9c6e0a" : "#7c5fd306"), boxShadow: sel ? "inset 3px 0 0 " + C.celeste : (conc ? "inset 3px 0 0 " + C.green : undefined), opacity: g.isCenter ? 1 : 0.62 }}>
                         {conc
                           ? <span title="Saldada: su pago está conciliado" style={{ width: 15, height: 15, borderRadius: 4, background: C.green, color: C.white, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{"✓"}</span>
@@ -499,7 +495,7 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
                             : <span style={{ width: 15, flexShrink: 0 }} />}
                         <span style={{ fontSize: 11, color: C.txt3, width: 40, flexShrink: 0 }}>{r.hora || "—"}</span>
                         <span onClick={clic ? (e) => { e.stopPropagation(); onCliente(r.cliente); } : undefined} style={{ flex: 1, minWidth: 0, color: clic ? C.celesteDeep : C.txt2, cursor: clic ? "pointer" : "default", textDecoration: clic ? "underline" : "none", textDecorationColor: "rgba(36,146,200,.35)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={clic ? "Ver cuenta corriente de " + r.cliente : ""}>{r.cliente || "—"}</span>
-                        <span style={{ flexShrink: 0, fontSize: 10.5, whiteSpace: "nowrap", fontWeight: 700, color: conc ? C.green : r.estado === "impaga" ? C.txt3 : C.amber }}>{motivo(r)}</span>
+                        <span style={{ flexShrink: 0, fontSize: 10.5, whiteSpace: "nowrap", fontWeight: 700, color: conc ? C.green : C.amber }}>{motivo(r)}</span>
                         <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, color: C.txt2, textAlign: "right", flexShrink: 0 }}>{fmt(r.imp)}</span>
                         <span style={{ width: 100, flexShrink: 0, fontSize: 11, color: C.txt3, textTransform: "uppercase", letterSpacing: ".3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.comp}>{(r.comp || "Cta. cte.").replace(/^(\S+)\s+\d+-0*/, "$1 …")}</span>
                       </div>
