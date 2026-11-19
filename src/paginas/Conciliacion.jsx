@@ -300,13 +300,46 @@ function ListaEgresos({ filas }) {
 //    Render todos los días (llegan hasta el día anterior). Reemplaza lo guardado de esas fechas.
 //  - Mercado Pago: los cobros de la cuenta conectada de la sucursal, como movimientos del banco.
 // Lo que no esté disponible se sigue pudiendo subir con el archivo, como antes.
-const hoyISO = () => new Date().toISOString().slice(0, 10);
-const inicioMes = () => hoyISO().slice(0, 8) + '01';
+// 19/11 (vuelven los atajos de #286, que se perdieron al igualar con main en #294): Este mes /
+// Últimos 3 meses / Todo el historial / Elegir fechas. El servidor acepta hasta 3 meses por pedido:
+// el período se parte en meses y se trae uno por uno, con avance y botón Cortar. «Todo el historial»
+// va hacia atrás hasta 2 meses seguidos sin ventas ni cobros (tope 36). Lo de MaxiRest se junta y
+// se guarda una sola vez al final (o al cortar / fallar), para no subir todo en cada mes.
+const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const hoyISO = () => isoLocal(new Date()); // fecha de Argentina (toISOString daba mañana después de las 21)
+const restarDias = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() - n); return isoLocal(d); };
+const MESES_C = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const nombreMes = (iso) => `${MESES_C[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+const dma = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '');
+// [desde, hasta] partido por mes calendario, del más nuevo al más viejo
+function tramosPorMes(desde, hasta) {
+  const out = [];
+  let fin = hasta;
+  while (fin >= desde) {
+    const ini = fin.slice(0, 8) + '01';
+    out.push({ desde: ini < desde ? desde : ini, hasta: fin });
+    fin = restarDias(ini, 1);
+  }
+  return out;
+}
+const MAX_MESES_HISTORIAL = 36;
+const OPCIONES_TRAER = [
+  { k: 'mes', l: 'Este mes' },
+  { k: '3m', l: 'Últimos 3 meses' },
+  { k: 'todo', l: 'Todo el historial' },
+  { k: 'fechas', l: 'Elegir fechas' },
+];
+const rangoDe = (filas) => {
+  const fs = (filas || []).map((x) => String(x.fecha || '').slice(0, 10)).filter(Boolean).sort();
+  return fs.length ? `${dma(fs[0])} al ${dma(fs[fs.length - 1])}` : null;
+};
 const ERROR_MP = { periodo_muy_largo: 'Elegí hasta 3 meses por vez.', mp_vencido: 'Venció la conexión con Mercado Pago: volvé a conectarla en Conexiones.' };
 function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar }) {
-  const [desde, setDesde] = useState(inicioMes);
+  const [opcion, setOpcion] = useState('mes');
+  const [desde, setDesde] = useState(() => hoyISO().slice(0, 8) + '01');
   const [hasta, setHasta] = useState(hoyISO);
-  const [trayendo, setTrayendo] = useState(false);
+  const [avance, setAvance] = useState(null); // { mes, n, de } mientras trae
+  const cortar = useRef(false);
   // Reporte de MP (nombres de pagadores y egresos) que todavía se está armando: { desde, hasta }.
   const [esperando, setEsperando] = useState(null);
   // Las funciones del padre cambian en cada render: por ref, así la espera no se reinicia.
@@ -343,56 +376,107 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
   const codigo = (e) => String(e?.message || '').split(':')[0].trim();
 
   const traer = async () => {
-    if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
-    setTrayendo(true);
-    const partes = [];
+    const hoy = hoyISO();
+    let tramos;
+    if (opcion === 'mes') tramos = tramosPorMes(hoy.slice(0, 8) + '01', hoy);
+    else if (opcion === '3m') tramos = tramosPorMes(restarDias(hoy, 89), hoy);
+    else if (opcion === 'todo') tramos = tramosPorMes(restarDias(hoy.slice(0, 8) + '01', 1).slice(0, 8) + '01', hoy); // se van sumando meses hacia atrás
+    else {
+      if (!desde || !hasta || desde > hasta) { avisar('Revisá las fechas', 3000); return; }
+      tramos = tramosPorMes(desde, hasta > hoy ? hoy : hasta);
+    }
+    cortar.current = false;
+    let acc = { ventas: guardadas?.ventas || [], pagos: guardadas?.pagos || [], facturas_cc: guardadas?.facturas_cc || [] };
+    let nVentas = 0, nCobranzas = 0, nCobros = 0, nPagosHechos = 0, vacios = 0, hechos = 0, maxiHechos = 0, masViejo = null, pdv = '';
     const errores = [];
-    if (conMaxi) {
-      try {
-        const r = await ConciliacionAPI.maxiTraer(bid, suc, desde, hasta);
-        const f = fuentesDesdeMaxi(r, guardadas, desde, hasta);
-        await ConciliacionAPI.guardarFuente(bid, suc, 'ventas', f.ventas, `MaxiRest ${r.pdv} ${desde} a ${hasta}`);
-        await ConciliacionAPI.guardarFuente(bid, suc, 'pagos', f.pagos, `MaxiRest ${r.pdv} ${desde} a ${hasta}`);
-        await ConciliacionAPI.guardarFuente(bid, suc, 'facturas_cc', f.facturas_cc, `MaxiRest ${r.pdv} ${desde} a ${hasta}`);
-        partes.push(`${f.cuantas.ventas} venta${f.cuantas.ventas === 1 ? '' : 's'} y ${f.cuantas.pagos} cobranza${f.cuantas.pagos === 1 ? '' : 's'} de MaxiRest`);
-      } catch (e) {
-        errores.push(codigo(e) === 'periodo_muy_largo' ? 'Elegí hasta 3 meses por vez.' : 'MaxiRest: no pude traer las ventas.');
-      }
-    }
-    if (conMp) {
-      try {
-        const r = await MercadoPagoAPI.sincronizar(bid, suc, desde, hasta);
-        partes.push(`${r.cobros} cobro${r.cobros === 1 ? '' : 's'} de Mercado Pago`);
-        if (r.pagos_hechos) partes.push(`${r.pagos_hechos} pago${r.pagos_hechos === 1 ? '' : 's'} hecho${r.pagos_hechos === 1 ? '' : 's'} desde la cuenta`);
-        if (r.reporte === 'listo') partes.push(`${r.egresos} egreso${r.egresos === 1 ? '' : 's'} y ${r.nombres} nombre${r.nombres === 1 ? '' : 's'} de pagadores`);
-        if (r.reporte === 'pendiente') {
-          setEsperando({ desde, hasta });
-          partes.push('el reporte con nombres y egresos lo está armando Mercado Pago: lo traigo solo en unos minutos');
+    let reporte = null;
+    for (let i = 0; i < tramos.length; i++) {
+      const t = tramos[i];
+      setAvance({ mes: nombreMes(t.desde), n: i + 1, de: opcion === 'todo' ? null : tramos.length });
+      let hayAlgo = false;
+      if (conMaxi) {
+        try {
+          const r = await ConciliacionAPI.maxiTraer(bid, suc, t.desde, t.hasta);
+          const f = fuentesDesdeMaxi(r, acc, t.desde, t.hasta);
+          acc = { ventas: f.ventas, pagos: f.pagos, facturas_cc: f.facturas_cc };
+          nVentas += f.cuantas.ventas; nCobranzas += f.cuantas.pagos; maxiHechos++; pdv = r.pdv || pdv;
+          if (f.cuantas.ventas || f.cuantas.pagos) hayAlgo = true;
+        } catch (e) {
+          errores.push(`MaxiRest: no pude traer ${nombreMes(t.desde)}.`);
+          break;
         }
-      } catch (e) {
-        errores.push(ERROR_MP[codigo(e)] || 'Mercado Pago no respondió. Probá de nuevo en un rato.');
+      }
+      if (conMp) {
+        try {
+          const r = await MercadoPagoAPI.sincronizar(bid, suc, t.desde, t.hasta);
+          const c = Number(r?.cobros) || 0;
+          nCobros += c; nPagosHechos += Number(r?.pagos_hechos) || 0;
+          if (c) hayAlgo = true;
+          if (r.reporte === 'pendiente') reporte = { desde: t.desde, hasta: t.hasta };
+        } catch (e) {
+          errores.push(codigo(e) === 'mp_vencido' ? ERROR_MP.mp_vencido : `Mercado Pago no respondió en ${nombreMes(t.desde)}.`);
+          break;
+        }
+      }
+      hechos++;
+      if (hayAlgo) masViejo = t.desde;
+      vacios = hayAlgo ? 0 : vacios + 1;
+      if (cortar.current) break;
+      // todo el historial: seguir hacia atrás mientras haya algo (corta con 2 meses seguidos vacíos)
+      if (opcion === 'todo' && i === tramos.length - 1 && vacios < 2 && tramos.length < MAX_MESES_HISTORIAL) {
+        const ini = restarDias(t.desde, 1).slice(0, 8) + '01';
+        tramos.push({ desde: ini, hasta: restarDias(t.desde, 1) });
       }
     }
-    setTrayendo(false);
-    if (partes.length) onTraido();
-    avisar([partes.length ? `Listo: ${partes.join(' · ')}` : '', ...errores].filter(Boolean).join(' — '), errores.length ? 9000 : 5000);
+    // MaxiRest: una sola subida con todo lo juntado (también si se cortó o falló un mes)
+    if (maxiHechos) {
+      setAvance({ mes: 'guardando', n: 0, de: null });
+      try {
+        const nombre = `MaxiRest ${pdv} hasta ${tramos[0].hasta}`;
+        await ConciliacionAPI.guardarFuente(bid, suc, 'ventas', acc.ventas, nombre);
+        await ConciliacionAPI.guardarFuente(bid, suc, 'pagos', acc.pagos, nombre);
+        await ConciliacionAPI.guardarFuente(bid, suc, 'facturas_cc', acc.facturas_cc, nombre);
+      } catch (e) {
+        errores.push('MaxiRest: no pude guardar lo traído. Probá de nuevo con menos meses.');
+      }
+    }
+    setAvance(null);
+    if (reporte) setEsperando(reporte);
+    if (hechos) onTraido();
+    const partes = [];
+    if (maxiHechos) partes.push(`${nVentas.toLocaleString('es-AR')} venta${nVentas === 1 ? '' : 's'} y ${nCobranzas.toLocaleString('es-AR')} cobranza${nCobranzas === 1 ? '' : 's'} de MaxiRest`);
+    if (conMp && hechos) partes.push(`${nCobros.toLocaleString('es-AR')} cobro${nCobros === 1 ? '' : 's'} de Mercado Pago`);
+    if (nPagosHechos) partes.push(`${nPagosHechos} pago${nPagosHechos === 1 ? '' : 's'} hecho${nPagosHechos === 1 ? '' : 's'} desde la cuenta`);
+    if (reporte) partes.push('el reporte con nombres y egresos lo está armando Mercado Pago: lo traigo solo en unos minutos');
+    const rango = masViejo && hechos > 1 ? ` (${nombreMes(masViejo)} a ${nombreMes(tramos[0].desde)})` : '';
+    const cab = cortar.current ? 'Cortado. ' : 'Listo: ';
+    avisar([partes.length ? `${cab}${partes.join(' · ')}${rango}` : '', ...errores].filter(Boolean).join(' — '), errores.length ? 9000 : 6000);
   };
 
-  const inp = { fontFamily: 'inherit', fontSize: 13.5, padding: '5px 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
-  const fuente = { display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6577' };
+  const trayendo = !!avance;
+  const enVentas = rangoDe(guardadas?.ventas);
+  const enBanco = rangoDe(guardadas?.banco);
+  const inp = { fontFamily: 'inherit', fontSize: 13.5, height: 34, boxSizing: 'border-box', padding: '0 8px', borderRadius: 8, border: '1px solid rgba(21,33,62,.16)' };
+  const chip = (on) => ({
+    fontFamily: 'inherit', fontSize: 13, fontWeight: on ? 700 : 500, height: 34, padding: '0 12px', borderRadius: 999, cursor: 'pointer',
+    border: `1px solid ${on ? '#5BC2EA' : 'rgba(21,33,62,.16)'}`, background: on ? '#5BC2EA1F' : '#fff', color: on ? '#12627F' : '#15213E', whiteSpace: 'nowrap',
+  });
+  const btn = { fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, height: 34, padding: '0 16px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: 'pointer', whiteSpace: 'nowrap' };
+  const fuente = { display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5b6577', flexWrap: 'wrap' };
+  const gris = { color: '#8a93a3', fontSize: 12.5 };
   return (
     <div data-tour="conc-traer" style={{ ...caja, background: '#fff', border: '1px solid rgba(21,33,62,.16)', color: '#15213E' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span style={fuente}>
           <b style={{ color: '#15213E' }}>🧾 MaxiRest</b>
           {conMaxi
-            ? <span>ventas y cuenta corriente{maxi.datos_hasta ? ` · datos hasta el ${dm(maxi.datos_hasta)}` : ''}</span>
+            ? <span>ventas y cuenta corriente{maxi.datos_hasta ? ` · datos hasta el ${dm(maxi.datos_hasta)}` : ''}{enVentas ? <span style={gris}> · en Lazarillo: {enVentas}</span> : null}</span>
             : <span>{maxi ? 'esta sucursal no tiene el kit: subí los informes con el archivo' : '…'}</span>}
         </span>
         <span style={fuente}>
           <b style={{ color: '#15213E' }}>🏦 Mercado Pago</b>
           {conMp
-            ? <span>{(mp.cuentas?.length ? mp.cuentas.map((c) => c.nickname || c.email).join(' + ') : null) || mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{mp.ultimo_sync_hasta ? ` · últimos traídos: del ${dm(String(mp.ultimo_sync_desde))} al ${dm(String(mp.ultimo_sync_hasta))}` : ''}
+            ? <span>{(mp.cuentas?.length ? mp.cuentas.map((c) => c.nickname || c.email).join(' + ') : null) || mp.cuenta?.nickname || mp.cuenta?.email || 'conectado'}{enBanco ? <span style={gris}> · en Lazarillo: {enBanco}</span> : null}
                 {esperando ? <b style={{ color: '#C8912B' }}> · armando el reporte de nombres y egresos…</b> : null}</span>
             : mp?.configurado
               ? <span>sin conectar{sucNombre ? ` en ${sucNombre}` : ''} · <RouterLink to="/configuracion?tab=7" style={{ fontWeight: 700 }}>Conectar</RouterLink></span>
@@ -400,15 +484,30 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
         </span>
       </div>
       {(conMaxi || conMp) && (
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} style={inp} />
-          <span>a</span>
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} style={inp} />
-          <button type="button" onClick={traer} disabled={trayendo}
-            title="Trae lo de esas fechas y reemplaza lo que había cargado de esos días"
-            style={{ fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#5BC2EA', color: '#12111F', cursor: trayendo ? 'wait' : 'pointer' }}>
-            {trayendo ? 'Trayendo…' : 'Traer'}
-          </button>
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {trayendo ? (
+            <>
+              <span style={{ color: '#5b6577' }}>{avance.mes === 'guardando' ? 'Guardando lo traído…' : <>Trayendo <b style={{ color: '#15213E' }}>{avance.mes}</b>{avance.de ? ` · ${avance.n} de ${avance.de}` : ` · mes ${avance.n}`}…</>}</span>
+              {avance.mes !== 'guardando' && <button type="button" onClick={() => { cortar.current = true; }} style={chip(false)}>Cortar</button>}
+            </>
+          ) : (
+            <>
+              {OPCIONES_TRAER.map((o) => (
+                <button key={o.k} type="button" onClick={() => setOpcion(o.k)} style={chip(opcion === o.k)}>{o.l}</button>
+              ))}
+              {opcion === 'fechas' && (
+                <>
+                  <input type="date" value={desde} max={hoyISO()} onChange={(e) => setDesde(e.target.value)} style={inp} />
+                  <span>a</span>
+                  <input type="date" value={hasta} max={hoyISO()} onChange={(e) => setHasta(e.target.value)} style={inp} />
+                </>
+              )}
+              <button type="button" onClick={traer} style={btn}
+                title="Trae ventas y cobranzas de MaxiRest y cobros de Mercado Pago de ese período, mes por mes, y reemplaza lo que había de esos días">
+                Traer
+              </button>
+            </>
+          )}
         </span>
       )}
     </div>
