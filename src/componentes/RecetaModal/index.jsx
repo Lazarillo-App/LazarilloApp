@@ -195,7 +195,9 @@ export default function RecetaModal({
       : [{ tipo: modoInsumo ? 'insumo' : 'articulo', id: Number(articulo?.id) }];
     setEnviandoRev(true);
     try {
-      const r = await marcarARevision(businessId, items, notaRev.trim(), asignadoRev);
+      // Ingredientes tildados: la marca va sobre ESTA receta (cómo se usan acá).
+      const origen = marcarSel.size ? { tipo: modoInsumo ? 'insumo' : 'articulo', id: Number(articulo?.id) } : null;
+      const r = await marcarARevision(businessId, items, notaRev.trim(), asignadoRev, origen);
       showAlert(`Marcado a revisión: ${r.marcados} elemento(s)`, 'success');
       salirMarcar();
     } catch (e) {
@@ -267,6 +269,9 @@ export default function RecetaModal({
   useEffect(() => {
     if (!propuestaAbierta || loading || propMergedRef.current === propuestaAbierta.id) return;
     propMergedRef.current = propuestaAbierta.id;
+    // Una marca de revisión no trae cambios: no hay nada que mezclar. Sin este
+    // corte, con items vacíos se tachaban TODOS los ingredientes como «quitados».
+    if (!propuestaAbierta.tieneContenido) return;
     const key = (x) => String(x.supply_id ?? x.supplyId ?? x.insumo_id ?? x.insumoId ?? '');
     const pmap = new Map((propuestaAbierta.items || []).map((p) => [key(p), p]));
     setItems((prev) => {
@@ -712,7 +717,6 @@ export default function RecetaModal({
   }, [open, modoInsumo, saltarSelector, insumos, articulo?.id, initialTab, resolverTabRecetaCompras]);
 
   const [todosArticulos, setTodosArticulos] = useState([]);
-
   const buscarGemelos = useCallback(async (q) => {
     if (!q || !q.trim()) { setGemelosResults([]); return; }
     setGemelosSearching(true);
@@ -3128,8 +3132,11 @@ export default function RecetaModal({
                     <Box ref={recIngredientesRef} sx={{ mb: 1.5 }}>
                       {itemsOrdenados.map((item, i) => {
                         const realIndex = items.indexOf(item); // índice real en el array original
+                        // Marcado a revisión desde esta receta (Aprobaciones): la fila se resalta.
+                        const aRevisar = !!item.supplyId && (propuestaAbierta?.revisar || []).some((x) => Number(x) === Number(item.supplyId));
                         return (
-                          <Stack key={realIndex} direction="row" alignItems="center" spacing={0.5}>
+                          <Stack key={realIndex} direction="row" alignItems="center" spacing={0.5}
+                            sx={aRevisar ? { bgcolor: '#eaf7fd', boxShadow: 'inset 3px 0 0 #5BC2EA', borderRadius: 1 } : undefined}>
                             {marcarModo && (
                               <Checkbox size="small" disabled={!item.supplyId} checked={!!item.supplyId && marcarSel.has(String(item.supplyId))}
                                 onChange={() => toggleMarcar(item.supplyId)} sx={{ p: 0.5 }} />
@@ -3257,7 +3264,9 @@ export default function RecetaModal({
                     }}>
                       <span>🔎</span>
                       <span>
-                        Esta receta está <strong>marcada para revisión</strong>
+                        {propuestaAbierta.revisar?.length
+                          ? <>Hay que <strong>revisar cómo se usa</strong> {propuestaAbierta.revisar.length === 1 ? 'el ingrediente resaltado' : `los ${propuestaAbierta.revisar.length} ingredientes resaltados`} en esta receta</>
+                          : <>Esta receta está <strong>marcada para revisión</strong></>}
                         {propuestaAbierta.asignadoA ? ` (asignada a ${propuestaAbierta.asignadoA})` : ''}
                         {propuestaAbierta.adminComment ? ` — "${propuestaAbierta.adminComment}"` : ''}.
                         {' '}Se puede editar normal; al guardar, la marca se resuelve sola.
