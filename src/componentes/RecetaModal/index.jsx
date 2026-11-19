@@ -2496,9 +2496,9 @@ export default function RecetaModal({
             // iconos) aunque el ancho se agote y space-between no tenga más
             // espacio sobrante para repartir — antes quedaban pegados.
             gap: 2,
-            flexShrink: 0,
             // Celular: las pestañas FICHA / RECETA bajan a su propio renglón (antes se salían de la pantalla).
             ...(conPestanasArt ? { flexWrap: { xs: 'wrap', md: 'nowrap' }, rowGap: 1 } : {}),
+            flexShrink: 0,
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={1.5}>
               {/* Flecha anterior — a la izquierda del nombre (con foto en el header van pegadas al nombre, más abajo) */}
