@@ -537,7 +537,11 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const pasosEd = usePasosPresentes(PASOS_EDITAR, `${filter !== null}:${editing ? 1 : 0}`, filter !== null);
   const sectorEd = useSectorGuia('editar_registro');
   const pasosTourEd = pasosEd.filter((p) => !sectorEd || p.s === sectorEd);
-  const recEd = useRecorrido('editar_registro', pasosTourEd.length, filter !== null && !editing && !ctaCte && !lineas && !borrar && pasosEd.length > 0, { sinDatos: false });
+  // Espera a que lleguen los registros (Diego 19/11/2026, revisión de guías): si arrancaba antes
+  // contaba solo el primer paso («1 de 1») y se cerraba con Entendido.
+  const { data: datosDetalle } = useQuery({ queryKey, queryFn, enabled: false, staleTime: 60_000 }); // lee el caché del modal, no pide nada
+  const cargandoDetalle = filter !== null && !datosDetalle;
+  const recEd = useRecorrido('editar_registro', pasosTourEd.length, filter !== null && !cargandoDetalle && !editing && !ctaCte && !lineas && !borrar && pasosEd.length > 0, { sinDatos: false });
   const pasoEd = pasosTourEd[recEd.paso - 1];
 
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
