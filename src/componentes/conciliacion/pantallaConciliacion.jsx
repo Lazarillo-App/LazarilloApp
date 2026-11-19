@@ -4,27 +4,61 @@ import { C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_CO
 import { BuscadorBox, DynThead, Empty, Field, GrupoCCHead, InfoTip, NotaChip, NotaEditor, Panel, PanelColapsable, PanelHead, Rows, SubFilter, UploaderCard, fldLbl, ghostBtn, inputStyle } from './piezasConciliacion';
 import { DayCompareBar, DayGroupedRows, DayNav, DiaCompartido, DynRow, PendItem, SugerenciasPanel } from './vistasDiaConciliacion';
 import { BarraDia } from './barraDiaConciliacion';
+import ConfigSector from '@/componentes/base/ConfigSector';
 import React from "react";
 
 // Con pantalla ancha (≥ 1500 px) la vista por día muestra todas las columnas elegidas, no solo las compactas.
 const anchoAmplio = () => typeof window !== 'undefined' && window.innerWidth >= 1500;
 
-export function renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady }) {
+export function renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, data, desde, hasta, margenTipo, margenVal, mesActivo, months, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady }) {
+  // Configuración del sector en la ⚙ del header (Diego 19/11/2026): corte, tolerancia y márgenes ya
+  // no ocupan una franja en la pantalla. Guardar/Cargar archivo se sacaron: todo se guarda solo.
+  const sel = { height: 40, boxSizing: "border-box", fontFamily: "'Archivo',sans-serif", fontSize: 13.5, padding: "0 8px", borderRadius: 8, border: "1px solid " + C.line2, background: C.white, color: C.txt, cursor: "pointer" };
+  const fila = (label, ayuda, control) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid " + C.line }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.tinta }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: C.txt3, lineHeight: 1.35 }}>{ayuda}</div>
+      </div>
+      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>{control}</div>
+    </div>
+  );
+  const margen = (val, setVal, tipo, setTipo, entero) => (
+    <>
+      <input type="number" value={val} onChange={(e) => setVal(Math.max(0, (entero ? parseInt(e.target.value) : parseFloat(e.target.value)) || 0))} style={{ ...sel, width: 64, textAlign: "right", cursor: "text" }} />
+      <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={sel}><option value="monto">$</option><option value="pct">%</option></select>
+    </>
+  );
+  const config = (
+    <ConfigSector titulo="Conciliación">
+      {({ cerrar }) => (
+        <>
+          {fila("Corte del día", "Lo que entra de madrugada, antes de esta hora, cuenta como del día anterior. Se marca con ↶.",
+            <select value={corte} onChange={(e) => setCorte(parseInt(e.target.value, 10) || 0)} style={sel}>
+              <option value={0}>Sin corte</option>
+              {[3, 4, 5, 6, 7, 8].map((h) => <option key={h} value={h}>{String(h).padStart(2, "0") + ":00"}</option>)}
+            </select>)}
+          {fila("Tolerancia de fecha", "Si el cobro puede caer un día después de la venta.",
+            <select value={tol} onChange={(e) => setTol(parseInt(e.target.value))} style={sel}>
+              <option value={0}>Mismo día</option><option value={1}>± 1 día</option>
+            </select>)}
+          {fila("Auto-conciliar", "Con esta diferencia o menos, se concilia solo.", margen(autoMargenVal, setAutoMargenVal, autoMargenTipo, setAutoMargenTipo, false))}
+          {fila("Sugerencias", "Hasta esta diferencia, te lo propone para que lo revises.", margen(margenVal, setMargenVal, margenTipo, setMargenTipo, true))}
+          {allLoaded && (
+            <button type="button" onClick={() => { setSetupOpen(true); cerrar(); }}
+              style={{ marginTop: 10, minHeight: 40, padding: "0 12px", borderRadius: 8, border: "1px solid " + C.line2, background: C.white, color: C.txt2, fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+              Subir archivos a mano (sin integración)
+            </button>
+          )}
+        </>
+      )}
+    </ConfigSector>
+  );
   return (
-    allLoaded && !setupOpen ? (
-          <div data-tour="conc-setup" onClick={() => setSetupOpen(true)} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: C.white, border: "1px solid " + C.line2, borderRadius: 12, padding: "10px 16px", marginBottom: 14, cursor: "pointer" }}>
-            <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13.5, color: C.green }}>✓ Fuentes cargadas</span>
-            <span style={{ fontSize: 13, color: C.txt2 }}>{resumenPeriodo}</span>
-            <span style={{ fontSize: 12.5, color: C.txt3 }}>tol {tol === 0 ? "mismo día" : "± 1 día"} · corte {corte ? String(corte).padStart(2, "0") + ":00" : "no"} · auto {autoMargenVal}{autoMargenTipo === "pct" ? "%" : "$"} · sugerencias {margenVal}{margenTipo === "pct" ? "%" : "$"}</span>
-            <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={(e) => { e.stopPropagation(); guardarEstado(); }} title="Descargar un archivo con tu trabajo (conciliaciones, propinas, notas)" style={{ border: "1px solid " + C.line2, background: C.white, color: C.txt2, borderRadius: 7, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>💾 Guardar</button>
-              <button onClick={(e) => { e.stopPropagation(); estadoFileRef.current && estadoFileRef.current.click(); }} title="Cargar un estado guardado" style={{ border: "1px solid " + C.line2, background: C.white, color: C.txt2, borderRadius: 7, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>📂 Cargar</button>
-              <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 12.5, color: C.celesteDeep }}>▾ Editar fuentes y período</span>
-            </span>
-            <input ref={estadoFileRef} type="file" accept=".json,application/json" style={{ display: "none" }} onClick={(e) => e.stopPropagation()} onChange={(e) => { const f = e.target.files && e.target.files[0]; cargarEstado(f); e.target.value = ""; }} />
-          </div>
-        ) : (
+    allLoaded && !setupOpen ? config : (
+
           <>
+            {config}
             {/* UPLOADERS */}
             <div data-tour="conc-fuentes" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 18 }}>
               {FUENTES.map((f) => (
