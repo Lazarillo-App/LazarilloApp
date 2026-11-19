@@ -717,6 +717,7 @@ export default function RecetaModal({
   }, [open, modoInsumo, saltarSelector, insumos, articulo?.id, initialTab, resolverTabRecetaCompras]);
 
   const [todosArticulos, setTodosArticulos] = useState([]);
+
   const buscarGemelos = useCallback(async (q) => {
     if (!q || !q.trim()) { setGemelosResults([]); return; }
     setGemelosSearching(true);
