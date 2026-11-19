@@ -54,9 +54,12 @@ export async function proponerDiscontinuarInsumo(businessId, insumoId) {
 }
 
 // POST /api/businesses/:businessId/receta-proposals/marcar-revision
-export async function marcarARevision(businessId, items, comment, asignadoA = null) {
-  const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment, asignadoA } }, businessId);
-  if (!resp?.ok) throw new Error(resp?.error || 'No se pudo marcar a revisión');
+// origen = { tipo: 'articulo'|'insumo', id }: la receta DESDE la que se marcan
+// ingredientes. La marca queda sobre esa receta (cómo se usa el insumo ahí),
+// no sobre la receta propia del insumo.
+export async function marcarARevision(businessId, items, comment, asignadoA = null, origen = null) {
+  const resp = await httpBiz(`/receta-proposals/marcar-revision`, { method: 'POST', body: { items, comment, asignadoA, ...(origen ? { origen } : {}) } }, businessId);
+  if (!resp?.ok) throw new Error(resp?.message || resp?.error || 'No se pudo marcar a revisión');
   try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento: el contador se actualiza al volver a abrir */ }
   return resp;
 }
@@ -76,4 +79,11 @@ export async function jefeOkPropuesta(businessId, id) {
   if (!resp?.ok) throw new Error(resp?.error || 'No se pudo dar el OK');
   try { window.dispatchEvent(new CustomEvent('receta-proposals:changed')); } catch { /* sin evento */ }
   return resp;
+}
+
+// POST /api/businesses/:businessId/receta-proposals/:id/asignar — a quién le toca revisarla
+export async function reasignarPropuesta(businessId, id, asignadoA) {
+  const resp = await httpBiz(`/receta-proposals/${id}/asignar`, { method: 'POST', body: { asignadoA } }, businessId);
+  if (!resp?.ok) throw new Error(resp?.message || resp?.error || 'No se pudo reasignar');
+  return resp.proposal;
 }

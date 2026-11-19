@@ -11,10 +11,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import EditIcon from '@mui/icons-material/Edit';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import {
   listarPropuestas, aprobarPropuesta, rechazarPropuesta, pedirRevisionPropuesta,
-  listarPropuestasEquipo, jefeOkPropuesta,
+  listarPropuestasEquipo, jefeOkPropuesta, reasignarPropuesta,
 } from '@/servicios/apiRecetaProposals';
+import SelectorRevisor from '@/componentes/SelectorRevisor';
 import { showAlert } from '@/servicios/appAlert';
 import { useAuth } from '@/context/AuthContext';
 
@@ -133,11 +136,61 @@ function ProposalDiff({ proposal }) {
   );
 }
 
-function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo = 'admin' }) {
+const CELESTE = '#5BC2EA';
+const gridRevisar = { xs: '1fr auto', md: 'minmax(0,1fr) 120px 150px 210px' };
+
+// Marca sobre el USO de insumos en esta receta (Diego 19/11/2026): se muestra la
+// receta de origen con el insumo adentro, y desde ahí se llega a su elaboración.
+function InsumosARevisar({ revisar, onAbrirReceta }) {
+  return (
+    <Box sx={{ mt: 1.25, border: `1.5px solid ${CELESTE}`, borderRadius: 1.5, overflow: 'hidden' }}>
+      <Box sx={{
+        display: { xs: 'none', md: 'grid' }, gridTemplateColumns: gridRevisar, gap: 2,
+        px: 1.5, py: 0.75, bgcolor: '#fafafa', borderBottom: '1px solid #eee',
+      }}>
+        <Typography variant="caption" fontWeight={700} color="text.secondary">INSUMO A REVISAR (EN ESTA RECETA)</Typography>
+        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textAlign: 'center' }}>CANTIDAD</Typography>
+        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textAlign: 'center' }}>SE USA EN</Typography>
+        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textAlign: 'center' }}>SU ELABORACIÓN</Typography>
+      </Box>
+      {revisar.map((r) => {
+        const verReceta = r.tiene_receta && onAbrirReceta ? (
+          <Typography component="span" fontSize="0.85rem" onClick={() => onAbrirReceta({ insumo_id: r.insumo_id, insumo_nombre: r.nombre })}
+            sx={{ color: '#1b7fa6', textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            Ver su receta
+          </Typography>
+        ) : (
+          <Typography component="span" fontSize="0.8rem" color="text.disabled">Sin receta propia</Typography>
+        );
+        const cant = r.cantidad != null ? `${fmtNum(r.cantidad)} ${r.unidad || ''}`.trim() : 'Ya no está en la receta';
+        const usos = r.usos != null ? `${r.usos} ${r.usos === 1 ? 'receta' : 'recetas'}` : '—';
+        return (
+          <Box key={r.insumo_id} sx={{
+            display: 'grid', gridTemplateColumns: gridRevisar, gap: { xs: 0.5, md: 2 }, alignItems: 'center',
+            px: 1.5, py: 1.1, bgcolor: '#f2fbfe', '& + &': { borderTop: '1px solid #e3f3fa' },
+          }}>
+            <Typography fontWeight={700} fontSize="0.85rem" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{r.nombre}</Typography>
+            <Typography fontSize="0.85rem" sx={{ textAlign: { xs: 'right', md: 'center' }, whiteSpace: 'nowrap' }}>{cant}</Typography>
+            <Typography fontSize="0.85rem" color="text.secondary" sx={{ textAlign: { xs: 'left', md: 'center' }, whiteSpace: 'nowrap' }}>
+              <Box component="span" sx={{ display: { md: 'none' } }}>Se usa en </Box>{usos}
+            </Typography>
+            <Box sx={{ textAlign: { xs: 'right', md: 'center' } }}>{verReceta}</Box>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+function ProposalCard({ proposal, onDecided, onUpdated, currentUserId, onAbrirReceta, modo = 'admin' }) {
   const esJefe = modo === 'jefe';
   const [busy, setBusy] = useState(false);
   const [revisionOpen, setRevisionOpen] = useState(false);
   const [revisionComment, setRevisionComment] = useState('');
+  const [finalizarOpen, setFinalizarOpen] = useState(false);
+  const [finalizarNota, setFinalizarNota] = useState('');
+  const [reasignarOpen, setReasignarOpen] = useState(false);
+  const [reasignarA, setReasignarA] = useState(proposal.asignado_a_user_id ?? null);
   // Pedir revisión le manda un mensaje al proponente para que corrija — no tiene
   // sentido cuando el que está revisando (admin/owner) es la misma persona que
   // propuso el cambio (ej. un admin que también carga recetas): terminaría
@@ -166,6 +219,12 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo 
     || `#${proposal.article_id || proposal.insumo_id}`;
   const proponente = proposal.created_by_name || proposal.created_by_email || 'Alguien del equipo';
   const inicial = proponente.trim().charAt(0).toUpperCase() || '?';
+
+  const revisar = Array.isArray(proposal.revisar) ? proposal.revisar : [];
+  const esMarca = sinContenido && proposal.payload_after?.tipo !== 'discontinuar';
+  const etiqueta = esMarca
+    ? (revisar.length ? `Marcada a revisión · uso de ${revisar.length} ${revisar.length === 1 ? 'insumo' : 'insumos'}` : 'Marcada a revisión')
+    : (esNueva ? 'Receta nueva' : 'Cambio en la receta');
 
   const subtitulo = [
     proponente,
@@ -197,10 +256,21 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo 
   // nada que aprobar NI nada que rechazar — la acción real acá es sacarla de
   // la bandeja porque ya se resolvió (se revisó y no hace falta nada más),
   // no "rechazar" algo que nunca se llegó a proponer.
-  const handleRechazar = () => runAction(
-    () => rechazarPropuesta(proposal.business_id, proposal.id),
+  const handleRechazar = (nota = '') => runAction(
+    () => rechazarPropuesta(proposal.business_id, proposal.id, nota),
     sinContenido ? 'Revisión finalizada' : 'Propuesta rechazada',
   );
+  const handleReasignar = async () => {
+    setBusy(true);
+    try {
+      const r = await reasignarPropuesta(proposal.business_id, proposal.id, reasignarA);
+      onUpdated?.(proposal.id, { asignado_a_user_id: r?.asignado_a_user_id ?? null, asignado_a_nombre: r?.asignado_a_nombre || null });
+      showAlert(r?.asignado_a_nombre ? `Ahora la revisa ${r.asignado_a_nombre}` : 'Ahora la revisan admin y dueño');
+      setReasignarOpen(false);
+    } catch (e) {
+      showAlert(e?.message || 'No se pudo reasignar', 'error');
+    } finally { setBusy(false); }
+  };
   const handlePedirRevision = async () => {
     if (!revisionComment.trim()) return;
     const ok = await runAction(
@@ -212,31 +282,62 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo 
 
   return (
     <Box sx={{ border: '1px solid #eee', borderRadius: 2, p: 2, bgcolor: 'background.paper' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }} spacing={{ xs: 1.5, md: 2 }}>
         <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ minWidth: 0 }}>
           <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: '#e8e8e8', color: 'text.secondary' }}>
             {inicial}
           </Avatar>
           <Box sx={{ minWidth: 0 }}>
-            <Typography
-              fontWeight={700} fontSize="0.95rem"
-              onClick={onAbrirReceta ? () => onAbrirReceta(proposal) : undefined}
-              sx={onAbrirReceta ? { cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, width: 'fit-content' } : undefined}
-            >
-              {nombreDestino} — {esNueva ? 'receta nueva' : 'cambio en la receta'}
+            <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>
+              <Typography
+                fontWeight={700} fontSize="0.95rem"
+                onClick={onAbrirReceta ? () => onAbrirReceta(proposal) : undefined}
+                sx={onAbrirReceta ? { cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, width: 'fit-content' } : undefined}
+              >
+                {nombreDestino}
+              </Typography>
+              <Chip size="small" label={etiqueta} sx={{
+                height: 22, fontSize: '0.7rem', fontWeight: 600,
+                bgcolor: esMarca ? '#e6f6fc' : '#f1f1f1', color: esMarca ? '#1b7fa6' : 'text.secondary',
+              }} />
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {subtitulo}
+              {esMarca && <> · para <Box component="strong" sx={{ color: 'text.primary', fontWeight: 600 }}>{proposal.asignado_a_nombre || 'admin y dueño'}</Box></>}
             </Typography>
-            <Typography variant="caption" color="text.secondary">{subtitulo}</Typography>
             {!esJefe && proposal.jefe_ok_por && (
               <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize: 14 }} />} label={`OK de ${proposal.jefe_ok_por} · jefe de cocina`}
                 sx={{ display: 'flex', width: 'fit-content', mt: 0.75, height: 22, fontSize: '0.7rem', fontWeight: 600, bgcolor: '#e8f5e9', color: '#2e7d32', '& .MuiChip-icon': { color: '#2e7d32' } }} />
             )}
-            {proposal.status === 'in_revision' && proposal.admin_comment && (
+            {!esMarca && proposal.status === 'in_revision' && proposal.admin_comment && (
               <Typography variant="caption" sx={{ display: 'block', fontStyle: 'italic' }} color="warning.main">
                 Tu comentario: "{proposal.admin_comment}"
               </Typography>
             )}
           </Box>
         </Stack>
+        {esMarca ? (
+          <Stack direction="row" spacing={1} flexShrink={0} flexWrap="wrap" useFlexGap
+            sx={{ '& .MuiButton-root': { minHeight: { xs: 44, md: 34 }, flex: { xs: '1 1 auto', md: 'none' } } }}>
+            {onAbrirReceta && (
+              <Button size="small" variant="contained" disableElevation startIcon={<EditIcon />} disabled={busy}
+                onClick={() => onAbrirReceta(proposal)}
+                sx={{ bgcolor: CELESTE, '&:hover': { bgcolor: '#3fb3e0' } }}>
+                Abrir receta y corregir
+              </Button>
+            )}
+            {!esJefe && (
+              <Button size="small" variant="outlined" color="inherit" startIcon={<SwapHorizIcon />} disabled={busy}
+                onClick={() => { setReasignarA(proposal.asignado_a_user_id ?? null); setReasignarOpen(true); }}
+                sx={{ borderColor: '#cfd6dc', color: 'text.secondary' }}>
+                Reasignar
+              </Button>
+            )}
+            <Button size="small" variant="outlined" startIcon={<TaskAltIcon />} disabled={busy} onClick={() => setFinalizarOpen(true)}>
+              Finalizar revisión
+            </Button>
+          </Stack>
+        ) : (
         <Stack direction="row" spacing={1} flexShrink={0}>
           {!sinContenido && !(esJefe && proposal.status !== 'pending') && (
             <Button size="small" variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={busy} onClick={handleAprobar}>
@@ -249,18 +350,33 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo 
             </Button>
           )}
           {sinContenido ? (
-            <Button size="small" variant="outlined" startIcon={<TaskAltIcon />} disabled={busy} onClick={handleRechazar}>
+            <Button size="small" variant="outlined" startIcon={<TaskAltIcon />} disabled={busy} onClick={() => handleRechazar()}>
               Finalizar revisión
             </Button>
           ) : (
-            <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={handleRechazar}>
+            <Button size="small" variant="outlined" color="error" startIcon={<CancelIcon />} disabled={busy} onClick={() => handleRechazar()}>
               Rechazar
             </Button>
           )}
         </Stack>
+        )}
       </Stack>
 
-      {sinContenido ? (
+      {esMarca ? (
+        <>
+          {proposal.admin_comment && (
+            <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: '#fff7e6', border: '1px solid #ffe2a8', borderRadius: 1.5 }}>
+              <Typography fontSize="0.82rem" color="#6b4800">
+                💬 <strong>{proponente}:</strong> "{proposal.admin_comment}"
+              </Typography>
+            </Box>
+          )}
+          {revisar.length > 0 && <InsumosARevisar revisar={revisar} onAbrirReceta={onAbrirReceta} />}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Al guardar la receta de {nombreDestino}, esta revisión se cierra sola. Si no hace falta cambiar nada, «Finalizar revisión».
+          </Typography>
+        </>
+      ) : sinContenido ? (
         <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
           <Typography variant="caption" color="text.secondary">
             Todavía no tiene ningún cambio cargado — solo quedó marcada para que alguien la revise.
@@ -270,6 +386,40 @@ function ProposalCard({ proposal, onDecided, currentUserId, onAbrirReceta, modo 
       ) : (
         <ProposalDiff proposal={proposal} />
       )}
+
+      <Dialog open={finalizarOpen} onClose={() => !busy && setFinalizarOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Finalizar revisión</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            La marca sale de la bandeja sin cambiar la receta. Si querés, dejá cómo se resolvió: le llega a {proponente} y queda en Notificaciones.
+          </Typography>
+          <TextField autoFocus fullWidth multiline minRows={2} size="small" label="Cómo se resolvió (opcional)"
+            placeholder="Ej: se pesó el cucharón, son 60 g: está bien"
+            value={finalizarNota} onChange={(e) => setFinalizarNota(e.target.value)} />
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button color="inherit" disabled={busy} onClick={() => setFinalizarOpen(false)}>Cancelar</Button>
+          <Button variant="contained" disabled={busy} onClick={async () => { if (await handleRechazar(finalizarNota.trim())) setFinalizarOpen(false); }}>
+            Finalizar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={reasignarOpen} onClose={() => !busy && setReasignarOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Reasignar revisión</DialogTitle>
+        <DialogContent sx={{ pt: '8px !important' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Elegí quién tiene que revisar {nombreDestino}. Le llega un aviso.
+          </Typography>
+          <SelectorRevisor businessId={proposal.business_id} value={reasignarA} onChange={setReasignarA} minWidth="100%" />
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2 }}>
+          <Button color="inherit" disabled={busy} onClick={() => setReasignarOpen(false)}>Cancelar</Button>
+          <Button variant="contained" disabled={busy || (reasignarA ?? null) === (proposal.asignado_a_user_id ?? null)} onClick={handleReasignar}>
+            Reasignar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {proposal.concurrentes > 1 && (
         <Box sx={{ mt: 1.5, px: 1.5, py: 1, bgcolor: '#fff7e6', border: '1px solid #ffe2a8', borderRadius: 1.5 }}>
@@ -329,6 +479,9 @@ export default function AprobacionesTab({ businessId, onCountChange, onAbrirRece
   const handleDecided = (id) => {
     setProposals(prev => prev.filter(p => p.id !== id));
   };
+  const handleUpdated = (id, patch) => {
+    setProposals(prev => prev.map(p => (p.id === id ? { ...p, ...patch } : p)));
+  };
 
   return (
     <Box>
@@ -357,7 +510,7 @@ export default function AprobacionesTab({ businessId, onCountChange, onAbrirRece
       ) : (
         <Stack spacing={1.5}>
           {proposals.map(p => (
-            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} currentUserId={user?.id} onAbrirReceta={onAbrirReceta} modo={modo} />
+            <ProposalCard key={p.id} proposal={p} onDecided={handleDecided} onUpdated={handleUpdated} currentUserId={user?.id} onAbrirReceta={onAbrirReceta} modo={modo} />
           ))}
         </Stack>
       )}
