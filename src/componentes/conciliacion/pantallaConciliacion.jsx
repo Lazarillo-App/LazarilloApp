@@ -3,6 +3,7 @@
 import { C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, fmt, fmtFecha, pagadorCoincide } from './motorConciliacion';
 import { BuscadorBox, DynThead, Empty, Field, GrupoCCHead, InfoTip, NotaChip, NotaEditor, Panel, PanelColapsable, PanelHead, Rows, SubFilter, UploaderCard, fldLbl, ghostBtn, inputStyle } from './piezasConciliacion';
 import { DayCompareBar, DayGroupedRows, DayNav, DiaCompartido, DynRow, PendItem, SugerenciasPanel } from './vistasDiaConciliacion';
+import { BarraDia } from './barraDiaConciliacion';
 import React from "react";
 
 // Con pantalla ancha (≥ 1500 px) la vista por día muestra todas las columnas elegidas, no solo las compactas.
@@ -96,6 +97,11 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
     result && kpis && view && (
           <>
 
+            {/* El día que se concilia, en grande, con la tira del mes (19/11, opción A de Diego) */}
+            {dayView && (
+              <BarraDia dayCenter={dayCenter} result={result} pendPorDia={pendPorDia} pendingDays={pendingDays}
+                onMove={moveDay} onPick={elegirDia} desde={desde} hasta={hasta} nSugerencias={sugerir ? sugerencias.length : 0} />
+            )}
             {/* Panel de sugerencias de conciliación (con navegación de día) — arriba del flotante */}
             {sugerir && dayView && (
               <div data-keep-sel>
