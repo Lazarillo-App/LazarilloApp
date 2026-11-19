@@ -4,6 +4,7 @@
 // suma a los suyos. Solo entran los que se ven en esa pantalla, para ese usuario (permisos, staff,
 // sucursales), así nunca se señala algo que no está.
 import React, { useEffect, useState } from 'react';
+import { rectVisual } from '@/utils/rectVisual';
 import { useLocation } from 'react-router-dom';
 
 /** Ref que busca el elemento en el DOM cada vez (el header vive fuera de la página). */
@@ -30,7 +31,7 @@ export function seVe(el) {
 const visible = (clave) => {
   const el = document.querySelector(`[data-tour="${clave}"]`);
   if (!el) return false;
-  const r = el.getBoundingClientRect();
+  const r = rectVisual(el); // en Safari getBoundingClientRect viene sin el zoom de #root
   // Que esté dentro de la ventana: si el header no entra (RRHH a 1100 px) no se señala lo que no se ve.
   return r.width > 0 && r.height > 0 && r.right <= window.innerWidth + 2 && r.left >= -2;
 };
