@@ -235,9 +235,12 @@ function GestionPanelContenido() {
   }, [estado.tab]);
 
   // Elegir un resultado: filtra y, si vive en otra sucursal u otro año, va hasta ahí.
-  const elegirBusqueda = ({ param, value, label, anio, sucursal: destino }) => {
+  const elegirBusqueda = ({ param, value, label, anio, hastaAnio, sucursal: destino }) => {
     setBusqueda({ param, value, label });
     if (anio != null) cambiar({ year: anio });
+    // Concepto/proveedor/rubro sin compras desde un año anterior al que se mira (p. ej. un retiro de
+    // 2025 buscado mirando 2026): ir al último año con datos en vez de mostrar "Sin datos".
+    else if (hastaAnio && Number(estado.year) > hastaAnio) cambiar({ year: hastaAnio });
     if (destino !== undefined && setActiveBranch) setActiveBranch(destino === null ? MAIN_BRANCH_ID : destino);
   };
 
