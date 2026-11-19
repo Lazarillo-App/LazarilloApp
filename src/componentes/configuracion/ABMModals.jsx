@@ -14,6 +14,7 @@ import { useRecorrido } from '@/hooks/useRecorrido';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { useConfig } from '@/context/ConfigContext';
 import SelectorBuscable from '@/componentes/SelectorBuscable';
+import CampoImporte from '../CampoImporte';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
@@ -74,7 +75,6 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
-  const [precioFocus, setPrecioFocus] = useState(false);
   // Padrino (insumo de referencia para heredar rubro/unidad/precio/agrupación)
   const [usarPadrino, setUsarPadrino] = useState(false);
   const [padrinoSelected, setPadrinoSelected] = useState(null);
@@ -449,13 +449,11 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
                 {UNIDADES_INSUMO.map(u => <MenuItem key={u} value={u}>{u}</MenuItem>)}
               </Select>
             </FormControl>
-            <TextField label="Precio de referencia" size="small" sx={{ flex: 1 }} inputMode="decimal"
-              value={precioFocus ? form.precioRef : (form.precioRef === '' ? '' : Number(form.precioRef).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
-              onFocus={() => setPrecioFocus(true)}
-              onBlur={() => setPrecioFocus(false)}
+            {/* Importe en formato moneda mientras se escribe (Diego 19/11/2026: "no quiero contar ceros") */}
+            <CampoImporte label="Precio de referencia" size="small" sx={{ flex: 1 }}
+              value={form.precioRef === '' ? '' : Number(form.precioRef)}
               disabled={saving || !!success}
-              onChange={e => setForm(f => ({ ...f, precioRef: e.target.value.replace(/[^0-9.,]/g, '').replace(',', '.') }))}
-              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} />
+              onChange={n => setForm(f => ({ ...f, precioRef: n === '' ? '' : String(n) }))} />
           </Stack>
 
           {!isEdit && (
@@ -893,9 +891,9 @@ export function ArticuloNuevoModal({
           </Stack>
 
           <Stack direction="row" spacing={1.5}>
-            <TextField label={isEdit ? 'Precio' : 'Precio inicial'} size="small" type="number" fullWidth
-              value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))}
-              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }} />
+            <CampoImporte label={isEdit ? 'Precio' : 'Precio inicial'} size="small" fullWidth
+              value={form.precio === '' ? '' : Number(form.precio)}
+              onChange={n => setForm(f => ({ ...f, precio: n === '' ? '' : String(n) }))} />
             {/* Agrupación: solo al crear — moverla ya es una acción aparte en el menú */}
             {!isEdit && (
             <FormControl size="small" fullWidth>
