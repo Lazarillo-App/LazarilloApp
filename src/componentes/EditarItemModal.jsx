@@ -9,7 +9,6 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import SelectorBuscable from './SelectorBuscable';
-import { BotonesReceta } from './RecetaModal/AccionesReceta';
 import { showConfirm } from '@/servicios/appConfirm';
 import { httpBiz } from '@/servicios/apiBusinesses';
 
@@ -146,6 +145,7 @@ export default function EditarItemModal({
   // encabezado propio — el nombre, las flechas y la lupa los pone RecetaModal.
   embebido = false,
   onSucio,                    // (bool) => void — avisa si hay cambios sin guardar
+  onEstado,                   // embebido: ({sucio, faltan, guardando, puedeBorrar, guardar, descartar, borrar}) => void
 }) {
   const cfg = CFG[tipo] ?? CFG.articulo;
 
@@ -294,6 +294,19 @@ export default function EditarItemModal({
     return () => window.removeEventListener('keydown', k);
   }, [open, embebido, i, irA]);
 
+  // Embebido: el pie lo dibuja el modal del artículo; acá se le pasa el estado y las acciones.
+  const ctlRef = useRef({});
+  const faltanCampos = vacio(d.nombre) || vacio(d.rubro) || (tipo === 'insumo' && vacio(d.unidad));
+  useEffect(() => {
+    if (!embebido || !onEstado) return;
+    onEstado({
+      sucio, faltan: faltanCampos, guardando, puedeBorrar: !!onBorrar,
+      guardar: () => ctlRef.current.guardar?.(),
+      descartar: () => ctlRef.current.descartar?.(),
+      borrar: () => ctlRef.current.borrar?.(),
+    });
+  }, [embebido, onEstado, sucio, faltanCampos, guardando, onBorrar]);
+
   if (!item) return null;
 
   // Un ítem manual no tiene código de Maxi real — lo que hoy vive en
@@ -321,6 +334,8 @@ export default function EditarItemModal({
       if (embebido && r !== false) setSucio(false);
     } finally { setGuardando(false); }
   };
+
+  ctlRef.current = { guardar, descartar, borrar: () => onBorrar?.(item.id ?? item.codigo) };
 
   const subirFoto = async (e) => {
     const f = e.target.files?.[0];
@@ -652,15 +667,9 @@ export default function EditarItemModal({
         </Stack>
       </DialogContent>
 
-      {/* Pestaña FICHA: los mismos botones y en el mismo lugar que el pie de RECETA (Diego 19/11/2026). */}
-      {embebido ? (
-        <Stack direction="row" justifyContent="flex-end"
-          sx={{ px: 4.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
-          <BotonesReceta enPie receta={!!onBorrar} saving={guardando} deleting={false} loading={false}
-            hasDuplicates={faltan || !sucio}
-            onBorrar={() => onBorrar?.(item.id ?? item.codigo)} onCancel={descartar} onSave={guardar} />
-        </Stack>
-      ) : (<>
+      {/* Pestaña FICHA: sin pie propio — los botones van en el pie del modal, el mismo de RECETA
+          (Diego 19/11/2026); se manejan con onEstado. */}
+      {embebido ? null : (<>
       <Divider />
       <Stack direction="row" alignItems="center" spacing={1.6} sx={{ px: 2, py: 1.4, flexShrink: 0 }}>
         {onBorrar && (

@@ -151,6 +151,8 @@ export default function RecetaModal({
   const verFicha = conPestanasArt && tabArt === 'ficha';
   const fichaSucioRef = useRef(false);
   const onFichaSucio = useCallback((v) => { fichaSucioRef.current = v; }, []);
+  // Estado y acciones de la ficha: sus botones van en el MISMO pie que la receta (Diego 19/11/2026).
+  const [fichaCtl, setFichaCtl] = useState(null);
   const puedeDejarFicha = useCallback(async () => {
     if (!verFicha || !fichaSucioRef.current) return true;
     const ok = await showConfirm('Tenés cambios sin guardar en la ficha. ¿Descartarlos y continuar?', { danger: true, confirmText: 'Descartar' });
@@ -2496,6 +2498,8 @@ export default function RecetaModal({
           maxWidth: '1340px',
           maxHeight: '94vh',
           minHeight: 'min(94vh, calc(60vh + 140px))',
+          // Artículo con pestañas: alto fijo, así el encabezado y el pie no se mueven al pasar de FICHA a RECETA.
+          ...(conPestanasArt ? { height: 'min(94vh, 860px)' } : {}),
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
           display: 'flex', flexDirection: 'column', outline: 'none', overflow: 'hidden',
@@ -2677,9 +2681,10 @@ export default function RecetaModal({
             )}
             {/* Todo a 32 px: Marcar medía 29 y los íconos 30/34 (revisión de alineación 11/11/2026) */}
             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ '& .MuiIconButton-root': { width: 32, height: 32 } }}>
-              {!isStaff && !promoMode && !verFicha && (
+              {!isStaff && !promoMode && (
                 <Button size="small" data-tour="rec-marcar" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
-                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0, height: 32 }}>
+                  // En FICHA queda oculto pero ocupa su lugar: así las pestañas no se corren al cambiar.
+                  sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0, height: 32, visibility: verFicha ? 'hidden' : 'visible' }}>
                   {marcarModo ? 'Listo' : 'Marcar'}
                 </Button>
               )}
@@ -2780,7 +2785,7 @@ export default function RecetaModal({
           {verFicha && (
             <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <EditarItemModal open embebido tipo="articulo" itemId={articulo.id}
-                {...fichaArticulo} onSucio={onFichaSucio} />
+                {...fichaArticulo} onSucio={onFichaSucio} onEstado={setFichaCtl} />
             </Box>
           )}
           {/* La receta queda montada (oculta) mientras se ve la ficha: al volver está igual. */}
@@ -3417,7 +3422,7 @@ export default function RecetaModal({
 
           {/* Pie de costos fijo (no scrollea con los ingredientes): solo donde antes se veía, la receta;
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
-          {pieVisible && !verFicha && (
+          {pieVisible && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
             <PieCostos
               modoInsumo={modoInsumo}
@@ -3465,7 +3470,11 @@ export default function RecetaModal({
               precioActual={precioActual}
               estaPorDebajo={estaPorDebajo}
               pctCostoActual={pctCostoActual}
-              acciones={accionesEnPie ? botonesReceta(true) : null}
+              acciones={verFicha ? (
+                <BotonesReceta enPie receta={!!fichaCtl?.puedeBorrar} saving={!!fichaCtl?.guardando} deleting={false} loading={!fichaCtl}
+                  hasDuplicates={!fichaCtl || fichaCtl.faltan || !fichaCtl.sucio}
+                  onSave={() => fichaCtl?.guardar()} onCancel={() => fichaCtl?.descartar()} onBorrar={() => fichaCtl?.borrar()} />
+              ) : accionesEnPie ? botonesReceta(true) : null}
             />
             </Box>
           )}
