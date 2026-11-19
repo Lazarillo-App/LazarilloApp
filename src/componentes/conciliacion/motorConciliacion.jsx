@@ -446,7 +446,15 @@ export function conciliarPorCupon(V, B) {
 export function conciliar(ingresos, banco, tolDias, autoVal = 0, autoTipo = "pct") {
   const V = ingresos.map((v) => ({ ...v, status: "pend", matchedWith: [], matchTipo: null }));
   const B = banco.map((b) => ({ ...b, status: "pend", matchedWith: null }));
-  const dayDiff = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
+  // 19/11: con un año entero (Comercio: 14.000 ventas × 23.000 cobros) parsear la fecha en cada
+  // comparación tardaba ~90 s. Ahora cada fecha se pasa a número de día una sola vez y los cobros
+  // se agrupan por día, así cada venta mira solo los días de su tolerancia.
+  const diaCache = new Map();
+  const dn = (f) => { let n = diaCache.get(f); if (n === undefined) { n = Math.round(Date.parse(String(f).slice(0, 10) + "T00:00:00Z") / 86400000); diaCache.set(f, n); } return n; };
+  const dayDiff = (a, b) => Math.abs(dn(a) - dn(b));
+  const bPorDia = new Map();
+  B.forEach((b, i) => { const k = dn(b.fecha); (bPorDia.get(k) || bPorDia.set(k, []).get(k)).push(i); });
+  const idxCerca = (fecha) => { const k = dn(fecha), out = []; for (let d = -Math.ceil(tolDias); d <= Math.ceil(tolDias); d++) { const l = bPorDia.get(k + d); if (l) out.push(...l); } return out.sort((x, y) => x - y); };
   // margen de conciliación automática: tolerancia de importe (0 = solo exactas)
   const tolDe = (base) => autoTipo === "pct" ? Math.round(Math.abs(base) * autoVal / 100) : autoVal;
 
@@ -471,7 +479,8 @@ export function conciliar(ingresos, banco, tolDias, autoVal = 0, autoTipo = "pct
     if (v.status !== "pend") return;
     const tol = tolDe(v.imp);
     let best = -1, bestD = Infinity;
-    B.forEach((b, i) => {
+    idxCerca(v.fecha).forEach((i) => {
+      const b = B[i];
       if (b.status !== "pend" || dayDiff(b.fecha, v.fecha) > tolDias) return;
       const d = Math.abs(b.imp - v.imp);
       if (d <= tol && d < bestD) { bestD = d; best = i; }
@@ -481,7 +490,7 @@ export function conciliar(ingresos, banco, tolDias, autoVal = 0, autoTipo = "pct
   V.forEach((v) => {
     if (v.status === "ok") return;
     const tol = tolDe(v.imp);
-    const cand = B.filter((b) => b.status === "pend" && dayDiff(b.fecha, v.fecha) <= tolDias).sort((a, b) => a.ord - b.ord);
+    const cand = idxCerca(v.fecha).map((i) => B[i]).filter((b) => b.status === "pend" && dayDiff(b.fecha, v.fecha) <= tolDias).sort((a, b) => a.ord - b.ord);
     let grupo = null, grupoTipo = null, grupoBase = 0;
     // N movimientos IGUALES (o MÚLTIPLOS del mismo base) cuyo total dé el ingreso.
     // Ej: 5×21.420 + 1×42.840 (=2×21.420) = 7×21.420 ≈ ingreso. Cada múltiplo cuenta
