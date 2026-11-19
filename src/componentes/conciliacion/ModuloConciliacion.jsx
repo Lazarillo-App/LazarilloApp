@@ -1088,7 +1088,7 @@ export default function ModuloConciliacion({
           </div>
         </header>
       )}
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: 22 }}>
+      <div style={{ maxWidth: 1760, margin: "0 auto", padding: 22 }}>
         <p style={{ fontSize: 15, color: C.txt2, marginTop: 0, marginBottom: 20 }}>
           Cruzá las ventas del POS (no efectivo) y las cobranzas de cuenta corriente con los movimientos del banco. Lo que no cierre automático, lo conciliás a mano.
         </p>

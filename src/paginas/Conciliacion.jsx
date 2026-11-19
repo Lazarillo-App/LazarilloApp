@@ -33,6 +33,9 @@ const PASOS_CONC = [
   { k: 'conc-paneles', s: 'conciliar', t: <>A la izquierda, tus <b>facturas y cobranzas</b>; a la derecha, el <b>banco</b>. Filtrás Todas, Conciliadas o Pendientes; en Pendientes vas día por día.</> },
 ];
 
+// Ancho de la pantalla de Conciliación (19/11, Diego: «no podemos mejorar el diseño para que ocupe mejor el ancho?»):
+// antes 1180 fijo; ahora usa la pantalla hasta 1760.
+const ANCHO_CONC = 1760;
 const dm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : ''); // 2026-11-01 → 01/11
 
 const iniciales = (nombre) => String(nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
@@ -188,7 +191,7 @@ export default function Conciliacion() {
       <BarraTraer bid={bid} suc={suc} sucNombre={reales.length ? sucNombre : ''} mp={mp} maxi={maxi}
         guardadas={inicial.fuentes} onTraido={() => setVer((n) => n + 1)} avisar={avisar} />
       {(inicial.fuentes.banco?.length > 0 || inicial.egresos.length > 0) && (
-        <div data-tour="conc-extras" style={{ maxWidth: 1180, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <div data-tour="conc-extras" style={{ maxWidth: ANCHO_CONC, margin: '6px auto 0', padding: '0 22px', display: 'flex', gap: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           {inicial.egresos.length > 0 && (
             <button type="button" onClick={() => setVerEgresos((v) => !v)}
               style={{ border: 'none', background: 'none', color: '#2492C8', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, padding: 0, textDecoration: 'underline', fontWeight: 600 }}>
@@ -226,7 +229,7 @@ function ListaBanco({ filas }) {
   const th = { textAlign: 'left', padding: '7px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#8a93a3', fontWeight: 700, borderBottom: '1px solid rgba(21,33,62,.12)', position: 'sticky', top: 0, background: '#F7F9FB' };
   const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid rgba(21,33,62,.07)', color: '#15213E' };
   return (
-    <div style={{ maxWidth: 1180, margin: '8px auto 0', padding: '0 22px' }}>
+    <div style={{ maxWidth: ANCHO_CONC, margin: '8px auto 0', padding: '0 22px' }}>
       <div style={{ background: '#fff', border: '1px solid rgba(21,33,62,.16)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '8px 12px', fontSize: 13, color: '#5b6577', borderBottom: '1px solid rgba(21,33,62,.1)' }}>
           {orden.length} movimiento{orden.length === 1 ? '' : 's'} · total <b style={{ color: '#15213E' }}>{pesos(total)}</b>
@@ -265,7 +268,7 @@ function ListaEgresos({ filas }) {
   const th = { textAlign: 'left', padding: '7px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#8a93a3', fontWeight: 700, borderBottom: '1px solid rgba(21,33,62,.12)', position: 'sticky', top: 0, background: '#F7F9FB' };
   const td = { padding: '6px 10px', fontSize: 13, borderBottom: '1px solid rgba(21,33,62,.07)', color: '#15213E' };
   return (
-    <div style={{ maxWidth: 1180, margin: '8px auto 0', padding: '0 22px' }}>
+    <div style={{ maxWidth: ANCHO_CONC, margin: '8px auto 0', padding: '0 22px' }}>
       <div style={{ background: '#fff', border: '1px solid rgba(21,33,62,.16)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '8px 12px', fontSize: 13, color: '#5b6577', borderBottom: '1px solid rgba(21,33,62,.1)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           <span>{orden.length} egreso{orden.length === 1 ? '' : 's'} · total <b style={{ color: '#D64545' }}>{pesos(total)}</b></span>
@@ -372,7 +375,7 @@ function BarraTraer({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar
   if (!mp && !maxi) return null;
   const conMaxi = !!maxi?.disponible;
   const conMp = !!mp?.conectado;
-  const caja = { maxWidth: 1180, margin: '12px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
+  const caja = { maxWidth: ANCHO_CONC, margin: '12px auto 0', padding: '10px 16px', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13.5 };
   const codigo = (e) => String(e?.message || '').split(':')[0].trim();
 
   const traer = async () => {
