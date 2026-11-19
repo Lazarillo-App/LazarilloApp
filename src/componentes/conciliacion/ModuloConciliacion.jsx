@@ -517,7 +517,18 @@ export default function ModuloConciliacion({
     return { total, porDia };
   }, [result, tips]);
 
-  const view = React.useMemo(() => calcView({ colFilterB, colFilterV, difFiltro, difSigno, filterB, filterV, margenTipo, margenVal, result, sortB, sortV, subFilterV }), [result, filterV, subFilterV, filterB, sortV, sortB, colFilterV, colFilterB, margenTipo, margenVal, difFiltro, difSigno]);
+  const viewBase = React.useMemo(() => calcView({ colFilterB, colFilterV, difFiltro, difSigno, filterB, filterV, margenTipo, margenVal, result, sortB, sortV, subFilterV }), [result, filterV, subFilterV, filterB, sortV, sortB, colFilterV, colFilterB, margenTipo, margenVal, difFiltro, difSigno]);
+  // Todas / Conciliadas filtradas a un día desde la tira del mes (19/11, Diego: «la vista de conciliadas
+  // saca la fecha, no debería»). En Pendientes manda el día en foco, no este filtro.
+  const [diaFiltro, setDiaFiltro] = React.useState(null);
+  React.useEffect(() => { setDiaFiltro(null); }, [desde, hasta]);
+  const view = React.useMemo(() => {
+    if (!viewBase || dayView || !diaFiltro) return viewBase;
+    return { ...viewBase, fV: viewBase.fV.filter((v) => v.fecha === diaFiltro), fB: viewBase.fB.filter((b) => b.fecha === diaFiltro) };
+  }, [viewBase, dayView, diaFiltro]);
+  // Cambiar el período desde la barra del día: ‹ mes › o un rango elegido.
+  const cambiarMes = (ym) => selectMonth(ym);
+  const cambiarPeriodo = (d, h) => { setMesActivo(null); setDesde(d); setHasta(h); };
 
   // conteos del día en foco (dayCenter): los KPIs/headers muestran el día que estás
   // trabajando, no todo el período. Aplica en cualquier pestaña mientras haya día en foco.
@@ -592,7 +603,7 @@ export default function ModuloConciliacion({
       setDayCenter(pendingDays[0]);
     }
      
-  }, [pendingDays.length]);
+  }, [pendingDays.length, desde, hasta]);
 
   // navegar día centro (± dentro de los días con pendientes)
   function moveDay(dir) {
@@ -1223,7 +1234,7 @@ export default function ModuloConciliacion({
         {renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady })}
 
         {/* RESULTADOS */}
-        {renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen, aprobadas, barTotals, busqComp, busqPago, ccById, ccConc, ccListaOpen, ccOpen, ccPorDia, ccSplit, colFilterB, colFilterOpen, colFilterV, colMenu, colsB, colsBeff, colsV, colsVeff, conciliarManual, conocePagador, controlCC, ctrlOpen, dayCenter, dayView, dayWindow, desarmarCluster, descartarSugerencia, desde, deshacerAprobada, diaCounts, diasPend, difFiltro, difPend, editarCluster, efectivoOpen, efectivoPorDia, efectivoSospechoso, elegirDia, expandedGroups, exportarControl, faltantes, filterB, filterV, filtrarPorDif, formaProps, goTab, hasta, hayHighlight, haySeleccion, hlBanTotal, hlIngTotal, irAResultado, kpis, limiteFilas, limpiarSeleccion, mesesPend, moveDay, notaProps, onSubFiltro, parB, parV, pendOpen, pendPorDia, pendPorMes, pendUnif, pendingDays, resComp, resPago, result, rowsBref, rowsVref, selBan, selBanTotal, selCC, selEfec, selIng, selIngTotal, setAprobExp, setAprobOpen, setBusqComp, setBusqPago, setCcListaOpen, setCcOpen, setColFilterB, setColFilterOpen, setColFilterV, setColMenu, setColsB, setColsV, setCtrlOpen, setCuentaModal, setDayCenter, setDayView, setDiasPend, setEfectivoOpen, setExpandedGroups, setFilterB, setFilterV, setLimiteFilas, setMesesPend, setParB, setParV, setPendOpen, setSelBan, setSelCC, setSelEfec, setSelIng, setSortB, setSortV, setSubFilterV, sortB, sortV, subFilterV, sugActiva, sugResaltados, sugerencias, sugerir, tieneCuenta, tipDe, tipProps, tipsInfo, toggleBan, toggleBanGroup, toggleIng, tol, verParDeBanco, verParDeIngreso, verSugerencia, view, xlsxReady })}
+        {renderCuerpo({ diaFiltro, setDiaFiltro, months, cambiarMes, cambiarPeriodo, activeTab, aplicarSugerencia, aprobExp, aprobOpen, aprobadas, barTotals, busqComp, busqPago, ccById, ccConc, ccListaOpen, ccOpen, ccPorDia, ccSplit, colFilterB, colFilterOpen, colFilterV, colMenu, colsB, colsBeff, colsV, colsVeff, conciliarManual, conocePagador, controlCC, ctrlOpen, dayCenter, dayView, dayWindow, desarmarCluster, descartarSugerencia, desde, deshacerAprobada, diaCounts, diasPend, difFiltro, difPend, editarCluster, efectivoOpen, efectivoPorDia, efectivoSospechoso, elegirDia, expandedGroups, exportarControl, faltantes, filterB, filterV, filtrarPorDif, formaProps, goTab, hasta, hayHighlight, haySeleccion, hlBanTotal, hlIngTotal, irAResultado, kpis, limiteFilas, limpiarSeleccion, mesesPend, moveDay, notaProps, onSubFiltro, parB, parV, pendOpen, pendPorDia, pendPorMes, pendUnif, pendingDays, resComp, resPago, result, rowsBref, rowsVref, selBan, selBanTotal, selCC, selEfec, selIng, selIngTotal, setAprobExp, setAprobOpen, setBusqComp, setBusqPago, setCcListaOpen, setCcOpen, setColFilterB, setColFilterOpen, setColFilterV, setColMenu, setColsB, setColsV, setCtrlOpen, setCuentaModal, setDayCenter, setDayView, setDiasPend, setEfectivoOpen, setExpandedGroups, setFilterB, setFilterV, setLimiteFilas, setMesesPend, setParB, setParV, setPendOpen, setSelBan, setSelCC, setSelEfec, setSelIng, setSortB, setSortV, setSubFilterV, sortB, sortV, subFilterV, sugActiva, sugResaltados, sugerencias, sugerir, tieneCuenta, tipDe, tipProps, tipsInfo, toggleBan, toggleBanGroup, toggleIng, tol, verParDeBanco, verParDeIngreso, verSugerencia, view, xlsxReady })}
       </div>
 
       {/* MODAL DE CUENTA CORRIENTE (al tocar el nombre del cliente) */}
