@@ -31,7 +31,11 @@ function useAncho() {
 }
 
 export default function DescuentosMP({ bid, avisar }) {
-  const [mes, setMes] = useState(mesHoy);
+  // ?mes=AAAA-MM: llega desde «Desde el banco» del tablero con el mes clickeado.
+  const [mes, setMes] = useState(() => {
+    const m = new URLSearchParams(window.location.search).get('mes') || '';
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(m) && m <= mesHoy() ? m : mesHoy();
+  });
   const [r, setR] = useState(null);
   const [error, setError] = useState('');
   const [provs, setProvs] = useState([]);

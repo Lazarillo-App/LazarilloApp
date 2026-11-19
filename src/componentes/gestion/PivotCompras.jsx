@@ -22,6 +22,7 @@ import { mesAnteriorConValor } from '@/gestion/cargaUtils';
 import { ScopeGestion, useDashboard, useFetchQuery } from '@/gestion/compat';
 import { ConceptoFijoEmpleado, useConceptosEmpleado } from './apertura/concepto-fijo';
 import { ChipCorregir } from './SinRubro';
+import { FilasDesdeElBanco } from './DesdeElBanco';
 import { BotonApertura, BotonAperturaRegistro, ModalAperturaPanel, useAperturaPanel } from './apertura/aperturaPanel';
 import { fmtARS, normalize, fechaCorta } from '@/gestion/formato';
 import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
@@ -427,7 +428,13 @@ export default function PivotCompras({
               </TableCell>
             </TableRow>
           )}
-          {filas.map(renderFila)}
+          {(() => {
+            // «Desde el banco» (19/11/2026): debajo de Sin rubro (o arriba de todo si no hay), informativo.
+            const banco = sinTotalesRubro ? null : <FilasDesdeElBanco key="__banco" months={months} sinColTotal={sinColTotal} />;
+            const iSin = filas.findIndex((f) => (f.type === 'rubro' || f.type === 'rubroTop') && f.data.rubroCodigo === '__sin_rubro');
+            const corte = iSin < 0 ? 0 : (() => { const j = filas.findIndex((f, k) => k > iSin && (f.type === 'rubro' || f.type === 'rubroTop')); return j < 0 ? filas.length : j; })();
+            return [...filas.slice(0, corte).map(renderFila), banco, ...filas.slice(corte).map(renderFila)];
+          })()}
         </TableBody>
         {!sinTotalesRubro && <TableFooter>
           <TableRow sx={{ '& td': { bgcolor: MUTED, fontWeight: 600, fontSize: 15, color: 'text.primary', borderTop: 2, borderTopColor: 'divider', py: 1.5 } }}>

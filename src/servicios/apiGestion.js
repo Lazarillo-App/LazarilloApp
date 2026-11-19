@@ -59,6 +59,8 @@ export const GestionAPI = {
   // «Organizá tus gastos» (17/11/2026): rubros de insumo y proveedores → concepto de caja.
   organizar: () => api(`${base()}/organizar`),
   organizarProveedor: (id, concepto) => api(`${base()}/organizar/proveedor/${id}`, { method: 'PUT', body: { concepto } }),
+  // «Desde el banco» (19/11/2026): lo que descontó Mercado Pago y todavía no entró al tablero (no suma).
+  desdeElBanco: ({ anio, sucursal }) => api(`${base()}/desde-el-banco${qs({ anio, sucursal })}`),
   sinRubro: ({ anio, sucursal }) => api(`${base()}/sin-rubro${qs({ anio, sucursal })}`),
   // body: { concepto } (siempre el mismo) o { alternativas: [{ etiqueta, concepto }, …] } (depende de la compra)
   sinRubroRubroInsumo: (codigo, body) => api(`${base()}/sin-rubro/rubro-insumo/${encodeURIComponent(codigo)}`, { method: 'PUT', body }),
