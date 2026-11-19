@@ -26,7 +26,6 @@ const PASOS_CONC = [
   { k: 'conc-traer', s: 'fuentes', t: <>Las <b>ventas</b> de tu punto de venta y los <b>cobros de Mercado Pago</b> llegan solos, sin subir archivos. El <b>punto del header</b> te dice cuándo se trajeron.</> },
   { k: 'conc-extras', s: 'fuentes', t: <>Acá ves la lista de lo que <b>entró al banco</b> y lo que <b>salió de Mercado Pago</b> (pagos, retiros, impuestos y comisiones).</> },
   { k: 'conc-fuentes', s: 'fuentes', t: <>Lo que no se trae solo lo subís con su <b>archivo</b>: ventas no efectivo, cobranzas de cuenta corriente y movimientos del banco. Cada tarjeta tiene su instructivo.</> },
-  { k: 'conc-setup', s: 'fuentes', t: <>Con todo cargado, esto se achica: ves el período y la configuración, y lo tocás para cambiarlos. Con <b>Guardar</b> descargás tu trabajo y con <b>Cargar</b> lo volvés a abrir.</> },
   { k: 'conc-periodo', s: 'fuentes', t: <>Elegí el <b>mes</b> o las fechas. <b>Tolerancia</b>: si el cobro puede caer un día después. Debajo de <b>Auto-conciliar</b> se concilia solo; hasta <b>Margen sugerencias</b> te lo propone para que lo revises.</> },
   { k: 'conc-buscar', s: 'conciliar', t: <>Buscás un <b>comprobante o cliente</b> a la izquierda y un <b>pago por importe</b> o pagador a la derecha.</> },
   { k: 'conc-barra', s: 'conciliar', t: <>La barra compara lo que <b>vendiste</b> con lo que <b>entró al banco</b>. Tildás filas de los dos lados y con <b>Conciliar</b> las cerrás a mano.</> },
@@ -406,7 +405,7 @@ function TraerSolo({ bid, suc, sucNombre, mp, maxi, guardadas, onTraido, avisar 
   const linea = { maxWidth: ANCHO_CONC, margin: '10px auto 0', padding: '0 22px', fontSize: 13, color: '#5b6577', display: 'flex', gap: 16, flexWrap: 'wrap' };
   const avisos = [];
   if (avance) avisos.push(<span key="t">{avance.mes === 'guardando' ? 'Guardando las ventas del POS…' : <>Trayendo las ventas del POS · <b style={{ color: '#15213E' }}>{avance.mes}</b>…</>}</span>);
-  if (maxi && !conMaxi) avisos.push(<span key="p">Este negocio no está integrado con tu POS: subí las ventas con su archivo en «Editar fuentes y período».</span>);
+  if (maxi && !conMaxi) avisos.push(<span key="p">Este negocio no está integrado con tu POS: subí las ventas con su archivo en las tarjetas de abajo.</span>);
   if (mp && !mp.conectado) avisos.push(<span key="m">Mercado Pago sin conectar{sucNombre ? ` en ${sucNombre}` : ''} · <RouterLink to="/configuracion?tab=7" style={{ fontWeight: 700 }}>Conectar</RouterLink></span>);
   if (!avisos.length) return null;
   return <div data-tour="conc-traer" style={linea}>{avisos}</div>;
