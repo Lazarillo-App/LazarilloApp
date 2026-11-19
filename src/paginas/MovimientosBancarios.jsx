@@ -22,11 +22,18 @@ import logoComafi from '@/assets/bancos/comafi.svg';
 
 const T = {
   txt: '#15213E', txt2: '#5b6577', txt3: '#8a93a3', line: 'rgba(21,33,62,.12)', line2: 'rgba(21,33,62,.07)',
-  celeste: '#5BC2EA', celesteDeep: '#2492C8', verde: '#1a9c6e', rojo: '#c2410c', ambar: '#B7791F', fondo: '#F7F9FB',
+  celeste: '#5BC2EA', celesteDeep: '#2492C8', verde: '#1a9c6e', rojo: '#c2410c', ambar: '#B7791F', fondo: '#F7F9FB', violeta: '#7C4DBA',
 };
 const pesos = (n) => {
   const v = Math.round(Number(n) || 0);
   return (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString('es-AR');
+};
+// KPI abreviados (Guía, Diego 19/11/2026: «no quiero contar ceros»): «$ 44,1 M», «$ 850 mil». El número entero va en el title.
+const pesosCorto = (n) => {
+  const v = Number(n) || 0; const a = Math.abs(v); const sg = v < 0 ? '−' : '';
+  if (a >= 1e6) return `${sg}$ ${(a / 1e6).toLocaleString('es-AR', { maximumFractionDigits: 1 })} M`;
+  if (a >= 1e4) return `${sg}$ ${Math.round(a / 1e3).toLocaleString('es-AR')} mil`;
+  return `${sg}$ ${Math.round(a).toLocaleString('es-AR')}`;
 };
 const dma = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '—');
 const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -158,6 +165,11 @@ export default function MovimientosBancarios() {
   const [cols, setCols] = useState(leerCols);
   const [verCols, setVerCols] = useState(false);
   const [verComisiones, setVerComisiones] = useState(false);
+  // KPI que filtra la lista (Diego 19/11/2026: «quiero apretar los KPI y que me filtre entró, salió…»).
+  // null = ninguno; 'entro' | 'comision' | 'impuestos' | 'salio' | 'personal' | 'dev'.
+  const [kpiSel, setKpiSel] = useState(null);
+  // Movimientos marcados «Gasto personal» (ids), guardados en el servidor por negocio y sucursal.
+  const [personales, setPersonales] = useState(() => new Set());
   const alternarCol = (k) => setCols((c) => {
     const n = c.includes(k) ? c.filter((x) => x !== k) : [...c, k];
     try { localStorage.setItem(COLS_KEY, JSON.stringify(n)); } catch { /* sin storage */ }
@@ -184,6 +196,9 @@ export default function MovimientosBancarios() {
         setDatos({ filas: normalizar(f.banco?.filas || [], f.egresos?.filas || [], f.devoluciones?.filas || []), origen: f.banco?.origen || '' });
       })
       .catch(() => { if (vivo) setError('No pude cargar los movimientos. Probá de nuevo en un rato.'); });
+    MercadoPagoAPI.marcas(bid, suc).then((r) => {
+      if (vivo) setPersonales(new Set((r?.marcas || []).filter((m) => m.marca === 'personal').map((m) => String(m.id))));
+    }).catch(() => {});
     MercadoPagoAPI.estado(bid, suc).then((r) => {
       if (!vivo) return;
       setMp(r);
@@ -230,8 +245,11 @@ export default function MovimientosBancarios() {
   const base = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return delPeriodo.filter((f) => (lado === 'todos' || f.lado === lado)
+      && (kpiSel !== 'comision' || f.comision > 0)
+      && (kpiSel !== 'impuestos' || (f.retenciones || 0) > 0)
+      && (kpiSel !== 'personal' || personales.has(f.id))
       && (!q || `${f.quien} ${f.email || ''} ${f.detalle} ${f.tipo} ${f.ref} ${f.doc} ${f.op} ${f.claveMx}`.toLowerCase().includes(q) || String(Math.round(f.bruto)).includes(q.replace(/\D/g, '') || '§')));
-  }, [delPeriodo, lado, buscar]);
+  }, [delPeriodo, lado, buscar, kpiSel, personales]);
   const visibles = useMemo(() => {
     const ks = Object.keys(filtros).filter((k) => filtroActivo(filtros[k]));
     const out = base.filter((f) => ks.every((k) => pasaFiltro(valorDe(f, k), textoDe(f, k), filtros[k])));
@@ -278,6 +296,7 @@ export default function MovimientosBancarios() {
         // Igual que el KPI «Neto del período»: una devolución total no resta (MP ya sacó ese cobro de la
         // lista); la parcial sí. Así la suma de esta columna da el mismo neto que la pantalla.
         Neto: f.lado === 'devolucion' && !f.parcial ? 0 : n(f.neto),
+        'Gasto personal': personales.has(f.id) ? 'Sí' : '',
         Nota: f.lado === 'devolucion' ? (f.parcial ? 'Devolución parcial: resta del neto' : 'Devolución total: el cobro ya no figura, no resta otra vez') : '',
       }));
       const hoja = XLSX.utils.json_to_sheet(filas);
@@ -305,10 +324,12 @@ export default function MovimientosBancarios() {
       const m = porMedio[f.medio] || (porMedio[f.medio] = { n: 0, bruto: 0, comision: 0, cuotas: 0, ret: 0 });
       m.n++; m.bruto += f.bruto; m.comision += f.comision; m.cuotas += f.cuotasCosto || 0; m.ret += f.retenciones || 0;
     });
+    const pers = sal.filter((f) => personales.has(f.id));
     const porTipo = {};
     sal.forEach((f) => { const m = porTipo[f.tipo] || (porTipo[f.tipo] = { n: 0, total: 0 }); m.n++; m.total += f.bruto; });
     return {
       nEnt: ent.length, nSal: sal.length, entro: s(ent, 'bruto'), comision: s(ent, 'comision'), netoEnt: s(ent, 'neto'), salio: s(sal, 'bruto'),
+      nPersonal: pers.length, personal: s(pers, 'bruto'),
       cuotas: s(ent, 'cuotasCosto'), retenciones: ent.reduce((x, f) => x + (f.retenciones || 0), 0),
       // Las devoluciones totales ya no figuran como cobro (MP las saca); las parciales sí: esas restan.
       nDev: dev.length, devuelto: s(dev, 'bruto'), devParcial: dev.filter((f) => f.parcial).reduce((x, f) => x + f.bruto, 0),
@@ -316,7 +337,7 @@ export default function MovimientosBancarios() {
       porTipo: Object.entries(porTipo).sort((a, b) => b[1].total - a[1].total),
       desde: delPeriodo.length ? delPeriodo[delPeriodo.length - 1].fecha : null, hasta: delPeriodo.length ? delPeriodo[0].fecha : null,
     };
-  }, [delPeriodo]);
+  }, [delPeriodo, personales]);
 
   const pagina = { maxWidth: 1180, margin: '0 auto', padding: '18px 22px 40px', fontFamily: "'Archivo', system-ui, sans-serif", color: T.txt };
   const chip = (on) => ({
@@ -422,15 +443,40 @@ export default function MovimientosBancarios() {
   }
 
   const pct = (n) => (tot.entro ? `${((n / tot.entro) * 100).toFixed(2).replace('.', ',')}%` : '—');
+  // Cada KPI filtra la lista (Diego 19/11/2026); tocar el mismo otra vez vuelve a «Todos».
+  const LADO_KPI = { entro: 'entrada', comision: 'entrada', impuestos: 'entrada', salio: 'salida', personal: 'salida', dev: 'devolucion', neto: 'todos' };
+  const elegirKpi = (k) => {
+    const sale = kpiSel === k || k === 'neto';
+    setKpiSel(sale ? null : k);
+    setLado(sale ? 'todos' : LADO_KPI[k]);
+    setVerComisiones(!sale && k === 'comision');
+  };
   const kpis = [
-    { l: 'Entró', v: tot.entro, s: `${tot.nEnt.toLocaleString('es-AR')} cobros`, c: T.verde },
-    { l: 'Comisiones MP', v: -tot.comision, s: `${pct(tot.comision)} · ${verComisiones ? 'ocultar ▴' : 'ver por medio ▾'}`, c: T.rojo,
-      onClick: () => setVerComisiones((v) => !v), activo: verComisiones },
-    { l: 'Impuestos y retenc.', v: -tot.retenciones, s: `${pct(tot.retenciones)} de lo cobrado`, c: T.ambar, t: 'Lo que MP descuenta de cada cobro y no es comisión: el impuesto a los débitos y créditos (0,6% en las transferencias recibidas) y las retenciones (IIBB, etc.). Buena parte se computa a cuenta de impuestos.' },
-    { l: 'Salió', v: -tot.salio, s: `${tot.nSal.toLocaleString('es-AR')} movimientos`, c: T.rojo },
-    { l: 'Devoluciones', v: -tot.devuelto, s: `${tot.nDev.toLocaleString('es-AR')} · ${tot.devParcial ? `${pesos(tot.devParcial)} parciales` : 'no suman en Entró'}`, c: T.ambar, t: 'Devoluciones, contracargos y disputas. Un cobro devuelto entero ya no figura en Entró; las devoluciones parciales sí se restan del neto.' },
-    { l: 'Neto del período', v: tot.netoEnt - tot.salio - tot.devParcial, s: 'entró − descuentos − salió', c: T.txt },
-  ];
+    { k: 'entro', l: 'Entró', v: tot.entro, s: `${tot.nEnt.toLocaleString('es-AR')} cobros`, c: T.verde },
+    { k: 'comision', l: 'Comisiones MP', v: -tot.comision, s: `${pct(tot.comision)} · por medio abajo`, c: T.rojo },
+    { k: 'impuestos', l: 'Impuestos y retenc.', v: -tot.retenciones, s: `${pct(tot.retenciones)} de lo cobrado`, c: T.ambar, t: 'Lo que MP descuenta de cada cobro y no es comisión: el impuesto a los débitos y créditos (0,6% en las transferencias recibidas) y las retenciones (IIBB, etc.). Buena parte se computa a cuenta de impuestos.' },
+    { k: 'salio', l: 'Salió', v: -tot.salio, s: `${tot.nSal.toLocaleString('es-AR')} movimientos`, c: T.rojo },
+    { k: 'personal', l: 'Gastos personales', v: -tot.personal, s: tot.nPersonal ? `${tot.nPersonal.toLocaleString('es-AR')} · ${tot.salio ? `${((tot.personal / tot.salio) * 100).toFixed(1).replace('.', ',')}% de lo que salió` : ''}` : 'Marcalos en Salidas', c: T.violeta,
+      t: 'Lo que salió de la cuenta y no es del negocio. Se marca con «Gasto personal» en cada salida.' },
+    { k: 'dev', l: 'Devoluciones', v: -tot.devuelto, s: `${tot.nDev.toLocaleString('es-AR')} · ${tot.devParcial ? `${pesos(tot.devParcial)} parciales` : 'no suman en Entró'}`, c: T.ambar, t: 'Devoluciones, contracargos y disputas. Un cobro devuelto entero ya no figura en Entró; las devoluciones parciales sí se restan del neto.' },
+    { k: 'neto', l: 'Neto del período', v: tot.netoEnt - tot.salio - tot.devParcial, s: 'entró − descuentos − salió', c: T.txt },
+  ].map((x) => ({ ...x, onClick: () => elegirKpi(x.k), activo: kpiSel === x.k }));
+  // «Gasto personal» en una salida: se ve al instante y vuelve atrás si el servidor falla.
+  const marcarPersonal = async (f) => {
+    const activo = !personales.has(f.id);
+    const cambiar = (on) => setPersonales((p) => { const n = new Set(p); if (on) n.add(f.id); else n.delete(f.id); return n; });
+    cambiar(activo);
+    try {
+      const r = await MercadoPagoAPI.marcar(bid, suc, { id: f.id, marca: 'personal', activo, importe: f.bruto, fecha: f.fecha });
+      if (r?.error) throw new Error(r.error);
+    } catch {
+      cambiar(!activo);
+      avisar('No se pudo guardar la marca. Probá de nuevo.');
+    }
+  };
+  const verPersonal = lado !== 'entrada' && lado !== 'devolucion';
+  // En el celular, alto para el dedo (44 px); en la compu, el de la fila.
+  const altoBoton = typeof window !== 'undefined' && window.innerWidth < 720 ? 44 : 30;
   // encabezado con el color de la app (las tablas toman el color del negocio): texto blanco
   const th = { padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.4px', color: '#fff', fontWeight: 700, position: 'sticky', top: 0, zIndex: 1, background: 'var(--color-primary, #2492C8)', textAlign: 'center', whiteSpace: 'nowrap' };
   const td = { padding: '7px 10px', fontSize: 13, borderBottom: `1px solid ${T.line2}`, textAlign: 'center', whiteSpace: 'nowrap' };
@@ -458,12 +504,13 @@ export default function MovimientosBancarios() {
       </div>
 
       {/* Totales */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))', gap: 10, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
         {kpis.map((k) => (
-          <div key={k.l} title={k.t || ''} onClick={k.onClick} role={k.onClick ? 'button' : undefined}
-            style={{ ...tarjeta, padding: '12px 14px', minWidth: 0, cursor: k.onClick ? 'pointer' : 'default', ...(k.activo ? { borderColor: T.celeste, boxShadow: `0 0 0 1px ${T.celeste}` } : {}) }}>
-            <div style={{ fontSize: 12, color: T.txt3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.4px' }}>{k.l}</div>
-            <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 20, color: k.c, marginTop: 4, whiteSpace: 'nowrap' }}>{pesos(k.v)}</div>
+          <div key={k.l} title={`${pesos(k.v)}${k.t ? ` · ${k.t}` : ''}`} onClick={k.onClick} role={k.onClick ? 'button' : undefined}
+            style={{ ...tarjeta, padding: '12px 14px', minWidth: 0, display: 'flex', flexDirection: 'column', cursor: k.onClick ? 'pointer' : 'default', ...(k.activo ? { borderColor: T.celeste, boxShadow: `0 0 0 1px ${T.celeste}` } : {}) }}>
+            {/* El título toma el alto que sobre: si uno ocupa dos renglones, los importes de la fila siguen alineados. */}
+            <div style={{ flex: 1, fontSize: 12, color: T.txt3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.4px', lineHeight: 1.25 }}>{k.l}</div>
+            <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 20, color: k.c, marginTop: 4, whiteSpace: 'nowrap' }}>{pesosCorto(k.v)}</div>
             <div style={{ fontSize: 12, color: T.txt2, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.s}</div>
           </div>
         ))}
@@ -545,7 +592,10 @@ export default function MovimientosBancarios() {
       {/* Lista */}
       <div style={{ ...tarjeta, overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '10px 12px', borderBottom: `1px solid ${T.line}` }}>
-          {LADOS.map((x) => <button key={x.k} type="button" onClick={() => setLado(x.k)} style={chip(lado === x.k)}>{x.l}</button>)}
+          {LADOS.map((x) => <button key={x.k} type="button" onClick={() => { setLado(x.k); setKpiSel(null); }} style={chip(lado === x.k && !kpiSel)}>{x.l}</button>)}
+          {kpiSel && kpiSel !== 'neto' && (
+            <button type="button" onClick={() => elegirKpi(kpiSel)} style={{ ...chip(true) }}>{kpis.find((x) => x.k === kpiSel)?.l} ✕</button>
+          )}
           {hayFiltros && (
             <button type="button" onClick={() => setFiltros({})} style={{ ...chip(false), color: T.rojo }}>✕ Quitar filtros de columnas</button>
           )}
@@ -591,6 +641,7 @@ export default function MovimientosBancarios() {
                   </th>
                 );
               })}
+              {verPersonal && <th style={th}>Personal</th>}
             </tr></thead>
             <tbody>
               {visibles.slice(0, 1500).map((f) => (
@@ -624,6 +675,16 @@ export default function MovimientosBancarios() {
                   {ve('comision') && <td style={{ ...num, color: f.comision ? T.rojo : T.txt3, fontWeight: 500 }}>{f.comision ? pesos(-f.comision) : '—'}</td>}
                   {ve('retenciones') && <td style={{ ...num, color: f.retenciones ? T.ambar : T.txt3, fontWeight: 500 }}>{f.retenciones ? pesos(-f.retenciones) : '—'}</td>}
                   {ve('neto') && <td style={{ ...num, color: f.neto >= 0 ? T.verde : T.rojo, fontWeight: 700 }}>{pesos(f.neto)}</td>}
+                  {verPersonal && <td style={{ ...td, padding: '4px 8px' }}>
+                    {/* Las comisiones e impuestos sumados por día (mpc:…) no son un pago: no se marcan. */}
+                    {f.lado === 'salida' && !f.id.startsWith('mpc:') && (personales.has(f.id) ? (
+                      <button type="button" onClick={() => marcarPersonal(f)} title="Tocá para que deje de ser gasto personal"
+                        style={{ height: altoBoton, padding: '0 10px', borderRadius: 999, border: `1px solid ${T.violeta}`, background: T.violeta, color: '#fff', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>✓ Personal</button>
+                    ) : (
+                      <button type="button" onClick={() => marcarPersonal(f)} title="Marcar esta salida como gasto personal (no es del negocio)"
+                        style={{ height: altoBoton, padding: '0 10px', borderRadius: 999, border: '1px solid rgba(21,33,62,.18)', background: '#fff', color: T.txt2, fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>Gasto personal</button>
+                    ))}
+                  </td>}
                 </tr>
               ))}
             </tbody>

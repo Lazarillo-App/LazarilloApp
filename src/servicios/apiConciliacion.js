@@ -43,6 +43,9 @@ export const MercadoPagoAPI = {
   cargos: (bid, mes) => http(`${mpBase(bid)}/cargos?mes=${encodeURIComponent(mes || '')}`, { cache: false, timeoutMs: 60000 }),
   cargosConfig: (bid, body) => http(`${mpBase(bid)}/cargos/config`, { method: 'POST', body }),
   cargosActivar: (bid, body) => http(`${mpBase(bid)}/cargos/activar`, { method: 'POST', body }),
+  // Marcas a mano sobre los movimientos (19/11): «Gasto personal» en lo que salió.
+  marcas: (bid, suc) => http(`${mpBase(bid)}/marcas${q(suc)}`, { cache: false }),
+  marcar: (bid, suc, body) => http(`${mpBase(bid)}/marcas${q(suc)}`, { method: 'POST', body }),
   sincronizar: (bid, suc, desde, hasta) =>
     http(`${mpBase(bid)}/sincronizar${q(suc)}`, { method: 'POST', timeoutMs: 300000, body: { desde, hasta } }),
   // Reporte de liberaciones (nombres de pagadores y egresos): MP lo arma en unos minutos.
