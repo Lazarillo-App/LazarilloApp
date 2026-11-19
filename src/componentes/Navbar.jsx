@@ -287,32 +287,29 @@ export default function Navbar() {
                 if (path.startsWith('/tableros')) return <TablerosBotonera activeSx={activeSx} />;
                 // Administración › Movimientos bancarios (Diego 14/11/2026): los bancos conectados (hoy Mercado
                 // Pago) | CONECTÁ TU BANCO (las tarjetas de bancos: listos y próximamente).
-                // Administración › Clientes (14/11): sin botonera propia todavía.
-                if (path.startsWith('/clientes')) return null;
-                // Administración › Conciliación (Diego 19/11/2026): CLIENTES abre el modal del cliente sin cliente
-                // elegido (como PROVEEDORES en el Panel de gestión).
-                if (path.startsWith('/conciliacion')) {
-                  return (
-                    <Button color="inherit" sx={{ color: 'inherit', position: 'relative' }}
-                      onClick={() => navigate('/conciliacion?clientes=1')}>
-                      Clientes
-                    </Button>
-                  );
-                }
-                if (path.startsWith('/movimientos-bancarios')) {
-                  const enBancos = mpConectado !== true || new URLSearchParams(location.search).get('vista') === 'bancos';
+                // Conciliación, Clientes y Movimientos bancarios (Diego 19/11/2026: «el header debería ser el
+                // mismo en los 3»): CONCILIACIÓN · CLIENTES · MERCADO PAGO (los bancos conectados) | CONECTÁ TU BANCO.
+                if (path.startsWith('/conciliacion') || path.startsWith('/clientes') || path.startsWith('/movimientos-bancarios')) {
+                  const enMov = path.startsWith('/movimientos-bancarios');
+                  const enBancos = enMov && (mpConectado === false || new URLSearchParams(location.search).get('vista') === 'bancos');
                   return (
                     <>
-                      {mpConectado === true && (
-                        <>
-                          <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(!enBancos) }}
-                            onClick={() => navigate('/movimientos-bancarios')}>
-                            Mercado Pago
-                          </Button>
-                          <Box component="span" aria-hidden
-                            sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
-                        </>
+                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(path.startsWith('/conciliacion')) }}
+                        onClick={() => navigate('/conciliacion')}>
+                        Conciliación
+                      </Button>
+                      <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(path.startsWith('/clientes')) }}
+                        onClick={() => navigate('/clientes')}>
+                        Clientes
+                      </Button>
+                      {mpConectado !== false && (
+                        <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(enMov && !enBancos) }}
+                          onClick={() => navigate('/movimientos-bancarios')}>
+                          Mercado Pago
+                        </Button>
                       )}
+                      <Box component="span" aria-hidden
+                        sx={{ width: '1px', alignSelf: 'center', height: 22, background: 'currentColor', opacity: 0.35, mx: 0.5 }} />
                       <Button color="inherit" sx={{ color: 'inherit', position: 'relative', ...activeSx(enBancos) }}
                         onClick={() => navigate('/movimientos-bancarios?vista=bancos')}>
                         Conectá tu banco
@@ -577,11 +574,11 @@ export default function Navbar() {
                     puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
                     puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
                   ] : null}
-                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/conciliacion') ? [
-                    <MenuItem key="conc-cli" onClick={() => { setNavEl(null); navigate('/conciliacion?clientes=1'); }}>Clientes</MenuItem>,
-                  ] : null}
-                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/movimientos-bancarios') ? [
-                    mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
+                  {!enAlta && !isAppAdmin && ['/conciliacion', '/clientes', '/movimientos-bancarios'].some((x) => location.pathname.startsWith(x)) ? [
+                    <MenuItem key="fz-conc" onClick={() => { setNavEl(null); navigate('/conciliacion'); }}>Conciliación</MenuItem>,
+                    <MenuItem key="fz-cli" onClick={() => { setNavEl(null); navigate('/clientes'); }}>Clientes</MenuItem>,
+                    mpConectado !== false && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
+                    <Divider key="fz-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
                     <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
                   ] : null}
                   {!enAlta && enRecetas && puedeVer('recetas') && (
