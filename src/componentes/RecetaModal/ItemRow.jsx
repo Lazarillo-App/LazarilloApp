@@ -1572,4 +1572,3 @@ export default function ItemRow({
     </Box>
   );
 }
-
