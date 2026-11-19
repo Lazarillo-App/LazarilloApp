@@ -543,7 +543,7 @@ export default function EditarItemModal({
               )}
               {esManual && tipo === 'articulo' && (
                 <TextField label="Cód. del POS" size="small"
-                  value={d.codigoPos ?? ''} placeholder="Vincula sus ventas"
+                  value={d.codigoPos ?? ''} placeholder="Sin código"
                   onChange={(e) => set('codigoPos', e.target.value.replace(/[^0-9]/g, ''))}
                   title="Con el código del POS se vinculan sus ventas"
                   inputProps={{ inputMode: 'numeric' }}
