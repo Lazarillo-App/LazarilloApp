@@ -40,6 +40,8 @@ export default function DescuentosMP({ bid, avisar }) {
   const [rubroNuevo, setRubroNuevo] = useState('');
   const [abierto, setAbierto] = useState(null);   // tipo de cargo con el detalle abierto
   const [det, setDet] = useState(null);            // { grupo, filas, total } | { grupo, cargando }
+  // Concepto nuevo de un renglón (Diego 19/11: «solo me tiene que dar a elegir el rubro, o a lo sumo un padrino»).
+  const [nuevo, setNuevo] = useState(null);        // { grupo, nombre, rubro, padrino }
   const [ver, setVer] = useState(0);
   const [guardando, setGuardando] = useState('');
   const celu = useAncho() < 720;
@@ -80,8 +82,12 @@ export default function DescuentosMP({ bid, avisar }) {
   };
   // Crear conceptos con la leyenda del cargo (uno o todos los que faltan), con el rubro elegido arriba.
   const rubroPorDefecto = () => rubroNuevo || r?.grupos.find((g) => g.concepto?.rubro)?.concepto.rubro || '';
-  const crearConceptos = async (grupos, nombres = {}) => {
-    const codRubro = rubroPorDefecto();
+  const abrirNuevo = (g, nombre) => {
+    const padrino = g.concepto ? String(g.concepto.codigo) : '';
+    setNuevo({ grupo: g.grupo, nombre: nombre || g.nombre, padrino, rubro: g.concepto?.rubro || rubroPorDefecto() });
+  };
+  const crearConceptos = async (grupos, nombres = {}, rubroElegido = null) => {
+    const codRubro = rubroElegido || rubroPorDefecto();
     if (!codRubro) { avisar?.('Elegí arriba el rubro para los conceptos nuevos.'); return; }
     setGuardando('crear');
     try {
@@ -91,6 +97,7 @@ export default function DescuentosMP({ bid, avisar }) {
       avisar?.(n ? `${n} concepto${n === 1 ? '' : 's'} de caja nuevo${n === 1 ? '' : 's'}` : 'Concepto elegido');
       GestionAPI.conceptos().then((c) => setConceptos(c?.conceptos || [])).catch(() => {});
       setVer((x) => x + 1);
+      setNuevo(null);
     } catch (e) {
       avisar?.(`No se pudo crear: ${e.message || 'probá de nuevo'}`);
     } finally {
@@ -172,20 +179,52 @@ export default function DescuentosMP({ bid, avisar }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <div style={{ flex: 1, minWidth: 0, borderRadius: 6, ...(g.concepto || !g.total ? {} : { boxShadow: `0 0 0 2px ${T.ambar}` }) }}>
           <SelectorBuscable label="Concepto de caja" placeholder="Elegí el concepto de caja…" value={g.concepto ? etiquetaConcepto(g.concepto) : null} opciones={opcConc}
-            deshabilitado={guardando === g.grupo} textoCrear={`Crear «${g.nombre}»…`}
-            onCrear={(nombre) => crearConceptos([g.grupo], nombre ? { [g.grupo]: nombre } : {})}
+            deshabilitado={guardando === g.grupo} textoCrear={`Crear «${g.nombre}»…`} nombreCrear={g.nombre}
+            onCrear={(nombre) => abrirNuevo(g, nombre)}
             onChange={(nombre) => { const c = conceptos.find((x) => etiquetaConcepto(x) === nombre); if (c) configurar(g, { concepto: String(c.codigo) }); }} />
         </div>
         {g.concepto && quitar(g, 'concepto')}
       </div>
-      {!g.concepto && g.total > 0 ? (
-        <button type="button" disabled={guardando === 'crear'} onClick={() => crearConceptos([g.grupo])}
+      {nuevo?.grupo === g.grupo ? panelNuevo(g) : !g.concepto && g.total > 0 ? (
+        <button type="button" disabled={guardando === 'crear'} onClick={() => abrirNuevo(g)}
           style={{ marginTop: 4, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: T.celesteDeep, textAlign: 'left' }}>
           + Crear «{g.nombre}»
         </button>
       ) : g.conceptoHeredado ? pista('El que elegiste para todo este tipo: podés separarlo') : null}
     </div>
   );
+  // Concepto nuevo, ahí mismo: el nombre viene con la leyenda; se elige el rubro o un concepto «igual que»
+  // (padrino: se usa su rubro). Con un concepto ya puesto (el del tipo general), ese es el padrino.
+  const panelNuevo = (g) => {
+    const campo = { height: celu ? 44 : 36, borderRadius: 8, border: '1px solid rgba(21,33,62,.18)', padding: '0 8px', fontFamily: 'inherit', fontSize: 13, background: '#fff', width: '100%', boxSizing: 'border-box' };
+    const rubroDePadrino = (cod) => conceptos.find((c) => String(c.codigo) === String(cod))?.codRubro;
+    const listo = nuevo.nombre.trim() && nuevo.rubro;
+    return (
+      <div style={{ marginTop: 6, padding: 10, border: `1px solid ${T.celeste}`, borderRadius: 10, background: '#F7FBFD', display: 'grid', gap: 6 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.3px' }}>Concepto nuevo</div>
+        <input value={nuevo.nombre} maxLength={60} onChange={(e) => setNuevo((x) => ({ ...x, nombre: e.target.value }))} style={campo} aria-label="Nombre del concepto" />
+        <span style={{ fontSize: 11.5, color: T.txt3 }}>Igual que (copia su rubro)</span>
+        <select value={nuevo.padrino} aria-label="Igual que"
+          onChange={(e) => { const v = e.target.value; setNuevo((x) => ({ ...x, padrino: v, rubro: v ? String(rubroDePadrino(v) ?? x.rubro) : x.rubro })); }} style={campo}>
+          <option value="">Ninguno</option>
+          {conceptos.map((c) => <option key={c.codigo} value={String(c.codigo)}>{etiquetaConcepto(c)}</option>)}
+        </select>
+        <span style={{ fontSize: 11.5, color: T.txt3 }}>Rubro</span>
+        <select value={nuevo.rubro || ''} aria-label="Rubro" onChange={(e) => setNuevo((x) => ({ ...x, rubro: e.target.value }))} style={campo}>
+          <option value="">Elegí el rubro…</option>
+          {rubros.map((x) => <option key={x.codigo} value={String(x.codigo)}>{x.codigo} · {x.nombre}</option>)}
+        </select>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={() => setNuevo(null)}
+            style={{ height: celu ? 44 : 32, padding: '0 12px', borderRadius: 8, border: '1px solid rgba(21,33,62,.18)', background: '#fff', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>
+          <button type="button" disabled={!listo || guardando === 'crear'} onClick={() => crearConceptos([g.grupo], { [g.grupo]: nuevo.nombre.trim() }, nuevo.rubro)}
+            style={{ height: celu ? 44 : 32, padding: '0 14px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', fontWeight: 700, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer', opacity: !listo || guardando === 'crear' ? 0.5 : 1 }}>
+            {guardando === 'crear' ? 'Creando…' : 'Crear y usar'}
+          </button>
+        </div>
+      </div>
+    );
+  };
   const fmtHora = (f) => `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} ${f.hora}`;
   const MED = { credit_card: 'Crédito', debit_card: 'Débito', account_money: 'Dinero en cuenta', prepaid_card: 'Prepaga', bank_transfer: 'Transferencia', ticket: 'Efectivo' };
   const panelDetalle = (g) => {
