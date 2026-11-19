@@ -5,6 +5,9 @@ import { BuscadorBox, DynThead, Empty, Field, GrupoCCHead, InfoTip, NotaChip, No
 import { DayCompareBar, DayGroupedRows, DayNav, DiaCompartido, DynRow, PendItem, SugerenciasPanel } from './vistasDiaConciliacion';
 import React from "react";
 
+// Con pantalla ancha (≥ 1500 px) la vista por día muestra todas las columnas elegidas, no solo las compactas.
+const anchoAmplio = () => typeof window !== 'undefined' && window.innerWidth >= 1500;
+
 export function renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, cargarEstado, data, desde, estadoFileRef, guardarEstado, hasta, margenTipo, margenVal, mesActivo, months, resumenPeriodo, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady }) {
   return (
     allLoaded && !setupOpen ? (
@@ -131,7 +134,7 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
                       tabs={[["all","Todas"],["ok","Conciliadas"],["pend","Pendientes"]]} active={activeTab} onTab={goTab}
                       colMenu={colMenu === "ingresos"} onToggleColMenu={() => setColMenu(colMenu === "ingresos" ? null : "ingresos")}
                       allCols={COLS_INGRESOS} visibleCols={colsV} onToggleCol={(k) => setColsV((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} grouped />
-                    <DynThead allCols={COLS_INGRESOS} visible={colsVeff} hidden={HIDE_ING_COMPARTIDO} sort={sortV} onSort={(campo) => setSortV((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
+                    <DynThead allCols={COLS_INGRESOS} visible={colsVeff} hidden={anchoAmplio() ? null : HIDE_ING_COMPARTIDO} sort={sortV} onSort={(campo) => setSortV((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
                       side="ingresos" rows={result.V} colFilter={colFilterV} setColFilter={setColFilterV} openKey={colFilterOpen} setOpenKey={setColFilterOpen} />
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -139,7 +142,7 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
                       tabs={[["all","Todos"],["ok","Conciliados"],["pend","Pendientes"]]} active={activeTab} onTab={goTab}
                       colMenu={colMenu === "banco"} onToggleColMenu={() => setColMenu(colMenu === "banco" ? null : "banco")}
                       allCols={COLS_BANCO} visibleCols={colsB} onToggleCol={(k) => setColsB((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} />
-                    <DynThead allCols={COLS_BANCO} visible={colsBeff} hidden={HIDE_BAN_COMPARTIDO} sort={sortB} onSort={(campo) => setSortB((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
+                    <DynThead allCols={COLS_BANCO} visible={colsBeff} hidden={anchoAmplio() ? null : HIDE_BAN_COMPARTIDO} sort={sortB} onSort={(campo) => setSortB((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
                       side="banco" rows={result.B} colFilter={colFilterB} setColFilter={setColFilterB} openKey={colFilterOpen} setOpenKey={setColFilterOpen} />
                   </div>
                 </div>
@@ -169,11 +172,11 @@ export function renderCuerpo({ activeTab, aplicarSugerencia, aprobExp, aprobOpen
                   onSelDia={(ids, side, todos) => { const setSel = side === "ing" ? setSelIng : setSelBan; setSel((s) => { const n = new Set(s); if (todos) ids.forEach((id) => n.delete(id)); else ids.forEach((id) => n.add(id)); return n; }); }}
                   innerRef={rowsVref} faltantes={faltantes}
                   renderIng={(v, dim) => (
-                    <DynRow key={v.id} row={v} {...notaProps(v.id)} onCliente={setCuentaModal} tieneCuenta={tieneCuenta} {...formaProps(v)} allCols={COLS_INGRESOS} visible={colsVeff} hidden={HIDE_ING_COMPARTIDO} side="ing" dim={dim}
+                    <DynRow key={v.id} row={v} {...notaProps(v.id)} onCliente={setCuentaModal} tieneCuenta={tieneCuenta} {...formaProps(v)} allCols={COLS_INGRESOS} visible={colsVeff} hidden={anchoAmplio() ? null : HIDE_ING_COMPARTIDO} side="ing" dim={dim}
                       selectable checked={selIng.has(v.id)} suggested={sugResaltados.ing.has(v.id)} onClick={() => toggleIng(v.id)} />
                   )}
                   renderBan={(b, dim) => (
-                    <DynRow key={b.id} row={b} {...notaProps(b.id)} {...tipProps(b)} allCols={COLS_BANCO} visible={colsBeff} hidden={HIDE_BAN_COMPARTIDO} side="ban" dim={dim}
+                    <DynRow key={b.id} row={b} {...notaProps(b.id)} {...tipProps(b)} allCols={COLS_BANCO} visible={colsBeff} hidden={anchoAmplio() ? null : HIDE_BAN_COMPARTIDO} side="ban" dim={dim}
                       selectable checked={selBan.has(b.id)} suggested={sugResaltados.ban.has(b.id)} onClick={() => toggleBan(b.id)} />
                   )} />
               </Panel>
