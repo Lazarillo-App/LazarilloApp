@@ -15,7 +15,7 @@ import NotesIcon from '@mui/icons-material/Notes';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/Tune';
-import { insumoEquivalenciasList, insumoMermasList, insumoUpdate, insumoDeshacerCostoManual } from '@/servicios/apiInsumos';
+import { insumoEquivalenciasList, insumoMermasList, insumoUpdate, insumoDeshacerCostoManual, insumoRecargoAlcance, insumoRecargo } from '@/servicios/apiInsumos';
 import { sanitizeDecimal } from '@/utils/decimales';
 import {
   PRIMARY, UNIDADES, TIPO_COSTO_OPTS, fmt, fmtDate, stepCantidad,
@@ -118,6 +118,42 @@ export default function ItemRow({
         try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
       }
       setCostoError(e?.message || 'No se pudo deshacer');
+    } finally {
+      setCostoSaving(false);
+    }
+  };
+  // Recargo % (Diego 19/11/2026): sube X % sobre el costo actual, a este insumo o a todos los que se
+  // le compran a su proveedor (se pregunta antes de aplicar). Queda manual hasta la próxima compra.
+  const [costoModo, setCostoModo] = useState('precio');      // 'precio' | 'recargo'
+  const [costoBase, setCostoBase] = useState(0);             // costo actual al abrir
+  const [recargoPct, setRecargoPct] = useState('');
+  const [recargoAlcance, setRecargoAlcance] = useState(null); // null (sin elegir) | 'insumo' | 'proveedor'
+  const [alcanceInfo, setAlcanceInfo] = useState(null);       // { loading } | { proveedor, insumos }
+  const pctNum = (() => { const n = Number(String(recargoPct).replace(',', '.')); return Number.isFinite(n) ? n : NaN; })();
+  const pctValido = Number.isFinite(pctNum) && pctNum !== 0 && pctNum > -95 && pctNum <= 1000;
+  const irARecargo = () => {
+    setCostoModo('recargo'); setCostoError('');
+    if (alcanceInfo) return;
+    setAlcanceInfo({ loading: true });
+    insumoRecargoAlcance(item.supplyId, insumosBizId || businessId)
+      .then((r) => setAlcanceInfo({ proveedor: r?.proveedor || null, insumos: r?.insumos || [] }))
+      .catch(() => setAlcanceInfo({ proveedor: null, insumos: [], error: true }));
+  };
+  const aplicarRecargo = async () => {
+    if (!pctValido) { setCostoError('Poné un porcentaje distinto de 0'); return; }
+    if (!recargoAlcance) { setCostoError('Elegí a qué se lo aplico'); return; }
+    setCostoSaving(true); setCostoError('');
+    try {
+      const r = await insumoRecargo({ insumoId: item.supplyId, pct: pctNum, alcance: recargoAlcance }, insumosBizId || businessId);
+      const items = Array.isArray(r?.items) ? r.items : [];
+      const propio = items.find((x) => String(x.id) === String(item.supplyId));
+      if (propio) onChange(index, { precioRefDB: Number(propio.despues) });
+      try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
+      const otros = items.map((x) => x.id).filter((id) => String(id) !== String(item.supplyId));
+      if (otros.length) { try { window.dispatchEvent(new CustomEvent('insumos:costos-lote', { detail: { insumoIds: otros } })); } catch { } }
+      setCostoEl(null);
+    } catch (e) {
+      setCostoError(e?.message || 'No se pudo aplicar el recargo');
     } finally {
       setCostoSaving(false);
     }
@@ -675,6 +711,8 @@ export default function ItemRow({
                         onClick={costoEditable ? (e) => {
                           e.stopPropagation();
                           setCostoVal(tienePrecio ? String(precioMostrado).replace('.', ',') : '');
+                          setCostoBase(tienePrecio ? Number(precioMostrado) : 0);
+                          setCostoModo('precio'); setRecargoPct(''); setRecargoAlcance(null); setAlcanceInfo(null);
                           setCostoError('');
                           setCostoEl(e.currentTarget);
                         } : undefined}
@@ -707,28 +745,100 @@ export default function ItemRow({
                 <Popover open={!!costoEl} anchorEl={costoEl} onClose={() => !costoSaving && setCostoEl(null)}
                   onClick={(e) => e.stopPropagation()}
                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-                  slotProps={{ paper: { sx: { p: 1.5, width: 260, borderRadius: 2 } } }}>
+                  slotProps={{ paper: { sx: { p: 1.5, width: 300, borderRadius: 2 } } }}>
                   <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, mb: 1 }}>
                     {`Costo de ${item.supplyNombre || 'este insumo'}`}
                   </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <TextField autoFocus size="small" value={costoVal} disabled={costoSaving}
-                      onChange={(e) => { setCostoVal(e.target.value.replace(/[^0-9.,]/g, '')); setCostoError(''); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); guardarCostoInsumo(); } if (e.key === 'Escape') setCostoEl(null); }}
-                      InputProps={{
-                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                        endAdornment: <InputAdornment position="end">{`/${canonicalUnit(item.supplyMedida || 'u')}`}</InputAdornment>,
-                      }}
-                      inputProps={{ style: { textAlign: 'right' } }}
-                      sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }} />
-                    <Button variant="contained" size="small" onClick={guardarCostoInsumo} disabled={costoSaving}
-                      sx={{ height: 40, minWidth: 0, px: 1.5, bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY } }}>
-                      {costoSaving ? '…' : 'Guardar'}
-                    </Button>
+                  {/* Precio fijo o recargo % */}
+                  <Box sx={{ display: 'flex', p: '3px', mb: 1.25, bgcolor: 'action.hover', borderRadius: 1.5, gap: '3px' }}>
+                    {[['precio', '$ Precio'], ['recargo', '% Recargo']].map(([k, l]) => (
+                      <Box key={k} component="button" type="button" disabled={costoSaving}
+                        onClick={() => (k === 'recargo' ? irARecargo() : (setCostoModo('precio'), setCostoError('')))}
+                        sx={{ flex: 1, height: 30, border: 0, borderRadius: 1, cursor: 'pointer', font: 'inherit',
+                          fontSize: '0.75rem', fontWeight: 700,
+                          bgcolor: costoModo === k ? 'background.paper' : 'transparent',
+                          color: costoModo === k ? 'text.primary' : 'text.secondary',
+                          boxShadow: costoModo === k ? '0 1px 2px rgba(0,0,0,.15)' : 'none' }}>
+                        {l}
+                      </Box>
+                    ))}
                   </Box>
-                  <Typography sx={{ fontSize: '0.7rem', color: costoError ? 'error.main' : 'text.secondary', mt: 1, lineHeight: 1.35 }}>
-                    {costoError || 'Vale para todas las recetas. Queda manual hasta que cargues una compra nueva de este insumo.'}
-                  </Typography>
+                  {costoModo === 'precio' ? (<>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField autoFocus size="small" value={costoVal} disabled={costoSaving}
+                        onChange={(e) => { setCostoVal(e.target.value.replace(/[^0-9.,]/g, '')); setCostoError(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); guardarCostoInsumo(); } if (e.key === 'Escape') setCostoEl(null); }}
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                          endAdornment: <InputAdornment position="end">{`/${canonicalUnit(item.supplyMedida || 'u')}`}</InputAdornment>,
+                        }}
+                        inputProps={{ style: { textAlign: 'right' } }}
+                        sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }} />
+                      <Button variant="contained" size="small" onClick={guardarCostoInsumo} disabled={costoSaving}
+                        sx={{ height: 40, minWidth: 0, px: 1.5, bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY } }}>
+                        {costoSaving ? '…' : 'Guardar'}
+                      </Button>
+                    </Box>
+                    <Typography sx={{ fontSize: '0.7rem', color: costoError ? 'error.main' : 'text.secondary', mt: 1, lineHeight: 1.35 }}>
+                      {costoError || 'Vale para todas las recetas. Queda manual hasta que cargues una compra nueva de este insumo.'}
+                    </Typography>
+                  </>) : (<>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField autoFocus size="small" value={recargoPct} disabled={costoSaving} placeholder="10"
+                        onChange={(e) => { setRecargoPct(e.target.value.replace(/[^0-9.,-]/g, '')); setCostoError(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); aplicarRecargo(); } if (e.key === 'Escape') setCostoEl(null); }}
+                        InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                        inputProps={{ style: { textAlign: 'right' } }}
+                        sx={{ width: 96, '& .MuiOutlinedInput-root': { height: 40 } }} />
+                      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', lineHeight: 1.3, minWidth: 0 }}>
+                        {costoBase > 0 && pctValido
+                          ? <>{`$${fmt(costoBase)} → `}<b style={{ color: '#0f172a' }}>{`$${fmt(costoBase * (1 + pctNum / 100))}`}</b>{`/${canonicalUnit(item.supplyMedida || 'u')}`}</>
+                          : `Sobre el costo actual${costoBase > 0 ? ` ($${fmt(costoBase)})` : ''}`}
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, mt: 1.25, mb: 0.5 }}>¿A qué se lo aplico?</Typography>
+                    {(() => {
+                      const prov = alcanceInfo?.proveedor;
+                      const n = alcanceInfo?.insumos?.length || 0;
+                      const opciones = [
+                        { k: 'insumo', titulo: 'Solo a este insumo', sub: item.supplyNombre || '' },
+                        { k: 'proveedor',
+                          titulo: alcanceInfo?.loading ? 'Buscando el proveedor…' : prov ? `A todo lo que le compro a ${prov.nombre}` : 'A todo su proveedor',
+                          sub: alcanceInfo?.loading ? '' : prov ? `${n} insumo${n === 1 ? '' : 's'} (su última compra fue a ${prov.nombre})` : 'No tiene compras cargadas: no hay proveedor',
+                          off: alcanceInfo?.loading || !prov },
+                      ];
+                      return opciones.map((o) => {
+                        const sel = recargoAlcance === o.k;
+                        return (
+                          <Box key={o.k} component="button" type="button" disabled={o.off || costoSaving}
+                            onClick={() => { setRecargoAlcance(o.k); setCostoError(''); }}
+                            sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%', textAlign: 'left', mb: 0.75,
+                              p: '8px 10px', minHeight: 44, borderRadius: 1.5, font: 'inherit', cursor: o.off ? 'default' : 'pointer',
+                              border: '1.5px solid', borderColor: sel ? '#5BC2EA' : 'divider',
+                              bgcolor: sel ? '#5BC2EA14' : 'background.paper', opacity: o.off ? 0.55 : 1 }}>
+                            <Box sx={{ width: 16, height: 16, mt: '1px', flexShrink: 0, borderRadius: '50%', border: '2px solid',
+                              borderColor: sel ? '#5BC2EA' : '#94a3b8', display: 'grid', placeItems: 'center' }}>
+                              {sel && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#5BC2EA' }} />}
+                            </Box>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, lineHeight: 1.3 }}>{o.titulo}</Typography>
+                              {o.sub && <Typography sx={{ fontSize: '0.68rem', color: 'text.secondary', lineHeight: 1.3 }}>{o.sub}</Typography>}
+                            </Box>
+                          </Box>
+                        );
+                      });
+                    })()}
+                    <Button fullWidth variant="contained" onClick={aplicarRecargo}
+                      disabled={costoSaving || !pctValido || !recargoAlcance}
+                      sx={{ height: 40, mt: 0.25, bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY } }}>
+                      {costoSaving ? '…' : recargoAlcance === 'proveedor'
+                        ? `Aplicar a ${alcanceInfo?.insumos?.length || 0} insumos`
+                        : 'Aplicar recargo'}
+                    </Button>
+                    <Typography sx={{ fontSize: '0.7rem', color: costoError ? 'error.main' : 'text.secondary', mt: 1, lineHeight: 1.35 }}>
+                      {costoError || 'Queda manual hasta que cargues una compra nueva de cada insumo. Se puede deshacer desde acá o desde la campanita.'}
+                    </Typography>
+                  </>)}
                   {(() => {
                     const ins = insumoData || insumoDeFila;
                     if (!ins?.precio_manual_at) return null;
@@ -1462,3 +1572,4 @@ export default function ItemRow({
     </Box>
   );
 }
+
