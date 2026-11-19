@@ -133,19 +133,21 @@ const sxCaja = { mx: 2, my: 1, borderRadius: 2, border: '1px solid #bae6fd', bgc
 // ej. Vajilla: Reposición → 702 Vajilla M / Ítem nuevo → 514 Vajilla I). Con opciones, al cargar se pregunta.
 function EditorRubro({ it, maestros, etiquetasUsadas = [], conceptoPorEtiqueta = {}, onCerrar, onGuardado }) {
   const e = it.editar;
-  const previas = (e.alternativas ?? []).map((a) => ({ etiqueta: a.etiqueta, concepto: String(a.concepto) }));
-  const [modo, setModo] = useState(previas.length >= 2 ? 'varios' : 'uno');
+  // Opción marca sin concepto = «cada compra» (Diego 19/11/2026, ej. luminarias).
+  const eraCada = (e.alternativas ?? []).some((a) => !a.concepto);
+  const previas = (e.alternativas ?? []).filter((a) => a.concepto).map((a) => ({ etiqueta: a.etiqueta, concepto: String(a.concepto) }));
+  const [modo, setModo] = useState(eraCada ? 'cada' : previas.length >= 2 ? 'varios' : 'uno');
   const [valor, setValor] = useState('');
   const [alts, setAlts] = useState(previas.length >= 2 ? previas : [{ etiqueta: '', concepto: '' }, { etiqueta: '', concepto: '' }]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
   const cambiar = (k, campo, v) => setAlts((xs) => xs.map((x, i) => (i === k ? { ...x, [campo]: v } : x)));
   const completas = alts.filter((a) => a.etiqueta.trim() && a.concepto);
-  const listo = modo === 'uno' ? !!valor : completas.length >= 2 && completas.length === alts.length;
+  const listo = modo === 'cada' ? true : modo === 'uno' ? !!valor : completas.length >= 2 && completas.length === alts.length;
   async function guardar() {
     setGuardando(true); setError(null);
     try {
-      await GestionAPI.sinRubroRubroInsumo(e.codigo, modo === 'uno'
+      await GestionAPI.sinRubroRubroInsumo(e.codigo, modo === 'cada' ? { cadaCompra: true } : modo === 'uno'
         ? { concepto: Number(valor) }
         : { alternativas: alts.map((a) => ({ etiqueta: a.etiqueta.trim(), concepto: Number(a.concepto) })) });
       onGuardado();
@@ -162,8 +164,13 @@ function EditorRubro({ it, maestros, etiquetasUsadas = [], conceptoPorEtiqueta =
       <Box sx={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 2, overflow: 'hidden', mb: 1.25 }}>
         <Box component="button" type="button" sx={seg(modo === 'uno')} onClick={() => setModo('uno')}>Siempre el mismo</Box>
         <Box component="button" type="button" sx={seg(modo === 'varios')} onClick={() => setModo('varios')}>Depende de la compra</Box>
+        <Box component="button" type="button" sx={seg(modo === 'cada')} onClick={() => setModo('cada')}>Cada compra</Box>
       </Box>
-      {modo === 'uno' ? (
+      {modo === 'cada' ? (
+        <Typography fontSize={11.5} color="text.secondary" sx={{ mb: 1.25 }}>
+          No tiene un concepto fijo: en cada compra se elige el que corresponde (al cargarla, o acá en Sin rubro si quedó sin elegir). Ej. luminarias: reposición, obra o mantenimiento.
+        </Typography>
+      ) : modo === 'uno' ? (
         <>
           <Box sx={{ mb: 1 }}><BuscadorConcepto valor={valor} maestros={maestros} placeholder="Elegí un concepto" ancho={300} onCambio={setValor} /></Box>
           <Typography fontSize={11.5} color="text.secondary" sx={{ mb: 1.25 }}>Vale para todos sus insumos, también lo ya cargado.</Typography>
@@ -197,7 +204,7 @@ function EditorRubro({ it, maestros, etiquetasUsadas = [], conceptoPorEtiqueta =
         <Button size="small" variant="outlined" disabled={guardando} onClick={onCerrar}>Cancelar</Button>
         <Button size="small" variant="contained" disabled={guardando || !listo} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
       </Box>
-      {modo === 'varios' && it.cantidadComprobantes > 0 && (
+      {modo !== 'uno' && it.cantidadComprobantes > 0 && (
         <Typography fontSize={11.5} color="text.secondary" sx={{ mt: 1.25, pt: 1, borderTop: '1px dashed #bae6fd' }}>
           {it.cantidadComprobantes === 1 ? 'La compra ya cargada queda' : `Las ${it.cantidadComprobantes} compras ya cargadas quedan`} en «Se decide en cada compra»: no se adivinan.
         </Typography>
@@ -213,8 +220,8 @@ function CompraPorDecidir({ c, opciones, maestros, onVer, onResuelta }) {
   const [error, setError] = useState(null);
   // «Otro concepto» (Diego 11/11/2026): la compra no es ninguna de las opciones del rubro; se elige
   // (o se crea) un concepto cualquiera solo para esta compra.
-  const [otro, setOtro] = useState(null);
-  const OTRO = 'Otro concepto';
+  const [otro, setOtro] = useState(opciones.length ? null : '');
+  const OTRO = opciones.length ? 'Otro concepto' : 'Elegir concepto';
   async function elegir(o) {
     if (elegida) return;
     setElegida(o.etiqueta); setError(null);
@@ -246,7 +253,7 @@ function CompraPorDecidir({ c, opciones, maestros, onVer, onResuelta }) {
                 opacity: elegida && !on ? 0.5 : 1, '&:hover': elegida ? {} : { borderColor: '#0d6fa8' } }}>{o.etiqueta}</Box>
           );
         })}
-        {(() => {
+        {opciones.length > 0 && (() => {
           const on = elegida === OTRO || otro != null;
           return (
             <Box component="button" type="button" onClick={() => { if (!elegida) setOtro((v) => (v == null ? '' : null)); }}
@@ -329,10 +336,12 @@ const ACCION = { 'rubro-insumo': 'Elegir concepto de caja', compra: 'Elegir conc
 function Item({ it, maestros, onVer, editando, onEditar, editor, onResuelta }) {
   const [abierto, setAbierto] = useState(false);
   const porCompra = !!it.opciones;
-  const ej = porCompra ? `¿${it.opciones.map((o) => o.etiqueta).join(' o ')}?`
+  const opciones = (it.opciones ?? []).filter((o) => o.concepto);
+  const ej = porCompra ? (opciones.length ? `¿${opciones.map((o) => o.etiqueta).join(' o ')}?` : 'Se elige el concepto en cada compra')
     : it.detalle.slice(0, 3).join(', ') + (it.detalle.length > 3 ? '…' : '');
   const n = it.cantidadComprobantes;
-  const accion = it.editar ? ACCION[it.editar.tipo] : null;
+  // En «se decide en cada compra» lo que falta es elegir en cada compra (abajo); el botón cambia la regla.
+  const accion = it.editar ? (porCompra ? 'Cambiar la regla del rubro' : ACCION[it.editar.tipo]) : null;
   return (
     <Box sx={{ borderTop: '1px solid #f2f2f0' }}>
       <Box sx={{ px: 2, pt: 1.1, pb: editando ? 0.5 : 1.1 }}>
@@ -357,7 +366,7 @@ function Item({ it, maestros, onVer, editando, onEditar, editor, onResuelta }) {
         )}
       </Box>
       {editando && editor}
-      {porCompra && it.comprobantes.map((c) => <CompraPorDecidir key={c.rowId} c={c} opciones={it.opciones} maestros={maestros} onVer={onVer} onResuelta={onResuelta} />)}
+      {porCompra && it.comprobantes.map((c) => <CompraPorDecidir key={c.rowId} c={c} opciones={opciones} maestros={maestros} onVer={onVer} onResuelta={onResuelta} />)}
       {porCompra && it.cantidadComprobantes > it.comprobantes.length && <Box sx={{ px: 2, pb: 1, fontSize: 11.5, color: 'text.secondary' }}>+ {it.cantidadComprobantes - it.comprobantes.length} más (resolvé estas y aparecen)</Box>}
       {!porCompra && abierto && (
         <Box sx={{ px: 2, pb: 1 }}>
