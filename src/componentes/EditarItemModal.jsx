@@ -10,6 +10,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import SelectorBuscable from './SelectorBuscable';
 import { showConfirm } from '@/servicios/appConfirm';
+import { httpBiz } from '@/servicios/apiBusinesses';
 
 // Mismos tokens que RecetaModal/helpers.js — los colores del negocio, no el
 // tema genérico de MUI. Se duplican acá (son 2 líneas) para no acoplar este
@@ -113,6 +114,9 @@ export default function EditarItemModal({
   // todo el negocio.
   todos = null,
   itemId,                     // código del que se abre
+  // Nuevo precio que tiene el artículo en la tabla (Diego 19/11/2026: los precios por lista se
+  // quedaban con el viejo). (id) → número | null.
+  precioManualDe = null,
   agrupaciones = [],
   // string[] | {nombre, subrubros: string[]}[] — si cada rubro trae sus
   // propios subrubros anidados (como ya devuelve GET /businesses/:id/rubros),
@@ -173,9 +177,22 @@ export default function EditarItemModal({
       // precio cargado y uno que vale cero no son lo mismo.
       precioBase: item.precioBase ?? item.precio ?? '',
       foto: item.foto ?? null,
+      codigoPos: '',
     });
     setSucio(false);
   }, [item]);
+
+  // Código del POS de un artículo creado en Lazarillo (Diego 19/11/2026): con él se vinculan sus
+  // ventas. Se trae aparte porque la tabla no lo tiene.
+  const esArticuloManual = tipo === 'articulo' && item && (item.origen === 'manual' || Number(item.id) < 0);
+  useEffect(() => {
+    if (!esArticuloManual) return undefined;
+    let vivo = true;
+    httpBiz(`/articles/${item.id}`, { method: 'GET' })
+      .then((r) => { const c = r?.articulo?.codigo_pos; if (vivo && c) setD((p) => ({ ...p, codigoPos: String(c) })); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [esArticuloManual, item?.id]);
 
   const set = (k, v) => { setD((p) => ({ ...p, [k]: v })); setSucio(true); };
   // Cambiar de rubro vacía el subrubro: uno de otro rubro no tiene sentido acá.
@@ -193,14 +210,16 @@ export default function EditarItemModal({
   }, [rubros, d.rubro]);
 
   // El precio de una lista derivada no se guarda: sale de la base.
+  const nuevoPrecio = item && precioManualDe ? Number(precioManualDe(item.id)) : NaN;
+  const conNuevoPrecio = nuevoPrecio > 0;
   const precioDe = useCallback((l) => {
-    const base = parseNumeroAR(d.precioBase);
+    const base = conNuevoPrecio ? nuevoPrecio : parseNumeroAR(d.precioBase);
     if (!Number.isFinite(base) || base === 0) return null;
     if (l.tipo === 'base') return base;
     if (l.tipo === 'descuento') return base * (1 - (l.valor ?? 0) / 100);
     if (l.tipo === 'recargo') return base * (1 + (l.valor ?? 0) / 100);
     return base;
-  }, [d.precioBase]);
+  }, [d.precioBase, conNuevoPrecio, nuevoPrecio]);
 
   // Confirma antes de perder cambios sin guardar — navegar (‹ ›, buscador) o
   // cerrar descartaba el borrador en silencio; con la navegación rápida entre
@@ -481,7 +500,9 @@ export default function EditarItemModal({
                   px: 1.1, py: .8, fontSize: '0.55rem', color: 'text.disabled',
                   lineHeight: 1.45, bgcolor: 'action.hover',
                 }}>
-                  Solo para comparar — el precio se edita desde la tabla, no acá.
+                  {conNuevoPrecio
+                    ? 'Con el nuevo precio de la tabla. Solo para comparar: el precio se edita desde la tabla, no acá.'
+                    : 'Solo para comparar — el precio se edita desde la tabla, no acá.'}
                 </Typography>
               </Box>
             )}
@@ -499,10 +520,18 @@ export default function EditarItemModal({
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
               <TextField label="Cod. Lazarillo" size="small" disabled
-                value={codigoLazarilloMostrar} sx={{ width: { sm: 120 } }} />
+                value={codigoLazarilloMostrar} sx={{ width: { sm: 140 }, flexShrink: 0 }} />
               {!esManual && (
-                <TextField label="Cod. Maxi" size="small" disabled
-                  value={item.codigo_maxi ?? item.codigoMaxi ?? ''} sx={{ width: { sm: 120 } }} />
+                <TextField label="Cód. del POS" size="small" disabled
+                  value={item.codigo_maxi ?? item.codigoMaxi ?? ''} sx={{ width: { sm: 140 }, flexShrink: 0 }} />
+              )}
+              {esManual && tipo === 'articulo' && (
+                <TextField label="Cód. del POS" size="small"
+                  value={d.codigoPos ?? ''} placeholder="Vincula sus ventas"
+                  onChange={(e) => set('codigoPos', e.target.value.replace(/[^0-9]/g, ''))}
+                  title="Con el código del POS se vinculan sus ventas"
+                  inputProps={{ inputMode: 'numeric' }}
+                  sx={{ width: { sm: 140 }, flexShrink: 0 }} />
               )}
               <TextField label="Nombre original" size="small" disabled fullWidth
                 value={item.nombreOriginal ?? item.nombre ?? ''} />
