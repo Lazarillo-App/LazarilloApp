@@ -15,7 +15,7 @@ import NotesIcon from '@mui/icons-material/Notes';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/Tune';
-import { insumoEquivalenciasList, insumoMermasList, insumoUpdate } from '@/servicios/apiInsumos';
+import { insumoEquivalenciasList, insumoMermasList, insumoUpdate, insumoDeshacerCostoManual } from '@/servicios/apiInsumos';
 import { sanitizeDecimal } from '@/utils/decimales';
 import {
   PRIMARY, UNIDADES, TIPO_COSTO_OPTS, fmt, fmtDate, stepCantidad,
@@ -95,10 +95,29 @@ export default function ItemRow({
     setCostoSaving(true); setCostoError('');
     try {
       await insumoUpdate(item.supplyId, { precioRef: val }, insumosBizId || businessId);
+      // Se ve al instante en la fila; el refresco del insumo lo confirma.
+      onChange(index, { precioRefDB: val });
       try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
       setCostoEl(null);
     } catch (e) {
       setCostoError(e?.message || 'No se pudo guardar');
+    } finally {
+      setCostoSaving(false);
+    }
+  };
+  // Deshacer el costo manual: vuelve al de las compras (o al precio de antes si no tiene).
+  const deshacerCostoInsumo = async () => {
+    setCostoSaving(true); setCostoError('');
+    try {
+      const r = await insumoDeshacerCostoManual(item.supplyId, insumosBizId || businessId);
+      if (Number(r?.precio_ref) > 0) onChange(index, { precioRefDB: Number(r.precio_ref) });
+      try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
+      setCostoEl(null);
+    } catch (e) {
+      if (e?.status === 409) {
+        try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
+      }
+      setCostoError(e?.message || 'No se pudo deshacer');
     } finally {
       setCostoSaving(false);
     }
@@ -710,6 +729,27 @@ export default function ItemRow({
                   <Typography sx={{ fontSize: '0.7rem', color: costoError ? 'error.main' : 'text.secondary', mt: 1, lineHeight: 1.35 }}>
                     {costoError || 'Vale para todas las recetas. Queda manual hasta que cargues una compra nueva de este insumo.'}
                   </Typography>
+                  {(() => {
+                    const ins = insumoData || insumoDeFila;
+                    if (!ins?.precio_manual_at) return null;
+                    const conCompras = !!ins.fecha_ultima_compra;
+                    const previo = Number(ins.precio_previo_manual);
+                    const texto = conCompras
+                      ? '↺ Volver al costo de compras'
+                      : (previo > 0 ? `↺ Volver a $${fmt(previo)}` : '↺ Deshacer costo manual');
+                    return (
+                      <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider',
+                        display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                        <Typography sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
+                          {`✎ Manual desde el ${fmtDate(ins.precio_manual_at)}`}
+                        </Typography>
+                        <Button size="small" onClick={deshacerCostoInsumo} disabled={costoSaving}
+                          sx={{ minWidth: 0, px: 1, ml: -1, height: 32, fontSize: '0.75rem', fontWeight: 700, textTransform: 'none', color: '#b45309', whiteSpace: 'nowrap' }}>
+                          {texto}
+                        </Button>
+                      </Box>
+                    );
+                  })()}
                 </Popover>
 
                 {/* Chip elaborado */}
