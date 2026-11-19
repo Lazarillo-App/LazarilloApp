@@ -323,31 +323,38 @@ function EditorSimple({ it, maestros, rubrosInsumo, onCerrar, onGuardado }) {
   );
 }
 
+// Qué falta en cada ítem, dicho como acción (Diego 19/11/2026: «no queda claro qué acción está pendiente»).
+const ACCION = { 'rubro-insumo': 'Elegir concepto de caja', compra: 'Elegir concepto de caja', insumo: 'Elegir rubro', concepto: 'Elegir rubro de caja' };
+
 function Item({ it, maestros, onVer, editando, onEditar, editor, onResuelta }) {
   const [abierto, setAbierto] = useState(false);
   const porCompra = !!it.opciones;
   const ej = porCompra ? `¿${it.opciones.map((o) => o.etiqueta).join(' o ')}?`
     : it.detalle.slice(0, 3).join(', ') + (it.detalle.length > 3 ? '…' : '');
+  const n = it.cantidadComprobantes;
+  const accion = it.editar ? ACCION[it.editar.tipo] : null;
   return (
     <Box sx={{ borderTop: '1px solid #f2f2f0' }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 54px 104px', gap: 1, px: 2, py: 0.9, alignItems: 'center' }}>
-        <Box sx={{ minWidth: 0 }}>
-          {it.editar ? (
-            <Box component="button" type="button" onClick={onEditar} title="Corregir"
-              sx={{ all: 'unset', cursor: 'pointer', fontSize: 13.5, overflowWrap: 'anywhere',
-                color: editando ? '#0d6fa8' : 'inherit', '&:hover': { color: '#0d6fa8' }, '&:hover .lz-lapiz': { opacity: 1 } }}>
-              {it.nombre}
-              <EditOutlinedIcon className="lz-lapiz" sx={{ fontSize: 14, ml: 0.5, verticalAlign: '-2px', color: '#0d6fa8', opacity: editando ? 1 : 0.45 }} />
-            </Box>
-          ) : <Box sx={{ fontSize: 13.5 }}>{it.nombre}</Box>}
-          {ej && <Box sx={{ fontSize: 11.5, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.detalle.join(', ')}>{ej}</Box>}
+      <Box sx={{ px: 2, pt: 1.1, pb: editando ? 0.5 : 1.1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
+          <Box sx={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, overflowWrap: 'anywhere' }}>{it.nombre}</Box>
+          <Box sx={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', fontSize: 13.5, fontWeight: 600 }}>{fmtARS(it.importe)}</Box>
         </Box>
-        {porCompra ? <Box sx={{ textAlign: 'right', fontSize: 13, color: 'text.secondary' }} title="Compras por decidir">{it.cantidadComprobantes}</Box> : (
-          <Box component="button" type="button" onClick={() => setAbierto((v) => !v)} title="Ver los comprobantes"
-            sx={{ all: 'unset', cursor: 'pointer', textAlign: 'right', color: '#0d6fa8', textDecoration: 'underline', fontSize: 13 }}>
-            {it.cantidadComprobantes}
-          </Box>)}
-        <Box sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13 }}>{fmtARS(it.importe)}</Box>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, mt: 0.25, fontSize: 11.5, color: 'text.secondary' }}>
+          <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.detalle.join(', ')}>{ej}</Box>
+          {porCompra ? <Box component="span" sx={{ flexShrink: 0 }}>{n} {n === 1 ? 'compra por decidir' : 'compras por decidir'}</Box> : (
+            <Box component="button" type="button" onClick={() => setAbierto((v) => !v)}
+              sx={{ all: 'unset', flexShrink: 0, cursor: 'pointer', color: '#0d6fa8', '&:hover': { textDecoration: 'underline' } }}>
+              {abierto ? 'ocultar' : 'ver'} {n} {n === 1 ? 'compra' : 'compras'} {abierto ? '▴' : '▾'}
+            </Box>)}
+        </Box>
+        {accion && !editando && (
+          <Box component="button" type="button" onClick={onEditar}
+            sx={{ all: 'unset', boxSizing: 'border-box', mt: 1, height: 36, px: 1.5, display: 'inline-flex', alignItems: 'center', gap: 0.75, borderRadius: 2,
+              border: '1px solid #5BC2EA', bgcolor: '#fff', color: '#0d6fa8', fontSize: 13, fontWeight: 600, cursor: 'pointer', '&:hover': { bgcolor: '#f0f9ff' } }}>
+            <EditOutlinedIcon sx={{ fontSize: 16 }} /> {accion}
+          </Box>
+        )}
       </Box>
       {editando && editor}
       {porCompra && it.comprobantes.map((c) => <CompraPorDecidir key={c.rowId} c={c} opciones={it.opciones} maestros={maestros} onVer={onVer} onResuelta={onResuelta} />)}
@@ -391,6 +398,9 @@ export function SinRubroPanel() {
     refetch();
   };
   const guardado = async () => { setEditando(null); await recalcular(); };
+  // Si queda una sola cosa por corregir, se abre directo su editor (menos clics).
+  const unico = data?.grupos?.length === 1 && data.grupos[0].items.length === 1 && data.grupos[0].items[0].editar ? `${data.grupos[0].tipo}|${data.grupos[0].items[0].nombre}` : null;
+  useEffect(() => { if (open && unico) setEditando(unico); }, [open, unico]);
   useEffect(() => {
     const abrir = () => setOpen(true);
     window.addEventListener(EVENTO, abrir);
@@ -425,7 +435,7 @@ export function SinRubroPanel() {
         ))}
         {data && data.grupos.length > 0 && (
           <Box sx={{ px: 2, py: 1.5, mt: 'auto', borderTop: '1px solid #e8e8e6', fontSize: 11.5, color: 'text.secondary' }}>
-            Tocá el nombre para corregirlo acá (vale solo en Lazarillo). Lo que corrijas en MaxiRest se pasa solo en la próxima actualización.
+            Lo que corregís acá vale solo en Lazarillo. Si lo corregís en el POS, se pasa solo en la próxima actualización.
           </Box>
         )}
       </Drawer>
