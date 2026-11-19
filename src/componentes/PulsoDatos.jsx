@@ -37,6 +37,10 @@
 // trabajar en que no suceda". Sin avisos de Recetas ni de Balance en el pulso: solo la subida de cada
 // PC. Lazarillo lee lo subido apenas la PC termina (back: services/kit/despuesDeSubir.js) y una
 // lectura que falla queda en el log del servidor, no en la pantalla del cliente.
+//
+// Diego, 19/11: «el MP se puede sumar al pulso». Cada cuenta de Mercado Pago de la sucursal (data.mp) va
+// como un renglón más: cuándo se trajo (se trae sola todos los días) o si todavía trae su historial. Cuenta
+// para el color del punto igual que una PC: verde hasta 26 h, ámbar hasta 3 días, rojo después.
 
 import React from 'react';
 import { Box, Tooltip } from '@mui/material';
@@ -161,6 +165,9 @@ export default function PulsoDatos({ puedeActualizar = false }) {
 
   const hoy = hoyArgentina();
   const suc = data?.kit?.sucursales?.length ? porSucursal(data, activeBranchFilter) : null;
+  const mps = (data?.mp || []).filter((x) => (activeBranchFilter?.mode === 'main' ? Number(x.sucursal) === 0
+    : activeBranchFilter?.mode === 'branch' ? Number(x.sucursal) === Number(activeBranchFilter.branchId) : true))
+    .map((x) => ({ ...x, estado: x.historial_completo ? porSubida(x.sync) : 'al_dia' }));
   const fuentes = [
     ['Balance', data?.balance],
     ['Recetas', data?.recetas],
@@ -169,9 +176,9 @@ export default function PulsoDatos({ puedeActualizar = false }) {
     .map(([nombre, f]) => (data?.kit?.subida
       ? { nombre, f, ...estadoPorKit(nombre, f, data.kit) }
       : { nombre, f, estado: frescura(f.ventas ?? f.compras, hoy), falta: false }));
-  if (!suc && !fuentes.length) return null;
+  if (!suc && !fuentes.length && !mps.length) return null;
 
-  const peor = suc ? suc.peor : fuentes.reduce((a, b) => (PESO[b.estado] > PESO[a.estado] ? b : a)).estado;
+  const peor = peorDe([...(suc ? [suc.peor] : fuentes.map((x) => x.estado)), ...mps.map((x) => x.estado)]);
   const imp = data?.balance?.importado ? new Date(data.balance.importado) : null;
   const lectura = imp
     ? `${String(imp.getDate()).padStart(2, '0')}/${String(imp.getMonth() + 1).padStart(2, '0')} ${imp.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
@@ -197,6 +204,17 @@ export default function PulsoDatos({ puedeActualizar = false }) {
                   <Punto estado={x.estado} size={9} />
                   {suc.conNombre && <Box component="span" sx={{ fontWeight: 600 }}>{x.nombre}</Box>}
                   <span>{x.subida ? `${horasDesde(x.subida) > 26 ? 'no sube desde' : 'subió'} ${cuando(x.subida, hoy)}` : 'todavía no subió'}</span>
+                </React.Fragment>
+              ))}
+            </Box>
+          )}
+          {mps.length > 0 && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, max-content)', justifyContent: 'start', alignItems: 'center', columnGap: 1.25, rowGap: 0.25, whiteSpace: 'nowrap' }}>
+              {mps.map((x, i) => (
+                <React.Fragment key={`${x.sucursal}-${i}`}>
+                  <Punto estado={x.estado} size={9} />
+                  <Box component="span" sx={{ fontWeight: 600 }}>Mercado Pago{mps.length > 1 ? ` · ${x.nombre}` : ''}</Box>
+                  <span>{!x.historial_completo ? 'trayendo el historial' : x.sync ? `${horasDesde(x.sync) > 26 ? 'no se trae desde' : 'se trajo'} ${cuando(x.sync, hoy)}` : 'todavía no se trajo'}</span>
                 </React.Fragment>
               ))}
             </Box>
