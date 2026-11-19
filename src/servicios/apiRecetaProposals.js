@@ -87,3 +87,11 @@ export async function reasignarPropuesta(businessId, id, asignadoA) {
   if (!resp?.ok) throw new Error(resp?.message || resp?.error || 'No se pudo reasignar');
   return resp.proposal;
 }
+
+// GET /api/businesses/:businessId/receta-proposals/revisores — todo el staff del PDV
+// (a quién se le puede asignar una revisión), lo haya invitado quien sea.
+export async function listarRevisores(businessId) {
+  const resp = await httpBiz(`/receta-proposals/revisores`, {}, businessId);
+  if (!resp?.ok) throw new Error(resp?.error || 'No se pudo cargar el equipo');
+  return resp.revisores || [];
+}
