@@ -386,6 +386,12 @@ export function parseBanco(rows) {
 // las 00:00 y las 02:59 son de ventas del día anterior, y entre las 03:00 y las 09:00 no entra nada.
 // Los cobros con hora anterior al corte pasan al día anterior (fecha = día de caja; fechaMp = la de MP).
 export const CORTE_DEFAULT = 6; // 06:00
+// Movimientos internos de Mercado Pago que no son cobros (19/11, Comercio 18/11: $394.395 a las 06:00):
+// «partition_transfer» (pasar plata entre reservas/fondos de la propia cuenta) e «investment»
+// (rendimientos/inversión). Vienen como cobro y como pago a la vez; no van a la conciliación.
+// Ojo: «account_fund» NO es interno: son transferencias de otros bancos al CVU (ventas reales).
+export const OPERACIONES_INTERNAS = new Set(["partition_transfer", "investment"]);
+export const esInterno = (b) => !!(b && OPERACIONES_INTERNAS.has(b.operacion));
 export function aplicarCorte(banco, corteHora) {
   if (!Array.isArray(banco) || !corteHora) return banco;
   return banco.map((b) => {
