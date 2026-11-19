@@ -1048,6 +1048,7 @@ export default function ModuloConciliacion({
     listoRef.current = periodoKey;
      
   }, [result, restaurarTick]);
+
   // 3) cada cambio se guarda solo (con una pausa corta para no mandar uno por clic).
   // 19/11 (Diego: «las conciliaciones manuales no las guarda»): antes cada pestaña pisaba el período
   // entero con lo suyo, así que si dos personas (o dos pestañas) trabajaban a la vez, la última que
