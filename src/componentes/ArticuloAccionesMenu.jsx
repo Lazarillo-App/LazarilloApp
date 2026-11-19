@@ -827,7 +827,8 @@ function ArticuloAccionesMenu({
     { k: 'rubro', t: <>Lo pasás a otro <b>rubro o subrubro</b>, que es la categoría de la carta.</> },
     ...(!esPromo && !ocultas.has('crearPromo') ? [{ k: 'promo', t: <>Armás una <b>promo</b> a partir de este artículo (un 2x1, un combo) con su propio costo.</> }] : []),
     { k: 'discontinuar', t: <>Si ya no lo vendés, lo <b>sacás de la vista</b> sin borrarlo. Lo podés reactivar cuando quieras.</> },
-    ...(!ocultas.has('quitarDeAgrupacion') ? [{ k: 'quitar', t: <>Lo sacás de la <b>agrupación</b> que estás mirando; el artículo sigue existiendo.</> }] : []),
+    // En «Sin agrupación» la opción está apagada («Ya está en Sin agrupación»): no se explica.
+    ...(!ocultas.has('quitarDeAgrupacion') && !isTodo ? [{ k: 'quitar', t: <>Lo sacás de la <b>agrupación</b> que estás mirando; el artículo sigue existiendo.</> }] : []),
     { k: 'mover', t: <>Lo pasás a otra de tus <b>agrupaciones</b> (los grupos que armás para ordenar y analizar).</> },
     { k: 'crearAgr', t: <>Creás una <b>agrupación nueva</b> que arranca con este artículo.</> },
     ...(hayListasNoFavoritas ? [{ k: 'excluir', t: <>Hacés que este artículo <b>no aparezca</b> en las listas de precios que elijas.</> }] : []),
