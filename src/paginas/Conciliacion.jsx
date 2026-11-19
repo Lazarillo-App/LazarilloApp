@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { ConciliacionAPI, MercadoPagoAPI, sucursalNum } from '@/servicios/apiConciliacion';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import ModuloConciliacion from '@/componentes/conciliacion/ModuloConciliacion';
 import { showConfirm } from '@/servicios/appConfirm';
 import { fuentesDesdeMaxi } from '@/componentes/conciliacion/desdeMaxi';
@@ -58,6 +58,14 @@ export default function Conciliacion() {
   const [mp, setMp] = useState(null);            // estado de la conexión con Mercado Pago
   const [maxi, setMaxi] = useState(null);        // ¿hay datos de MaxiRest (kit) para esta sucursal?
   const [verBanco, setVerBanco] = useState(false); // lista simple de lo cargado (sirve sin ventas)
+  // CLIENTES del header (Diego 19/11/2026): /conciliacion?clientes=1 abre el modal del cliente vacío, con el buscador.
+  const [params, setParams] = useSearchParams();
+  const [abrirClientes, setAbrirClientes] = useState(0);
+  useEffect(() => {
+    if (params.get('clientes') !== '1') return;
+    setAbrirClientes((n) => n + 1);
+    setParams((p) => { const n = new URLSearchParams(p); n.delete('clientes'); return n; }, { replace: true });
+  }, [params, setParams]);
   const [verEgresos, setVerEgresos] = useState(false); // lo que salió de Mercado Pago (14/11)
 
   const avisar = useCallback((t, ms = 2500) => {
@@ -216,7 +224,7 @@ export default function Conciliacion() {
       {verBanco && inicial.fuentes.banco?.length > 0 && <ListaBanco filas={inicial.fuentes.banco} />}
       {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
       <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
-        pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} />
+        pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} abrirClientes={abrirClientes} />
     </div>
   );
 }
