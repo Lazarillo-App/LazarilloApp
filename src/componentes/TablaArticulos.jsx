@@ -3154,6 +3154,7 @@ export default function TablaArticulos({
           promoIds={promoIds}
           priceLists={priceLists}
           priceListsByList={priceListsByList}
+          precioManualDe={(artId) => getPrecioManualArticulo({ id: artId })}
           onSaved={(savedReceta) => {
             if (savedReceta?.article_id && savedReceta?.costo_total != null) onSaved?.(savedReceta);
           }}
