@@ -1,4 +1,3 @@
-
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, react-refresh/only-export-components -- módulo de Diego: se integró sin tocar su lógica (14/11/2026) */
 import React from "react";
 import { CORTE_DEFAULT, aplicarCorte, esInterno, C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, autoConciliarCC, cliKey, conciliar, esMP, fmt, fmtFecha, memDesdeProp, memOlvidar, memRegistrar, pagadorCoincide, parseFacturasCC, refBan, refCob, useBrandFonts, useSheetJS } from './motorConciliacion';
@@ -55,6 +54,7 @@ export default function ModuloConciliacion({
   embedded = false, // cuando va dentro del Shell (que ya trae su header), se oculta el header propio
   pagadorMap = {}, // memoria de pagadores (formato nuevo por cuenta, o el viejo pagador → cliente)
   onPagadorMap, // callback(memoria) para que el Shell la persista
+  abrirClientes = 0, // CLIENTES del header (19/11): cada vez que sube, abre el modal del cliente vacío
   // Lazarillo (14/11): guardado en el servidor. { fuentes, onFuente(tipo, filas, archivo),
   // cargarEstado(periodo) → Promise<estado|null>, guardarEstado(periodo, estado) }. Sin esto,
   // el módulo funciona igual que el prototipo (todo en memoria).
@@ -85,7 +85,8 @@ export default function ModuloConciliacion({
   const editSnap = React.useRef(null); // snapshot para cancelar una edición (Editar → ×)
   const [tips, setTips] = React.useState({}); // propina marcada por movimiento de banco: { id: monto }
   const [facturasCC, setFacturasCC] = React.useState(() => (persist && persist.fuentes && persist.fuentes.facturas_cc) || []); // facturas a cuenta corriente (del 22), para el modal de cuenta
-  const [cuentaModal, setCuentaModal] = React.useState(null); // cliente cuyo modal de cuenta corriente está abierto
+  const [cuentaModal, setCuentaModal] = React.useState(abrirClientes ? "" : null); // cliente del modal de cuenta corriente ("" = abierto sin cliente)
+  React.useEffect(() => { if (abrirClientes) setCuentaModal(""); }, [abrirClientes]);
   // override de forma de pago por comprobante (errores de carga del cajero): "mp" | "efec".
   // Mueve la fila entre la conciliación (MercadoPago) y el grupo de efectivo.
   const [formaOverride, setFormaOverride] = React.useState({});
@@ -152,11 +153,27 @@ export default function ModuloConciliacion({
     const cobrado = contado + cob72;
     const mp = memPag[k];
     const pagadores = mp ? Object.keys(mp.pags).map((pk) => ({ key: pk, ...mp.pags[pk] })).sort((a, b) => b.veces - a.veces || (b.ultimo || "").localeCompare(a.ultimo || "")) : [];
-    return { cliente: cliente, fact, cob, facturado, contado, cob72, cobrado, saldo: facturado - cobrado, pagadores };
+    // Ficha (19/11): lo que el POS trae del cliente en sus ventas (22) y cobranzas (72).
+    const pagosCli = (data.pagos || []).filter((v) => cliKey(v.cliente) === k);
+    const ventasCli = (data.ventas || []).filter((v) => cliKey(v.cliente) === k);
+    const primero = (arr, f) => { for (let i = arr.length - 1; i >= 0; i--) { const x = f(arr[i]); if (x) return x; } return ""; };
+    const codCli = primero(pagosCli, (v) => v.codCli && v.codCli !== "0" ? v.codCli : "");
+    const tel = primero(pagosCli, (v) => v.tel);
+    const cuit = primero(ventasCli, (v) => v.cuit && !/^0*$/.test(v.cuit) ? v.cuit : "");
+    const sucursales = [...new Set(ventasCli.map((v) => v.sucursal).filter(Boolean))];
+    return { cliente: cliente, fact, cob, facturado, contado, cob72, cobrado, saldo: facturado - cobrado, pagadores, codCli, tel, cuit, sucursales };
   };
   // el nombre es clickeable si el cliente tiene ventas en el 22 (todas tienen cliente)
   const clientesConCuenta = React.useMemo(() => { const s = new Set(); facturasCC.forEach((f) => { if (f.cli) s.add(cliKey(f.cli)); }); return s; }, [facturasCC]);
   const tieneCuenta = (cli) => cli && clientesConCuenta.has(cliKey(cli));
+  // Lista para el buscador del modal (CLIENTES del header, 19/11): cada cliente con su saldo de cta cte.
+  const listaClientes = React.useMemo(() => {
+    const m = new Map();
+    const de = (nom) => { const k = cliKey(nom); if (!k) return null; if (!m.has(k)) m.set(k, { key: k, nombre: nom, saldo: 0 }); return m.get(k); };
+    facturasCC.forEach((f) => { const x = de(f.cli); if (x && f.c === "cc") x.saldo += f.total; });
+    (data.pagos || []).forEach((v) => { const x = de(v.cliente); if (x) x.saldo -= v.imp; });
+    return [...m.values()].sort((a, b) => (b.saldo > 0) - (a.saldo > 0) || a.nombre.localeCompare(b.nombre));
+  }, [facturasCC, data.pagos]);
   // Cambiar la forma de pago de un comprobante (error de carga). Recoloca la fila sin
   // recalcular todo: a "efec" sale de la conciliación (y libera su banco si estaba
   // conciliada); a "mp" entra como ingreso pendiente a conciliar.
@@ -197,7 +214,7 @@ export default function ModuloConciliacion({
   const grabarPagadores = (pares) => { if (pares && pares.length) setMemPag((m) => { const nm = memRegistrar(m, pares); if (onPagadorMap) onPagadorMap(nm); return nm; }); };
   const aprenderPagadores = (ingObjs, banObjs) => {
     const clis = (ingObjs || []).filter((v) => v.origen === "cc" && v.cliente);
-    const pags = (banObjs || []).filter((b) => b && b.cliente);
+    const pags = (banObjs || []).filter((b) => b && b.cliente && !/^cardholder[_ ]?name$/i.test(String(b.cliente).trim()));
     const pares = [];
     clis.forEach((v) => pags.forEach((b) => pares.push({ cli: v.cliente, pag: b.cliente, fecha: b.fecha, ref: refCob(v) + "@" + refBan(b) })));
     grabarPagadores(pares);
@@ -279,7 +296,6 @@ export default function ModuloConciliacion({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [colMenu, colFilterOpen]);
-
 
   const xlsxReady = useSheetJS();
 
@@ -1209,7 +1225,7 @@ export default function ModuloConciliacion({
       </div>
 
       {/* MODAL DE CUENTA CORRIENTE (al tocar el nombre del cliente) */}
-      {cuentaModal && <CuentaModal cuenta={cuentaDe(cuentaModal)} diaFoco={dayCenter} onClose={() => setCuentaModal(null)} onQuitarPagador={(pk) => quitarPagador(cuentaModal, pk)} />}
+      {cuentaModal != null && <CuentaModal cuenta={cuentaModal ? cuentaDe(cuentaModal) : null} clientes={listaClientes} onElegir={setCuentaModal} diaFoco={dayCenter} onClose={() => setCuentaModal(null)} onQuitarPagador={(pk) => quitarPagador(cuentaModal, pk)} />}
       {/* MODAL DE IMPORTACIÓN */}
       {modal && (
         <ImportModal fuente={modal} business={business} onClose={() => setModal(null)}
