@@ -742,6 +742,9 @@ export default function Navbar() {
                     sx={{ color: 'inherit', position: 'relative', ...(location.pathname.includes('/configuracion') ? { bgcolor: 'color-mix(in srgb, var(--on-primary) 16%, transparent)' } : {}) }}
                     aria-label="Configuración"
                     onClick={() => {
+                      // Configuración del sector (Diego 19/11/2026): si la página montó <ConfigSector>, la ⚙
+                      // abre su panel (solo ese sector + «Ver todas las configuraciones»).
+                      if (document.querySelector('[data-config-sector]')) { window.dispatchEvent(new Event('lz:config-sector')); return; }
                       const tab = getConfigTab();
                       navigate(tab ? `/configuracion?tab=${tab}` : '/configuracion');
                     }}
