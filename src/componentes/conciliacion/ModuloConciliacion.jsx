@@ -1,3 +1,4 @@
+
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, react-refresh/only-export-components -- módulo de Diego: se integró sin tocar su lógica (14/11/2026) */
 import React from "react";
 import { CORTE_DEFAULT, aplicarCorte, esInterno, C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, autoConciliarCC, cliKey, conciliar, esMP, fmt, fmtFecha, memDesdeProp, memOlvidar, memRegistrar, pagadorCoincide, parseFacturasCC, refBan, refCob, useBrandFonts, useSheetJS } from './motorConciliacion';
@@ -296,6 +297,7 @@ export default function ModuloConciliacion({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [colMenu, colFilterOpen]);
+
 
   const xlsxReady = useSheetJS();
 
