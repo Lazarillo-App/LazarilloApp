@@ -147,6 +147,26 @@ export const insumoDeshacerCostoManual = async (id, bizId) => {
   return data;
 };
 
+// Recargo % del costo (Diego 19/11/2026): a un insumo o a todos los que se le compran a su proveedor.
+const jsonOErr = async (res, msg) => {
+  const data = await res.json().catch(() => null);
+  if (!res.ok) { const err = new Error((data && data.error) || msg); err.status = res.status; throw err; }
+  return data;
+};
+// GET /api/insumos/:id/recargo-alcance → { proveedor: {id, nombre} | null, insumos: [{id, nombre, precio}] }
+export const insumoRecargoAlcance = async (id, bizId) =>
+  jsonOErr(await fetch(`${BASE}/insumos/${id}/recargo-alcance`, { headers: authHeaders(bizId) }), 'No se pudo buscar el proveedor');
+// POST /api/insumos/recargo { insumoId, pct, alcance: 'insumo' | 'proveedor' } → { items: [{id, antes, despues}] }
+export const insumoRecargo = async ({ insumoId, pct, alcance }, bizId) =>
+  jsonOErr(await fetch(`${BASE}/insumos/recargo`, {
+    method: 'POST', headers: authHeaders(bizId), body: JSON.stringify({ insumoId, pct, alcance }),
+  }), 'No se pudo aplicar el recargo');
+// POST /api/insumos/costo-manual/deshacer-lote { ids } — el «Deshacer ›» de un recargo a varios insumos.
+export const insumosDeshacerCostoManualLote = async (ids, bizId) =>
+  jsonOErr(await fetch(`${BASE}/insumos/costo-manual/deshacer-lote`, {
+    method: 'POST', headers: authHeaders(bizId), body: JSON.stringify({ ids }),
+  }), 'No se pudo deshacer');
+
 /**
  * DELETE /api/insumos/:id
  * Discontinúa un insumo (soft delete)
@@ -1024,4 +1044,3 @@ export default {
   toggleInsumoElaborado,
   toggleInsumosElaboradosBulk,
 };
-
