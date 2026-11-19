@@ -1,7 +1,7 @@
 
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, react-refresh/only-export-components -- módulo de Diego: se integró sin tocar su lógica (14/11/2026) */
 import React from "react";
-import { CORTE_DEFAULT, aplicarCorte, C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, autoConciliarCC, cliKey, conciliar, esMP, fmt, fmtFecha, memDesdeProp, memOlvidar, memRegistrar, pagadorCoincide, parseFacturasCC, refBan, refCob, useBrandFonts, useSheetJS } from './motorConciliacion';
+import { CORTE_DEFAULT, aplicarCorte, esInterno, C, COLS_BANCO, COLS_INGRESOS, FUENTES, HIDE_BAN_COMPARTIDO, HIDE_ING_COMPARTIDO, MESES_ES, autoConciliarCC, cliKey, conciliar, esMP, fmt, fmtFecha, memDesdeProp, memOlvidar, memRegistrar, pagadorCoincide, parseFacturasCC, refBan, refCob, useBrandFonts, useSheetJS } from './motorConciliacion';
 import { BuscadorBox, ColErrorModal, CuentaModal, DynThead, Empty, Field, GrupoCCHead, ImportModal, InfoTip, InstructivoModal, NotaChip, NotaEditor, Panel, PanelColapsable, PanelHead, Rows, SubFilter, UploaderCard, fldLbl, ghostBtn, inputStyle } from './piezasConciliacion';
 import { DayCompareBar, DayGroupedRows, DayNav, DiaCompartido, DynRow, PendItem, SugerenciasPanel } from './vistasDiaConciliacion';
 import { calcBarTotals, calcCcPorDia, calcDifSigno, calcResComp, calcSugerencias, calcView } from './calculosConciliacion';
@@ -11,6 +11,45 @@ export { parseVentas, parsePagos, parseFacturasCC } from './motorConciliacion';
 
 
 // ─── Componente principal ───────────────────────────────────────────
+// JSON con las claves ordenadas: el servidor (jsonb) devuelve las claves en otro orden.
+function estable(o) {
+  if (o === undefined) return "null";
+  if (o === null || typeof o !== "object") return JSON.stringify(o);
+  if (Array.isArray(o)) return "[" + o.map(estable).join(",") + "]";
+  return "{" + Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => JSON.stringify(k) + ":" + estable(o[k])).join(",") + "}";
+}
+// Mezcla de tres vías (base = lo último que este navegador guardó/leyó, local = lo mío, remoto = lo
+// que hay ahora en el servidor): por cada registro, si yo lo cambié desde la base gana lo mío; si no,
+// lo del servidor (lo cambió otra persona o pestaña).
+function mezclarEstados(base, local, remoto) {
+  const b = base || {}, r = remoto || {};
+  const mapa = (kb, kl, kr) => {
+    const out = {}; const keys = new Set([...Object.keys(kb || {}), ...Object.keys(kl || {}), ...Object.keys(kr || {})]);
+    keys.forEach((k) => {
+      const yoCambie = estable((kl || {})[k]) !== estable((kb || {})[k]);
+      const v = yoCambie ? (kl || {})[k] : (kr || {})[k];
+      if (v !== undefined) out[k] = v;
+    });
+    return out;
+  };
+  const porId = (arr) => Object.fromEntries((arr || []).map((x) => [x.id, x]));
+  const lista = (kb, kl, kr) => {
+    const sb = new Set((kb || []).map(estable)), sl = new Set((kl || []).map(estable)), sr = new Set((kr || []).map(estable));
+    const todos = new Map(); [...(kb || []), ...(kl || []), ...(kr || [])].forEach((x) => todos.set(estable(x), x));
+    return [...todos.entries()].filter(([k]) => (sl.has(k) !== sb.has(k) ? sl.has(k) : sr.has(k))).map(([, x]) => x);
+  };
+  return {
+    ...local,
+    V: mapa(b.V, local.V, r.V), B: mapa(b.B, local.B, r.B),
+    Vextra: Object.values(mapa(porId(b.Vextra), porId(local.Vextra), porId(r.Vextra))),
+    Bextra: Object.values(mapa(porId(b.Bextra), porId(local.Bextra), porId(r.Bextra))),
+    tips: mapa(b.tips, local.tips, r.tips), notas: mapa(b.notas, local.notas, r.notas), formaOverride: mapa(b.formaOverride, local.formaOverride, r.formaOverride),
+    aprobadas: lista(b.aprobadas, local.aprobadas, r.aprobadas), faltantes: lista(b.faltantes, local.faltantes, r.faltantes),
+    efecReclas: lista(b.efecReclas, local.efecReclas, r.efecReclas), sugDescartadas: lista(b.sugDescartadas, local.sugDescartadas, r.sugDescartadas),
+    ccConc: lista(b.ccConc, local.ccConc, r.ccConc), ccNoAuto: lista(b.ccNoAuto, local.ccNoAuto, r.ccNoAuto),
+  };
+}
+
 export default function ModuloConciliacion({
   business = { group: "Contenedores", name: "Container Bar", initials: "CB", color: "#5BC2EA" },
   embedded = false, // cuando va dentro del Shell (que ya trae su header), se oculta el header propio
@@ -30,7 +69,7 @@ export default function ModuloConciliacion({
   const corteKey = "lz-conc-corte:" + ((business && (business.id || business.name)) || "");
   const [corte, setCorteSt] = React.useState(() => { try { const v = localStorage.getItem(corteKey); return v == null ? CORTE_DEFAULT : (parseInt(v, 10) || 0); } catch (e) { return CORTE_DEFAULT; } });
   const setCorte = (v) => { setCorteSt(v); try { localStorage.setItem(corteKey, String(v)); } catch (e) { /* sin storage */ } };
-  const data = React.useMemo(() => (dataBase.banco ? { ...dataBase, banco: aplicarCorte(dataBase.banco, corte) } : dataBase), [dataBase, corte]);
+  const data = React.useMemo(() => (dataBase.banco ? { ...dataBase, banco: aplicarCorte(dataBase.banco.filter((b) => !esInterno(b)), corte) } : dataBase), [dataBase, corte]);
   const [result, setResult] = React.useState(null);
   const [tol, setTol] = React.useState(0); // arranca en "mismo día"
   // Período y día elegidos (19/11, Diego: «la fecha a conciliar la debe recordar entre sesiones»).
@@ -259,7 +298,6 @@ export default function ModuloConciliacion({
     if (months.length && !mesActivo && !desde) selectMonth(months[months.length - 1]); // si había un período recordado, se respeta
      
   }, [months.length]);
-
   function lastDayOfMonth(ym) { const [y, m] = ym.split("-").map(Number); return new Date(y, m, 0).getDate(); }
   function selectMonth(ym) {
     setMesActivo(ym);
@@ -578,7 +616,6 @@ export default function ModuloConciliacion({
       if (siguiente) setDayCenter(siguiente);
     }
   }, [sugerencias]);
-
   // aplicar una sugerencia = conciliar ese par como manual
   function aplicarSugerencia(s) {
     if (!result) return;
@@ -922,7 +959,7 @@ export default function ModuloConciliacion({
 
   // 1) al cambiar de período, se busca si había trabajo guardado
   React.useEffect(() => {
-    listoRef.current = null; restaurarRef.current = null;
+    listoRef.current = null; restaurarRef.current = null; baseRef.current = null;
     if (!persist || !persist.cargarEstado || !(data.ventas && data.banco) || !desde || !hasta) return;
     const periodo = periodoKey; let vivo = true;
     persist.cargarEstado(periodo).then((est) => {
@@ -942,13 +979,9 @@ export default function ModuloConciliacion({
   }, [periodoKey, !!(data.ventas && data.banco)]);
 
   // 2) cuando ya hay resultado con la misma configuración, se aplica lo guardado
-  React.useEffect(() => {
-    const r = restaurarRef.current;
-    if (!r || !result || r.periodo !== periodoKey || !mismaConfig(r.estado)) return;
-    restaurarRef.current = null;
-    const e = r.estado;
-    // Solo las filas que vienen de los archivos; las que arma el módulo (cobranzas "cc-" de la
-    // conciliación automática, etc.) se reemplazan por las guardadas, para no duplicarlas.
+  // Aplica un estado guardado encima de un resultado (solo las filas que vienen de los archivos;
+  // las que arma el módulo —cobranzas "cc-", efectivo "ef-"— se reemplazan por las guardadas).
+  const aplicarEstado = (res, e) => {
     const aplicar = (rows, base, est, extra) => [
       ...rows.filter((x) => base.has(x.id)).map((x) => (est && est[x.id]
         ? { ...x, matchedWith: Array.isArray(x.matchedWith) ? [] : null, matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined, ...est[x.id] }
@@ -957,30 +990,59 @@ export default function ModuloConciliacion({
     ];
     const baseV = new Set((data.ventas || []).map((x) => x.id));
     const baseB = new Set((data.banco || []).map((x) => x.id));
-    setResult({ V: aplicar(result.V, baseV, e.V, e.Vextra), B: aplicar(result.B, baseB, e.B, e.Bextra) });
+    return { V: aplicar(res.V, baseV, e.V, e.Vextra), B: aplicar(res.B, baseB, e.B, e.Bextra) };
+  };
+  const aplicarResto = (e) => {
     setTips(e.tips || {}); setAprobadas(e.aprobadas || []); setFaltantes(e.faltantes || []);
     setNotas(e.notas || {});
     setEfecReclas(new Set(e.efecReclas || [])); setSugDescartadas(new Set(e.sugDescartadas || []));
     setFormaOverride(e.formaOverride || {}); setCcConc(new Set(e.ccConc || [])); setCcNoAuto(new Set(e.ccNoAuto || []));
+  };
+  // Último estado que este navegador sabe que está en el servidor (para mezclar con lo que guardó otro).
+  const baseRef = React.useRef(null);
+  React.useEffect(() => {
+    const r = restaurarRef.current;
+    if (!r || !result || r.periodo !== periodoKey || !mismaConfig(r.estado)) return;
+    restaurarRef.current = null;
+    setResult(aplicarEstado(result, r.estado));
+    aplicarResto(r.estado);
+    baseRef.current = { periodo: periodoKey, obj: r.estado, json: estable(r.estado) };
     listoRef.current = periodoKey;
      
   }, [result, restaurarTick]);
 
-  // 3) cada cambio se guarda solo (con una pausa corta para no mandar uno por clic)
+  // 3) cada cambio se guarda solo (con una pausa corta para no mandar uno por clic).
+  // 19/11 (Diego: «las conciliaciones manuales no las guarda»): antes cada pestaña pisaba el período
+  // entero con lo suyo, así que si dos personas (o dos pestañas) trabajaban a la vez, la última que
+  // guardaba borraba lo de la otra. Ahora, antes de guardar se lee lo que hay en el servidor y, si
+  // otro lo cambió, se mezcla registro por registro: lo que cambié yo queda mío, el resto toma lo del
+  // otro (y se ve en pantalla). Si no cambió nada, no se manda.
   React.useEffect(() => {
     if (!persist || !persist.guardarEstado || !result || listoRef.current !== periodoKey) return;
     const periodo = periodoKey;
-    const t = setTimeout(() => {
+    const t = setTimeout(async () => {
       if (listoRef.current !== periodo) return;
       const baseV = new Set((data.ventas || []).map((x) => x.id));
       const baseB = new Set((data.banco || []).map((x) => x.id));
       const cv = compactar(result.V, baseV), cb = compactar(result.B, baseB);
-      persist.guardarEstado(periodo, {
+      const local = {
         v: 2, tol, autoMargenVal, autoMargenTipo, margenVal, margenTipo,
         V: cv.est, Vextra: cv.extra, B: cb.est, Bextra: cb.extra,
         tips, aprobadas, faltantes, notas, efecReclas: [...efecReclas], sugDescartadas: [...sugDescartadas],
         formaOverride, ccConc: [...ccConc], ccNoAuto: [...ccNoAuto],
-      });
+      };
+      const base = baseRef.current && baseRef.current.periodo === periodo ? baseRef.current : null;
+      const jsonLocal = estable(local);
+      if (base && jsonLocal === base.json) return; // nada nuevo
+      let final = local;
+      try {
+        const remoto = persist.cargarEstado ? await persist.cargarEstado(periodo) : null;
+        if (listoRef.current !== periodo) return;
+        if (remoto && base && estable(remoto) !== base.json) final = mezclarEstados(base.obj, local, remoto);
+      } catch (e) { /* si no se pudo leer, se guarda lo local */ }
+      persist.guardarEstado(periodo, final);
+      baseRef.current = { periodo, obj: final, json: estable(final) };
+      if (final !== local) { setResult((res) => (res ? aplicarEstado(res, final) : res)); aplicarResto(final); }
     }, 1500);
     return () => clearTimeout(t);
      
