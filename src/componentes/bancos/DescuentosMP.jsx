@@ -36,6 +36,10 @@ export default function DescuentosMP({ bid, avisar }) {
   const [error, setError] = useState('');
   const [provs, setProvs] = useState([]);
   const [conceptos, setConceptos] = useState([]);
+  const [rubros, setRubros] = useState([]);
+  const [rubroNuevo, setRubroNuevo] = useState('');
+  const [abierto, setAbierto] = useState(null);   // tipo de cargo con el detalle abierto
+  const [det, setDet] = useState(null);            // { grupo, filas, total } | { grupo, cargando }
   const [ver, setVer] = useState(0);
   const [guardando, setGuardando] = useState('');
   const celu = useAncho() < 720;
@@ -48,7 +52,7 @@ export default function DescuentosMP({ bid, avisar }) {
   }, [bid, mes, ver]);
   useEffect(() => {
     GestionAPI.maestrosFactura().then((m) => setProvs(m?.proveedores || [])).catch(() => setProvs([]));
-    GestionAPI.conceptos().then((c) => setConceptos(c?.conceptos || [])).catch(() => setConceptos([]));
+    GestionAPI.conceptos().then((c) => { setConceptos(c?.conceptos || []); setRubros(c?.rubros || []); }).catch(() => setConceptos([]));
   }, [bid]);
 
   const opcProv = useMemo(() => provs.map((p) => ({ id: p.codigo, nombre: p.nombre })), [provs]);
@@ -60,19 +64,60 @@ export default function DescuentosMP({ bid, avisar }) {
     const antes = r;
     setR((x) => ({ ...x, grupos: x.grupos.map((y) => (y.grupo !== g.grupo ? y : {
       ...y,
-      ...(cambio.proveedor !== undefined ? { proveedor: provs.find((p) => p.codigo === cambio.proveedor) ? { codigo: cambio.proveedor, nombre: provs.find((p) => p.codigo === cambio.proveedor).nombre } : null, proveedorSugerido: false } : {}),
-      ...(cambio.concepto !== undefined ? { concepto: conceptos.find((c) => String(c.codigo) === cambio.concepto) ? { codigo: cambio.concepto, nombre: conceptos.find((c) => String(c.codigo) === cambio.concepto).nombre } : null } : {}),
+      ...(cambio.proveedor !== undefined ? { proveedor: provs.find((p) => p.codigo === cambio.proveedor) ? { codigo: cambio.proveedor, nombre: provs.find((p) => p.codigo === cambio.proveedor).nombre } : null, proveedorSugerido: false, proveedorHeredado: false } : {}),
+      ...(cambio.concepto !== undefined ? { concepto: conceptos.find((c) => String(c.codigo) === cambio.concepto) ? { codigo: cambio.concepto, nombre: conceptos.find((c) => String(c.codigo) === cambio.concepto).nombre } : null, conceptoHeredado: false } : {}),
     })) }));
     try {
       const res = await MercadoPagoAPI.cargosConfig(bid, { grupo: g.grupo, ...cambio });
       if (res?.error) throw new Error(res.error);
-      avisar?.(`${g.nombre}: guardado`);
+      avisar?.(`${g.nombre}: ${cambio.proveedor === '' || cambio.concepto === '' ? 'quitado' : 'guardado'}`);
     } catch {
       setR(antes);
       avisar?.('No se pudo guardar. Probá de nuevo.');
     } finally {
       setGuardando('');
     }
+  };
+  // Crear conceptos con la leyenda del cargo (uno o todos los que faltan), con el rubro elegido arriba.
+  const rubroPorDefecto = () => rubroNuevo || r?.grupos.find((g) => g.concepto?.rubro)?.concepto.rubro || '';
+  const crearConceptos = async (grupos, nombres = {}) => {
+    const codRubro = rubroPorDefecto();
+    if (!codRubro) { avisar?.('Elegí arriba el rubro para los conceptos nuevos.'); return; }
+    setGuardando('crear');
+    try {
+      const res = await MercadoPagoAPI.cargosCrearConceptos(bid, { grupos, codRubro, nombres });
+      if (res?.error) throw new Error(res.detalle || res.error);
+      const n = res.creados;
+      avisar?.(n ? `${n} concepto${n === 1 ? '' : 's'} de caja nuevo${n === 1 ? '' : 's'}` : 'Concepto elegido');
+      GestionAPI.conceptos().then((c) => setConceptos(c?.conceptos || [])).catch(() => {});
+      setVer((x) => x + 1);
+    } catch (e) {
+      avisar?.(`No se pudo crear: ${e.message || 'probá de nuevo'}`);
+    } finally {
+      setGuardando('');
+    }
+  };
+  const crearProveedor = async (g, nombre) => {
+    const n = String(nombre || '').trim();
+    if (!n) { avisar?.('Escribí el nombre del proveedor en el buscador y tocá Crear.'); return; }
+    setGuardando(g.grupo);
+    try {
+      const res = await MercadoPagoAPI.cargosCrearProveedor(bid, { grupo: g.grupo, nombre: n });
+      if (res?.error) throw new Error(res.detalle || res.error);
+      avisar?.(`Proveedor nuevo: ${res.proveedor.nombre}`);
+      GestionAPI.maestrosFactura().then((m) => setProvs(m?.proveedores || [])).catch(() => {});
+      setVer((x) => x + 1);
+    } catch (e) {
+      avisar?.(`No se pudo crear: ${e.message || 'probá de nuevo'}`);
+    } finally {
+      setGuardando('');
+    }
+  };
+  // Detalle de un tipo: cobro por cobro (Diego 19/11: «¿cómo puedo ver qué son esos $1.976?»).
+  const verDetalle = (g) => {
+    if (abierto === g.grupo) { setAbierto(null); return; }
+    setAbierto(g.grupo); setDet({ grupo: g.grupo, cargando: true });
+    MercadoPagoAPI.cargosDetalle(bid, mes, g.grupo).then((x) => setDet(x?.error ? { grupo: g.grupo, error: true } : x)).catch(() => setDet({ grupo: g.grupo, error: true }));
   };
   const encender = async (activo) => {
     setGuardando('activo');
@@ -93,7 +138,8 @@ export default function DescuentosMP({ bid, avisar }) {
   if (error) return <div style={{ ...tarjeta, padding: 20, color: '#991b1b' }}>{error}</div>;
   if (!r) return <div style={{ padding: 24, color: T.txt3 }}>Cargando lo que descuenta Mercado Pago…</div>;
 
-  const visibles = r.grupos.filter((g) => g.total || g.cargado || g.grupo === 'comision_mp' || g.grupo === 'imp_debcred');
+  const visibles = r.grupos.filter((g) => g.total || g.cargado);
+  const sinConcepto = visibles.filter((g) => g.total > 0 && !g.concepto);
   const total = visibles.reduce((a, g) => a + g.total, 0);
   const faltan = visibles.filter((g) => g.total > 0 && (!g.proveedor || !g.concepto)).length;
 
@@ -104,19 +150,85 @@ export default function DescuentosMP({ bid, avisar }) {
     if (g.cargado) return { t: `${g.tickets} día${g.tickets === 1 ? '' : 's'} cargado${g.tickets === 1 ? '' : 's'}${g.facturado ? ` · ${pesos(g.facturado)} en factura` : ''}`, c: T.verde };
     return { t: 'Se carga con la próxima actualización', c: T.txt2 };
   };
+  const quitar = (g, campo) => (
+    <button type="button" title={`Quitar ${campo === 'proveedor' ? 'el proveedor' : 'el concepto'}`} aria-label="Quitar" disabled={guardando === g.grupo}
+      onClick={() => configurar(g, { [campo]: '' })}
+      style={{ flex: '0 0 auto', width: 32, height: 40, border: 'none', background: 'none', color: T.txt3, cursor: 'pointer', fontSize: 16 }}>✕</button>
+  );
+  const pista = (t) => <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 3 }}>{t}</div>;
   const selProv = (g) => (
     <div style={{ minWidth: 0 }}>
-      <SelectorBuscable label="Proveedor" placeholder="Elegí el proveedor…" value={g.proveedor?.nombre || null} opciones={opcProv}
-        deshabilitado={guardando === g.grupo}
-        onChange={(nombre) => { const p = provs.find((x) => x.nombre === nombre); if (p) configurar(g, { proveedor: p.codigo }); }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <SelectorBuscable label="Proveedor" placeholder="Elegí el proveedor…" value={g.proveedor?.nombre || null} opciones={opcProv}
+          deshabilitado={guardando === g.grupo} textoCrear="Crear proveedor nuevo…" onCrear={(nombre) => crearProveedor(g, nombre)}
+          onChange={(nombre) => { const p = provs.find((x) => x.nombre === nombre); if (p) configurar(g, { proveedor: p.codigo }); }} />
+        {g.proveedor && quitar(g, 'proveedor')}
+      </div>
+      {g.proveedorSugerido ? pista('Sugerido: el que cobra') : g.proveedorHeredado ? pista('El que elegiste para todo este tipo') : null}
     </div>
   );
   const selConc = (g) => (
-    <div style={{ minWidth: 0, borderRadius: 6, ...(g.concepto || !g.total ? {} : { boxShadow: `0 0 0 2px ${T.ambar}` }) }}>
-      <SelectorBuscable label="Concepto de caja" placeholder="Elegí el concepto de caja…" value={g.concepto ? etiquetaConcepto(g.concepto) : null} opciones={opcConc}
-        deshabilitado={guardando === g.grupo}
-        onChange={(nombre) => { const c = conceptos.find((x) => etiquetaConcepto(x) === nombre); if (c) configurar(g, { concepto: String(c.codigo) }); }} />
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <div style={{ flex: 1, minWidth: 0, borderRadius: 6, ...(g.concepto || !g.total ? {} : { boxShadow: `0 0 0 2px ${T.ambar}` }) }}>
+          <SelectorBuscable label="Concepto de caja" placeholder="Elegí el concepto de caja…" value={g.concepto ? etiquetaConcepto(g.concepto) : null} opciones={opcConc}
+            deshabilitado={guardando === g.grupo} textoCrear={`Crear «${g.nombre}»…`}
+            onCrear={(nombre) => crearConceptos([g.grupo], nombre ? { [g.grupo]: nombre } : {})}
+            onChange={(nombre) => { const c = conceptos.find((x) => etiquetaConcepto(x) === nombre); if (c) configurar(g, { concepto: String(c.codigo) }); }} />
+        </div>
+        {g.concepto && quitar(g, 'concepto')}
+      </div>
+      {!g.concepto && g.total > 0 ? (
+        <button type="button" disabled={guardando === 'crear'} onClick={() => crearConceptos([g.grupo])}
+          style={{ marginTop: 4, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: T.celesteDeep, textAlign: 'left' }}>
+          + Crear «{g.nombre}»
+        </button>
+      ) : g.conceptoHeredado ? pista('El que elegiste para todo este tipo: podés separarlo') : null}
     </div>
+  );
+  const fmtHora = (f) => `${f.fecha.slice(8, 10)}/${f.fecha.slice(5, 7)} ${f.hora}`;
+  const MED = { credit_card: 'Crédito', debit_card: 'Débito', account_money: 'Dinero en cuenta', prepaid_card: 'Prepaga', bank_transfer: 'Transferencia', ticket: 'Efectivo' };
+  const panelDetalle = (g) => {
+    if (abierto !== g.grupo || !det || det.grupo !== g.grupo) return null;
+    if (det.cargando) return <div style={{ padding: '10px 4px', color: T.txt3, fontSize: 13 }}>Trayendo el detalle…</div>;
+    if (det.error) return <div style={{ padding: '10px 4px', color: '#991b1b', fontSize: 13 }}>No se pudo traer el detalle.</div>;
+    const cel = { padding: '5px 8px', fontSize: 12.5, borderTop: `1px solid ${T.line2}`, textAlign: 'center', whiteSpace: 'nowrap' };
+    const numc = { ...cel, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+    return (
+      <div style={{ background: '#F7F9FB', border: `1px solid ${T.line}`, borderRadius: 10, padding: '8px 10px', margin: '4px 0 8px' }}>
+        <div style={{ fontSize: 12, color: T.txt2, marginBottom: 6 }}>
+          {det.filas.length.toLocaleString('es-AR')} cargo{det.filas.length === 1 ? '' : 's'} · total {pesos(det.total)}{det.recortado ? ' · se muestran los 2.000 más nuevos' : ''}
+        </div>
+        <div style={{ maxHeight: 320, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ fontSize: 11, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.3px' }}>
+              <th style={{ padding: '4px 8px', textAlign: 'center' }}>Fecha</th>
+              <th style={{ padding: '4px 8px', textAlign: 'center' }}>Nº operación</th>
+              {!celu && <th style={{ padding: '4px 8px', textAlign: 'center' }}>Medio</th>}
+              {!celu && <th style={{ padding: '4px 8px', textAlign: 'right' }}>{g.grupo.startsWith('imp:') || g.grupo.startsWith('mp:') ? 'Cobro' : 'Pago'}</th>}
+              <th style={{ padding: '4px 8px', textAlign: 'right' }}>Cargo</th>
+            </tr></thead>
+            <tbody>
+              {det.filas.map((f, i) => (
+                <tr key={`${f.op}-${i}`}>
+                  <td style={cel}>{fmtHora(f)}{f.devol ? <span style={{ color: T.verde }}> · devuelto</span> : null}</td>
+                  <td style={{ ...cel, fontFamily: 'ui-monospace, Menlo, monospace' }}>{f.op}</td>
+                  {!celu && <td style={cel}>{MED[f.medio] || f.medio || '—'}</td>}
+                  {!celu && <td style={numc}>{f.cobro != null ? pesos(f.cobro) : '—'}</td>}
+                  <td style={{ ...numc, fontWeight: 600, color: f.importe < 0 ? T.verde : T.txt }}>{pesos(f.importe)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+  const botonTotal = (g) => (
+    <button type="button" onClick={() => verDetalle(g)} title="Ver cobro por cobro"
+      style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 'inherit', color: T.celesteDeep, whiteSpace: 'nowrap', textDecoration: 'underline dotted', fontVariantNumeric: 'tabular-nums' }}>
+      {pesos(g.total)} {abierto === g.grupo ? '▴' : '▾'}
+    </button>
   );
 
   return (
@@ -157,6 +269,21 @@ export default function DescuentosMP({ bid, avisar }) {
           </div>
         )}
 
+        {sinConcepto.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '8px 0', fontSize: 13.5 }}>
+            <span style={{ color: T.txt2 }}>Conceptos nuevos con el nombre de cada cargo, en el rubro</span>
+            <select value={rubroPorDefecto()} onChange={(e) => setRubroNuevo(e.target.value)}
+              style={{ height: celu ? 44 : 36, borderRadius: 8, border: '1px solid rgba(21,33,62,.18)', padding: '0 8px', fontFamily: 'inherit', fontSize: 13.5, background: '#fff', maxWidth: 260 }}>
+              <option value="">Elegí el rubro…</option>
+              {rubros.map((x) => <option key={x.codigo} value={String(x.codigo)}>{x.codigo} · {x.nombre}</option>)}
+            </select>
+            <button type="button" disabled={guardando === 'crear' || !rubroPorDefecto()} onClick={() => crearConceptos(sinConcepto.map((g) => g.grupo))}
+              style={{ height: celu ? 44 : 36, padding: '0 14px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', fontWeight: 700, fontFamily: 'inherit', fontSize: 13.5, cursor: 'pointer', opacity: guardando === 'crear' || !rubroPorDefecto() ? 0.5 : 1 }}>
+              {guardando === 'crear' ? 'Creando…' : `Crear los ${sinConcepto.length} que faltan`}
+            </button>
+          </div>
+        )}
+
         {celu ? (
           <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
             {visibles.map((g) => {
@@ -165,8 +292,9 @@ export default function DescuentosMP({ bid, avisar }) {
                 <div key={g.grupo} style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 12, display: 'grid', gap: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                     <div style={{ fontWeight: 700, fontSize: 14, flex: 1, minWidth: 0 }}>{g.nombre}</div>
-                    <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, whiteSpace: 'nowrap' }}>{pesos(g.total)}</div>
+                    <div style={{ fontWeight: 700 }}>{botonTotal(g)}</div>
                   </div>
+                  {panelDetalle(g)}
                   {selProv(g)}
                   {selConc(g)}
                   <div style={{ fontSize: 12.5, color: e.c }}>{e.t}</div>
@@ -176,13 +304,13 @@ export default function DescuentosMP({ bid, avisar }) {
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6, tableLayout: 'fixed' }}>
-            <colgroup><col style={{ width: '24%' }} /><col style={{ width: '24%' }} /><col style={{ width: '28%' }} /><col style={{ width: '11%' }} /><col style={{ width: '13%' }} /></colgroup>
+            <colgroup><col style={{ width: '25%' }} /><col style={{ width: '23%' }} /><col style={{ width: '27%' }} /><col style={{ width: '13%' }} /><col style={{ width: '12%' }} /></colgroup>
             <thead>
               <tr style={{ fontSize: 11, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.4px' }}>
                 <th style={{ textAlign: 'left', padding: '6px 8px' }}>Qué descuenta</th>
                 <th style={{ textAlign: 'center', padding: '6px 8px' }}>Proveedor</th>
                 <th style={{ textAlign: 'center', padding: '6px 8px' }}>Concepto de caja</th>
-                <th style={{ textAlign: 'center', padding: '6px 8px', textTransform: 'capitalize' }}>{MESES[Number(mes.slice(5, 7)) - 1].slice(0, 3)} {mes.slice(0, 4)}</th>
+                <th style={{ textAlign: 'right', padding: '6px 8px', textTransform: 'capitalize' }}>{MESES[Number(mes.slice(5, 7)) - 1].slice(0, 3)} {mes.slice(0, 4)}</th>
                 <th style={{ textAlign: 'center', padding: '6px 8px' }}>Estado</th>
               </tr>
             </thead>
@@ -190,16 +318,19 @@ export default function DescuentosMP({ bid, avisar }) {
               {visibles.map((g) => {
                 const e = estado(g);
                 return (
-                  <tr key={g.grupo} style={{ borderTop: `1px solid ${T.line2}` }}>
+                  <React.Fragment key={g.grupo}>
+                  <tr style={{ borderTop: `1px solid ${T.line2}` }}>
                     <td style={{ padding: '10px 8px', fontSize: 14, verticalAlign: 'top' }}>
                       {g.nombre}
                       <div style={{ fontSize: 12, color: T.txt3, marginTop: 2 }}>{g.facturable ? 'Pago a la factura del mes' : 'Retención: no hay factura'}</div>
                     </td>
                     <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>{selProv(g)}</td>
                     <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>{selConc(g)}</td>
-                    <td style={{ padding: '10px 8px', textAlign: 'center', fontFamily: "'Sora', sans-serif", fontWeight: 600, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{pesos(g.total)}</td>
+                    <td style={{ padding: '10px 8px', textAlign: 'right', verticalAlign: 'top' }}>{botonTotal(g)}</td>
                     <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: 12.5, color: e.c, verticalAlign: 'top' }}>{e.t}</td>
                   </tr>
+                  {abierto === g.grupo && <tr><td colSpan={5} style={{ padding: '0 8px' }}>{panelDetalle(g)}</td></tr>}
+                  </React.Fragment>
                 );
               })}
             </tbody>
