@@ -128,6 +128,16 @@ export function autoConciliarCC(res, pagos, conoce) {
     }
     return null;
   };
+  // 19/11 (Diego, Comercio): a veces el cliente paga en UNA transferencia la cuenta del día + lo que
+  // debía en su cuenta corriente (montaldo 18/11: venta $21.440 + cobro de su cuenta $11.600 =
+  // transferencia $33.040). Si la venta pendiente del mismo cliente y día + sus cobros suman exacto un
+  // pago (con las mismas reglas: pagador conocido o importe único ese día), se cierra todo junto.
+  const ventasMod = {};
+  const ventasDe = (cli, fecha) => res.V.filter((v) => v.status === "pend" && !ventasMod[v.id] && v.origen !== "cc" && v.fecha === fecha && v.cliente && cliKey(v.cliente) === cliKey(cli));
+  const cerrarConVentas = (grupo, ventas, x) => {
+    cerrar(grupo, x);
+    ventas.forEach((v) => { ventasMod[v.id] = { ...v, status: "ok", matchedWith: [x.b.id], matchTipo: "ctacte" }; });
+  };
   const porClienteDia = {};
   pagos.forEach((p) => { if (!p.cliente) return; const k = p.fecha + "|" + cliKey(p.cliente); (porClienteDia[k] = porClienteDia[k] || []).push(p); });
   Object.values(porClienteDia).forEach((cobs) => {
@@ -140,7 +150,18 @@ export function autoConciliarCC(res, pagos, conoce) {
       const x = (rest.length > 1 ? elegir(cli, fecha, tot) : null) || elegir(cli, diaSig(fecha), tot);
       if (x) { cerrar(rest, x); return; }
       const xs = variosDelPagador(cli, fecha, tot) || variosDelPagador(cli, diaSig(fecha), tot);
-      if (xs) { cerrarMulti(rest, xs); return; } }
+      if (xs) { cerrarMulti(rest, xs); return; }
+      // venta(s) del día del mismo cliente + sus cobros (todos o de a uno) = un pago
+      const vs = ventasDe(cli, fecha);
+      if (vs.length) {
+        const totV = vs.reduce((a, v) => a + v.imp, 0);
+        const grupos = [rest, ...(rest.length > 1 ? rest.map((p) => [p]) : [])];
+        for (const g of grupos) {
+          const y = elegir(cli, fecha, totV + g.reduce((a, p) => a + p.imp, 0));
+          if (y) { cerrarConVentas(g, vs, y); const ids = new Set(g.map((p) => p.id)); rest = rest.filter((p) => !ids.has(p.id)); break; }
+        }
+        if (!rest.length) return;
+      } }
     // 2) combinaciones (de más grandes a más chicas), hasta que no cierre nada más
     let cambio = true;
     while (cambio && rest.length) {
@@ -155,7 +176,7 @@ export function autoConciliarCC(res, pagos, conoce) {
       }
     }
   });
-  return { res: { V: [...res.V, ...nuevosV], B }, ccIds, pares };
+  return { res: { V: [...res.V.map((v) => ventasMod[v.id] || v), ...nuevosV], B }, ccIds, pares };
 }
 
 // Memoria de pagadores por cuenta: { claveCliente: { cli, pags: { clavePagador: { nombre, veces, ultimo } } } }.
