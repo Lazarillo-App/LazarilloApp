@@ -13,6 +13,7 @@ import SpotlightTour from '@/componentes/SpotlightTour';
 import { useRecorrido } from '@/hooks/useRecorrido';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { useConfig } from '@/context/ConfigContext';
+import SelectorBuscable from '@/componentes/SelectorBuscable';
 
 const UNIDADES_INSUMO = ['gr', 'kg', 'ml', 'lt', 'u', 'oz', 'cc', 'taza', 'cdita', 'cda', 'doc'];
 
@@ -418,40 +419,14 @@ export function InsumoNuevoModal({ open, onClose, businessId, onCreated, initial
             helperText="Dejalo vacío para generar un SKU provisorio (L-)" />
           )}
 
+          {/* Rubro: SelectorBuscable con «+ Crear rubro nuevo…» primero, que funciona aunque no se haya
+              escrito nada (Diego 17/11/2026: «no puedo crear rubros»). Mismo estado: '__nuevo__' + el nombre. */}
           <Stack direction="row" spacing={1.5}>
-            <Autocomplete
-              size="small" sx={{ flex: 1 }} freeSolo autoHighlight openOnFocus
-              options={rubros}
-              disabled={saving || !!success}
-              value={form.rubro === '__nuevo__' ? (form.rubroNuevo || null) : (form.rubro || null)}
-              filterOptions={(opts, { inputValue }) => {
-                const q = inputValue.trim().toLowerCase();
-                const filtradas = q ? opts.filter(o => String(o).toLowerCase().includes(q)) : opts;
-                const existe = opts.some(o => String(o).toLowerCase() === q);
-                return q && !existe ? [{ __crear: true, nombre: inputValue.trim() }, ...filtradas] : filtradas;
-              }}
-              getOptionLabel={(o) => (typeof o === 'string' ? o : o.nombre)}
-              isOptionEqualToValue={(o, v) => (typeof o === 'string' ? o : o.nombre) === (typeof v === 'string' ? v : v.nombre)}
-              onInputChange={(_, v, reason) => {
-                if (reason !== 'input') return;
-                const existente = rubros.find(r => r.toLowerCase() === v.trim().toLowerCase());
-                setForm(f => existente ? { ...f, rubro: existente, rubroNuevo: '' } : { ...f, rubro: v.trim() ? '__nuevo__' : '', rubroNuevo: v });
-              }}
-              onChange={(_, val) => {
-                if (val && typeof val === 'object') setForm(f => ({ ...f, rubro: '__nuevo__', rubroNuevo: val.nombre }));
-                else if (typeof val === 'string') setForm(f => ({ ...f, rubro: val, rubroNuevo: '' }));
-                else setForm(f => ({ ...f, rubro: '', rubroNuevo: '' }));
-              }}
-              renderOption={(props, o) => (
-                <li {...props} key={typeof o === 'string' ? o : 'crear-' + o.nombre}
-                  style={typeof o === 'string' ? undefined : { color: themeColor, fontStyle: 'italic' }}>
-                  {typeof o === 'string' ? o : `+ Crear rubro "${o.nombre}"`}
-                </li>
-              )}
-              renderInput={(params) => (
-                <TextField {...params} label="Rubro *" placeholder="Escribí para buscar o crear…" />
-              )}
-            />
+            <SelectorBuscable label="Rubro" requerido opciones={rubros} deshabilitado={saving || !!success}
+              value={(form.rubro === '__nuevo__' ? form.rubroNuevo : form.rubro) || null}
+              onChange={(v) => setForm(f => ({ ...f, rubro: v, rubroNuevo: '' }))}
+              onCrear={(n) => { const v = String(n || '').trim(); if (v) setForm(f => ({ ...f, rubro: '__nuevo__', rubroNuevo: v })); }}
+              textoCrear="Crear rubro nuevo…" />
           </Stack>
 
           {/* Agrupación: solo al crear — moverlo ya es una acción aparte en el menú */}
@@ -978,36 +953,14 @@ export function ArticuloNuevoModal({
 /* Campo de texto con lista que filtra al escribir; si lo escrito no existe ofrece "+ Crear …".
    onCambio(nombre, existe): existe = es una opción de la lista (si no, es uno nuevo a crear). */
 function CampoCrearOElegir({ label, placeholder, que, opciones, valor, onCambio, disabled = false, color }) {
+  // Ahora es el SelectorBuscable de siempre: «+ Crear … nuevo» arriba y funciona sin escribir antes (17/11/2026).
   const buscar = (v) => opciones.find(o => o.toLowerCase() === String(v || '').trim().toLowerCase());
+  const requerido = /\*\s*$/.test(label || '');
   return (
-    <Autocomplete
-      size="small" sx={{ flex: 1 }} freeSolo autoHighlight openOnFocus disabled={disabled}
-      options={opciones}
-      value={valor || null}
-      filterOptions={(opts, { inputValue }) => {
-        const q = inputValue.trim().toLowerCase();
-        const filtradas = q ? opts.filter(o => o.toLowerCase().includes(q)) : opts;
-        return q && !buscar(q) ? [{ __crear: true, nombre: inputValue.trim() }, ...filtradas] : filtradas;
-      }}
-      getOptionLabel={(o) => (typeof o === 'string' ? o : o.nombre)}
-      isOptionEqualToValue={(o, v) => (typeof o === 'string' ? o : o.nombre) === (typeof v === 'string' ? v : v.nombre)}
-      onInputChange={(_, v, reason) => {
-        if (reason !== 'input') return;
-        const existente = buscar(v);
-        onCambio(existente || v.trim(), !!existente);
-      }}
-      onChange={(_, val) => {
-        if (val && typeof val === 'object') onCambio(val.nombre, false);
-        else if (typeof val === 'string') { const existente = buscar(val); onCambio(existente || val.trim(), !!existente); }
-        else onCambio('', false);
-      }}
-      renderOption={(props, o) => (
-        <li {...props} key={typeof o === 'string' ? o : 'crear-' + o.nombre}
-          style={typeof o === 'string' ? undefined : { color, fontStyle: 'italic' }}>
-          {typeof o === 'string' ? o : `+ Crear ${que} "${o.nombre}"`}
-        </li>
-      )}
-      renderInput={(params) => <TextField {...params} label={label} placeholder={placeholder} />}
-    />
+    <SelectorBuscable label={String(label || '').replace(/\s*\*\s*$/, '')} requerido={requerido} opciones={opciones}
+      value={valor || null} deshabilitado={disabled} placeholder={disabled ? placeholder : ''}
+      onChange={(v) => onCambio(v, true)}
+      onCrear={(n) => { const v = String(n || '').trim(); if (v) { const e = buscar(v); onCambio(e || v, !!e); } }}
+      textoCrear={`Crear ${que} nuevo…`} />
   );
 }

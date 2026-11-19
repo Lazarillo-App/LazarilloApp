@@ -44,15 +44,29 @@ export default function SelectorBuscable({
     () => lista.some((o) => o.toLowerCase() === q.trim().toLowerCase()),
     [lista, q]);
 
+  // «+ Crear … nuevo» sin haber escrito nada: en vez de no hacer nada, abre ahí mismo un campo
+  // para el nombre (Diego 17/11/2026: «tocás crear y no pasa nada hasta que escribís»).
+  const [nuevoAbierto, setNuevoAbierto] = useState(false);
+  const [nuevoTxt, setNuevoTxt] = useState('');
+  const nuevoRef = useRef(null);
+
   useEffect(() => {
     if (abierto) setTimeout(() => inputRef.current?.focus(), 30);
-    else setQ('');
+    else { setQ(''); setNuevoAbierto(false); setNuevoTxt(''); }
   }, [abierto]);
 
   const elegir = (o) => { onChange?.(o); setAbierto(false); };
   const crear = () => {
     const nombre = q.trim();
-    onCrear?.(nombre || null);     // sin texto, el padre abre su propio alta
+    if (!nombre) { setNuevoAbierto(true); setTimeout(() => nuevoRef.current?.focus(), 30); return; }
+    onCrear?.(nombre);
+    setAbierto(false);
+  };
+  const confirmarNuevo = () => {
+    const nombre = nuevoTxt.trim();
+    if (!nombre) return;
+    const existente = lista.find((o) => o.toLowerCase() === nombre.toLowerCase());
+    if (existente) onChange?.(existente); else onCrear?.(nombre);   // si ya existe, se elige el que hay
     setAbierto(false);
   };
 
@@ -113,7 +127,19 @@ export default function SelectorBuscable({
             </Box>
 
             {/* crear — también fijo, no scrollea con la lista */}
-            {onCrear && (
+            {onCrear && nuevoAbierto && (
+              <Box sx={{ p: 1, display: 'flex', gap: 1, alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'action.hover' }}>
+                <TextField inputRef={nuevoRef} value={nuevoTxt} onChange={(e) => setNuevoTxt(e.target.value)}
+                  size="small" fullWidth placeholder={`Nombre del ${String(label || '').toLowerCase()} nuevo`}
+                  onKeyDown={(e) => { if (e.key === 'Enter') confirmarNuevo(); if (e.key === 'Escape') setNuevoAbierto(false); }}
+                  sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }} />
+                <Box component="button" type="button" onClick={confirmarNuevo} disabled={!nuevoTxt.trim()}
+                  sx={{ border: 0, borderRadius: 1, px: 1.6, height: 40, flexShrink: 0, cursor: nuevoTxt.trim() ? 'pointer' : 'default',
+                    bgcolor: nuevoTxt.trim() ? 'primary.main' : 'action.disabledBackground', color: nuevoTxt.trim() ? 'primary.contrastText' : 'text.disabled',
+                    fontWeight: 700, fontSize: '0.8rem' }}>Crear</Box>
+              </Box>
+            )}
+            {onCrear && !nuevoAbierto && (
               <Box onClick={crear}
                 sx={{
                   px: 1.6, py: 1.1, cursor: 'pointer', borderBottom: '1px solid',
