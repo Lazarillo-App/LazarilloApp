@@ -38,6 +38,7 @@ const visible = (clave) => {
 
 function textoBotonera(path) {
   if (path.startsWith('/gestion')) return <><b>Conceptos de caja</b> ordena en qué se agrupan tus gastos, <b>Insumos</b> te muestra lo que comprás y <b>Proveedores</b> abre la cuenta corriente de cada proveedor.</>;
+  if (path.startsWith('/conciliacion')) return <><b>Clientes</b> abre la cuenta corriente de cualquier cliente y su <b>ficha</b>: CUIT, teléfono, cómo paga y quién le paga por banco.</>;
   if (path.startsWith('/rrhh')) return <><b>Cronogramas</b> arma la semana de cada sucursal y <b>Nómina</b> es tu equipo. Liquidación y Fichaje llegan pronto.</>;
   if (path.startsWith('/tableros')) return <>Cada pestaña es una <b>plaza</b> de despacho (un sector de la cocina o de la barra). Con <b>+</b> creás otra.</>;
   if (path.startsWith('/menu') || path.startsWith('/insumos')) return <>Arriba cambiás de pantalla: <b>Artículos</b> (tu carta con costos y precios), <b>Insumos</b> (lo que comprás) y <b>Menú</b> (la carta lista para imprimir).</>;
