@@ -470,7 +470,7 @@ function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo
 // (Diego 12/11/2026). Import diferido: CargarFactura importa este archivo.
 const VerFacturaDiferida = React.lazy(() => import("./CargarFactura").then((m) => ({ default: m.VerFactura })));
 
-function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar, onPeriodo }) {
+function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar, onPeriodo, onFilas }) {
   const [filas, setFilas] = useState(null);
   const [editar, setEditar] = useState(null); // rowId de la carga que se está editando
   const [recarga, setRecarga] = useState(0);
@@ -498,7 +498,7 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
     if (!codigo || pdvId == null) return undefined;
     let vivo = true;
     gestionFetch(`/api/gastos-varios/historial?conceptoCodigo=${encodeURIComponent(codigo)}&pdvId=${pdvId}`)
-      .then((r) => r.json()).then((d) => { if (vivo) setFilas((d && d.filas) || []); }).catch(() => vivo && setFilas([]));
+      .then((r) => r.json()).then((d) => { if (vivo) { setFilas((d && d.filas) || []); if (onFilas) onFilas((d && d.filas) || []); } }).catch(() => vivo && setFilas([]));
     return () => { vivo = false; };
   }, [codigo, pdvId, recarga]);
   // Al cambiar el período se lleva a la vista; y al revés, tocar un período lo elige arriba (Diego 06/11/2026).
@@ -885,6 +885,27 @@ function ModalNuevaCarga(props) {
   const [rubroV, setRubroV] = useState(ctx.rubro || (concCtx && concCtx.rubro) || "");
   const [conceptoV, setConceptoV] = useState(ctx.concepto || (concCtx && concCtx.concepto) || "");
   const [importeV, setImporteV] = useState(ctx.importe > 0 ? fmtNum(ctx.importe) : "");
+  // Gasto en dólares que se paga en pesos (Diego 19/11/2026, el alquiler en dólares billete comprados al
+  // blue): se carga en US$ con el dólar de referencia (sugerido del día, editable) y el importe en pesos
+  // sale solo. { monto, cotizacion, tipo, editada, ref: { fecha, venta } | null, buscando }.
+  const [usdV, setUsdV] = useState(null);
+  useEffect(() => {
+    if (!usdV || usdV.editada) return undefined;
+    let vivo = true;
+    setUsdV((u) => (u ? { ...u, buscando: true } : u));
+    gestionFetch(`/api/cotizacion?tipo=${usdV.tipo}&fecha=${fechaV || ""}`).then((r) => r.json())
+      .then((d) => { if (vivo) setUsdV((u) => (u && !u.editada ? { ...u, buscando: false, ref: d && d.disponible ? d : null, cotizacion: d && d.disponible ? fmtNum(d.venta) : u.cotizacion } : u)); })
+      .catch(() => vivo && setUsdV((u) => (u ? { ...u, buscando: false, ref: null } : u)));
+    return () => { vivo = false; };
+  }, [usdV && usdV.tipo, usdV && usdV.editada, !!usdV, fechaV]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!usdV) return;
+    const m = parseImp(usdV.monto), c = parseImp(usdV.cotizacion);
+    setImporteV(m > 0 && c > 0 ? fmtNum(Math.round(m * c * 100) / 100) : "");
+  }, [usdV && usdV.monto, usdV && usdV.cotizacion]); // eslint-disable-line react-hooks/exhaustive-deps
+  const monedaV = usdV && parseImp(usdV.monto) > 0 && parseImp(usdV.cotizacion) > 0
+    ? { codigo: "USD", monto: parseImp(usdV.monto), cotizacion: parseImp(usdV.cotizacion), tipo: usdV.editada ? "manual" : usdV.tipo } : null;
+  const pasarAUsd = (m) => setUsdV({ monto: m && m.monto ? fmtNum(m.monto) : "", cotizacion: "", tipo: m && m.tipo && m.tipo !== "manual" ? m.tipo : "blue", editada: false, ref: null, buscando: false });
   useEffect(() => {
     const r = variosPdv ? reglaV(conceptoV) : null;
     setRepartoV(r ? r.map((x) => ({ ...x })) : undefined);
@@ -1124,7 +1145,7 @@ function ModalNuevaCarga(props) {
     const payload = {
       reparto: repartoV && !igualReglaV ? repartoV.filter((x) => parseFloat(x.pct) > 0).map((x) => ({ puntoDeVentaId: idPdv(x.pdv), pct: parseFloat(x.pct) })) : null,
       lugarId: idPdv(pdvV), conceptoCodigo: codConcepto(conceptoV), detalle: detalle.trim() || null,
-      importe: Math.round(parseImp(importeV) * 100) / 100, fecha: fAct, forzar: !!forzar,
+      importe: Math.round(parseImp(importeV) * 100) / 100, fecha: fAct, forzar: !!forzar, moneda: monedaV,
       pago: pagarV ? { fecha: fechaPago, medio: medioPago, referencia: pidePagoId && refPago.trim() ? refPago.trim() : null, pdvPagaId: idPdv(pagadoPor) } : null,
     };
     setGuardando(true);
@@ -1906,10 +1927,27 @@ function ModalNuevaCarga(props) {
               <Combo opciones={rubros} valor={rubroV} placeholder="Buscar rubro..." onElegir={(r) => { setRubroV(r); if (rubroDe(conceptoV) !== r) setConceptoV(""); }} /></div>
             <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Detalle</span>
               <input style={inp} value={detalle} maxLength={200} onChange={(e) => setDetalle(e.target.value)} placeholder="Ej: ferretería, flete, devolución seña cancha" /></div>
-            <div><span style={lab}>Importe{importeRevisar && <span style={{ textTransform: "none", fontWeight: 700, letterSpacing: 0, color: "#b45309" }}> · el de {nombrePeriodo(ctx.importeAnterior)}, corregilo</span>}</span>
+            <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Importe{importeRevisar && <span style={{ textTransform: "none", fontWeight: 700, letterSpacing: 0, color: "#b45309" }}> · el de {nombrePeriodo(ctx.importeAnterior)}, corregilo</span>}</span>
+                {/* $ / US$ (Diego 19/11/2026) */}
+                <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", textTransform: "none", letterSpacing: 0 }}>
+                  {[["$", false], ["US$", true]].map(([t, on]) => (
+                    <span key={t} role="button" onClick={() => { if (on && !usdV) { pasarAUsd(null); setImporteV(""); } if (!on && usdV) { setUsdV(null); setImporteV(""); } }}
+                      style={{ padding: "1px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: !!usdV === on ? "#1f2937" : "#fff", color: !!usdV === on ? "#fff" : C.gris }}>{t}</span>
+                  ))}
+                </span>
+              </span>
+              {usdV ? (
+                <div style={{ ...inp, display: "flex", alignItems: "center", gap: 6, padding: "0 10px" }}>
+                  <span style={{ color: C.gris, fontWeight: 700, fontSize: 13 }}>US$</span>
+                  <input autoFocus value={usdV.monto} placeholder="0,00" onFocus={(e) => e.target.select()}
+                    onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setUsdV((u) => ({ ...u, monto: v })); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)}
+                    style={{ border: 0, outline: 0, flex: 1, minWidth: 0, textAlign: "right", fontWeight: 700, fontSize: 13.5, background: "transparent" }} />
+                </div>
+              ) : (
               <input style={{ ...inp, textAlign: "right", fontWeight: 700, ...(importeRevisar ? { border: "1.6px solid #f59e0b", background: "#fffbeb" } : {}) }} value={importeV} placeholder="0,00"
                 autoFocus={vieneConImporte} onFocus={(e) => e.target.select()}
-                onChange={(e) => { setImporteV(fmtImp(e.target.value, e.nativeEvent)); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)} />
+                onChange={(e) => { setImporteV(fmtImp(e.target.value, e.nativeEvent)); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)} />)}
               {tocadoV && (() => { const av = avisoVario(); return av ? <AvisoLinea a={av} onCorregir={() => setImporteV(fmtNum(av.sugerido))} onAceptar={() => setImporteOkV(importeV)} /> : null; })()}</div>
             <div><span style={{ ...lab, display: "flex", justifyContent: "space-between" }}>PDV del gasto
                 {variosPdv && (repartoV
@@ -1919,6 +1957,28 @@ function ModalNuevaCarga(props) {
                 ? <div style={{ ...inp, display: "flex", alignItems: "center", color: "#2a88ad", fontWeight: 600, background: "#f3fafd", borderColor: "#bfe0f0" }}>⇄ {txtReparto({ reparto: repartoV }) || "repartido"}</div>
                 : variosPdv ? <select style={sel} value={pdvV} onChange={(e) => setPdvV(e.target.value)}>{PDVS.map((p) => <option key={p}>{p}</option>)}</select>
                 : <div style={{ ...inp, display: "flex", alignItems: "center", fontWeight: 600 }}>{PDVS[0]}</div>}</div>
+            {usdV && (
+              <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid #bfe0f0", background: "#f3fafd", borderRadius: 9, padding: "8px 10px" }}>
+                <span style={{ ...lab, marginBottom: 0 }}>Dólar</span>
+                <select style={{ ...sel, width: 120, height: 34 }} value={usdV.tipo} onChange={(e) => setUsdV((u) => ({ ...u, tipo: e.target.value, editada: false }))}>
+                  <option value="blue">Blue</option><option value="oficial">Oficial BNA</option><option value="mep">MEP</option>
+                </select>
+                <div style={{ ...inp, width: 130, height: 34, display: "flex", alignItems: "center", gap: 4, padding: "0 8px" }}>
+                  <span style={{ color: C.gris, fontSize: 13 }}>$</span>
+                  <input value={usdV.cotizacion} placeholder={usdV.buscando ? "buscando…" : "0,00"} onFocus={(e) => e.target.select()}
+                    onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setUsdV((u) => ({ ...u, cotizacion: v, editada: true })); }}
+                    style={{ border: 0, outline: 0, flex: 1, minWidth: 0, textAlign: "right", fontWeight: 700, fontSize: 13.5, background: "transparent" }} />
+                </div>
+                <span style={{ fontSize: 12, color: C.gris, flex: "1 1 160px" }}>
+                  {usdV.editada
+                    ? <>el que pagaste{usdV.ref ? <> · {usdV.ref.nombre} venta del {usdV.ref.fecha.slice(8, 10)}/{usdV.ref.fecha.slice(5, 7)}: <span role="button" onClick={() => setUsdV((u) => ({ ...u, editada: false }))} style={{ color: C.cel, fontWeight: 700, cursor: "pointer" }}>$ {fmtNum(usdV.ref.venta)}</span></> : null}</>
+                    : usdV.buscando ? "buscando la cotización…"
+                    : usdV.ref ? <>{usdV.ref.nombre} venta del {usdV.ref.fecha.slice(8, 10)}/{usdV.ref.fecha.slice(5, 7)} · si pagaste otro, cambialo</>
+                    : "no se encontró la cotización: ponela a mano"}
+                </span>
+                <span style={{ fontSize: 13.5, whiteSpace: "nowrap" }}>= <b>{importeV ? `$ ${importeV}` : "$ —"}</b></span>
+              </div>
+            )}
             {repartoV && (() => {
               const tot = repartoV.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0);
               const ok = Math.abs(tot - 100) < 0.01;
@@ -1973,9 +2033,14 @@ function ModalNuevaCarga(props) {
           </div>
           </div>
           <HistorialConcepto concepto={conceptoV} codigo={codConcepto(conceptoV)} pdvId={idPdv(pdvV)} pdvNombre={pdvV} periodo={periodoV} onPeriodo={elegirPeriodo}
+            onFilas={(fs) => {
+              // La última carga del concepto fue en US$: esta arranca en US$, con el dólar de hoy (Diego 19/11/2026).
+              if (fs[0] && fs[0].moneda && !usdV && !importeV) pasarAUsd({ tipo: fs[0].moneda.tipo });
+            }}
             onUsar={(f) => {
               // Trae todo lo de la última carga, no solo el importe (Diego 06/11/2026).
-              setImporteV(fmtNum(f.importe)); setImporteRevisar(false); setTocadoV(true);
+              if (f.moneda) { pasarAUsd(f.moneda); setImporteRevisar(false); setTocadoV(true); }
+              else { setUsdV(null); setImporteV(fmtNum(f.importe)); setImporteRevisar(false); setTocadoV(true); }
               if (f.detalle) setDetalle(f.detalle);
               if (f.medio && mediosPago.some((m) => m.nombre === f.medio)) { setPagarV(true); setMedioPago(f.medio); }
             }} />
@@ -2095,7 +2160,7 @@ function ModalNuevaCarga(props) {
               const todoVacio = modo === "vario" ? !conceptoV && !importeV && !detalle : cuerpoVacio && !prov && !tipoCpb && !compNum && !totalCtrl && !obs;
               const txtVaciar = modo === "factura" && !cuerpoVacio ? "Vaciar cuerpo" : "Vaciar todo";
               const hacerVaciar = () => {
-                if (modo === "vario") { setConfVaciar(false); setConceptoV(""); setRubroV(""); setImporteV(""); setDetalle(""); setParecidoV(null); setErrores([]); setAvisosAlGuardar(null); setImporteOkV(""); setTocadoV(false); setImporteRevisar(false); return; }
+                if (modo === "vario") { setConfVaciar(false); setConceptoV(""); setRubroV(""); setImporteV(""); setUsdV(null); setDetalle(""); setParecidoV(null); setErrores([]); setAvisosAlGuardar(null); setImporteOkV(""); setTocadoV(false); setImporteRevisar(false); return; }
                 vaciar();
               };
               return (
