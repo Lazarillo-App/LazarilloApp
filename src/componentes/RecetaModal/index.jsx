@@ -1258,7 +1258,11 @@ export default function RecetaModal({
       const r = await insumoGet(insumoId, insumoBizId);
       const fresh = r?.data;
       if (fresh) {
-        setInsumos(prev => prev.map(i => String(i.id) === String(insumoId) ? conPrecioDelLocal({ ...i, ...fresh }) : i));
+        // costos_locales/precio_ref_grupo viejos no sobreviven a la mezcla: si quedaban, el precio del
+        // local de antes tapaba el nuevo (costo manual) hasta reabrir el modal (Diego 19/11/2026).
+        setInsumos(prev => prev.map(i => String(i.id) === String(insumoId)
+          ? conPrecioDelLocal({ ...i, precio_ref_grupo: undefined, costos_locales: null, ...fresh })
+          : i));
       }
     } catch { /* refresco best-effort: si falla, el usuario puede reabrir el modal */ }
   }, [businessId, insumoBizId]);

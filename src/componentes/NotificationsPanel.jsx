@@ -62,6 +62,7 @@ const esDeRrhh = (n) => String(n?.kind || '').startsWith('rrhh_');
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
+import { insumoDeshacerCostoManual } from '../servicios/apiInsumos';
 import { emitUiUndo } from '@/servicios/uiEvents';
 
 /* =========================
@@ -128,6 +129,29 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       showAlert('Listo: el aumento volvió a quedar anotado.', 'success');
     } catch {
       showAlert('No se pudo deshacer. Anotalo de nuevo desde Tu canasta.', 'error');
+    }
+  };
+
+  // Costo manual de un insumo deshecho desde la campanita (Diego 19/11/2026).
+  const [costosDeshechos, setCostosDeshechos] = useState(() => new Set());
+  const deshacerCostoManual = async (notif) => {
+    const insumoId = notif.metadata?.ids?.[0];
+    if (!businessId || insumoId == null) return;
+    try {
+      const r = await insumoDeshacerCostoManual(insumoId, businessId);
+      setCostosDeshechos((x) => new Set(x).add(notif.id));
+      try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId } })); } catch { /* nada */ }
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey?.[0] || '').startsWith('insumos') });
+      showAlert(r?.deCompras ? 'Listo: el insumo volvió al costo de sus compras.'
+        : r?.sinPrevio ? 'Listo: ya no es manual. No había un precio anterior guardado, así que queda el mismo.'
+          : 'Listo: el insumo volvió al precio de antes.', 'success');
+    } catch (e) {
+      if (e?.status === 409) {
+        setCostosDeshechos((x) => new Set(x).add(notif.id));
+        showAlert('Ese costo ya no está manual (se deshizo o entró una compra).', 'info');
+      } else {
+        showAlert(e?.message || 'No se pudo deshacer.', 'error');
+      }
     }
   };
 
@@ -664,6 +688,19 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                 ? <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'success.main' }}>Deshecho ✓</Typography>
                 : (
                   <Box component="button" type="button" onClick={(e) => { e.stopPropagation(); deshacerAumento(notif); }}
+                    sx={{ border: 0, bgcolor: 'transparent', p: 0, cursor: 'pointer', font: 'inherit', fontSize: 11, fontWeight: 600, color: '#b45309' }}>
+                    Deshacer ›
+                  </Box>
+                )}
+            </Box>
+          )}
+          {/* Los avisos de antes del 19/11 no traen costo_manual: se reconocen por el título. */}
+          {(notif.metadata?.costo_manual || (notif.kind === 'insumo_update' && /^Costo manual: /.test(notif.title || '') && notif.metadata?.ids?.length)) && (
+            <Box sx={{ display: 'flex', gap: 1.5, mt: 0.25 }}>
+              {costosDeshechos.has(notif.id)
+                ? <Typography sx={{ fontSize: 11, fontWeight: 600, color: 'success.main' }}>Deshecho ✓</Typography>
+                : (
+                  <Box component="button" type="button" onClick={(e) => { e.stopPropagation(); deshacerCostoManual(notif); }}
                     sx={{ border: 0, bgcolor: 'transparent', p: 0, cursor: 'pointer', font: 'inherit', fontSize: 11, fontWeight: 600, color: '#b45309' }}>
                     Deshacer ›
                   </Box>
