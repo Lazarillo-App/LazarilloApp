@@ -554,16 +554,6 @@ export default function TablaArticulos({
   // ── Modal de edición (código-como-link, ver EditarItemModal.jsx) ──
   const [editandoArticuloId, setEditandoArticuloId] = useState(null);
   const [rubrosParaEditModal, setRubrosParaEditModal] = useState([]);
-  useEffect(() => {
-    if (editandoArticuloId == null || !activeBizId) return;
-    const token = localStorage.getItem('token') || '';
-    fetch(`${BASE}/businesses/${activeBizId}/rubros`, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) },
-    })
-      .then((r) => r.json())
-      .then((d) => setRubrosParaEditModal(d?.categorias || []))
-      .catch(() => setRubrosParaEditModal([]));
-  }, [editandoArticuloId, activeBizId]);
 
   // Refetch cuando se crea un artículo manual desde Configuración
   useEffect(() => {
@@ -575,6 +565,18 @@ export default function TablaArticulos({
   const [bulkObjetivoDlg, setBulkObjetivoDlg] = useState(null);
 
   const [recetaArticulo, setRecetaArticulo] = useState(null);
+  // Rubros para la ficha: también cuando se abre el modal del artículo (pestaña FICHA).
+  const hayModalArticulo = editandoArticuloId != null || !!recetaArticulo;
+  useEffect(() => {
+    if (!hayModalArticulo || !activeBizId) return;
+    const token = localStorage.getItem('token') || '';
+    fetch(`${BASE}/businesses/${activeBizId}/rubros`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(activeBizId) },
+    })
+      .then((r) => r.json())
+      .then((d) => setRubrosParaEditModal(d?.categorias || []))
+      .catch(() => setRubrosParaEditModal([]));
+  }, [hayModalArticulo, activeBizId]);
   useEffect(() => {
     if (recetaArticulo === null);
   }, [recetaArticulo]);
