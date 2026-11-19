@@ -141,6 +141,10 @@ export default function EditarItemModal({
   onCrearRubro,               // (nombre|null) => void
   onCrearSubrubro,            // (nombre|null) => void
   onSubirFoto,                // (file) => Promise<url>
+  // Pestaña FICHA del modal del artículo (Diego 19/11/2026, como en insumos): sin Dialog ni
+  // encabezado propio — el nombre, las flechas y la lupa los pone RecetaModal.
+  embebido = false,
+  onSucio,                    // (bool) => void — avisa si hay cambios sin guardar
 }) {
   const cfg = CFG[tipo] ?? CFG.articulo;
 
@@ -163,6 +167,7 @@ export default function EditarItemModal({
   // ── borrador local: no se toca el item hasta guardar ──
   const [d, setD] = useState({});
   const [sucio, setSucio] = useState(false);
+  const [reinicio, setReinicio] = useState(0);
   useEffect(() => {
     if (!item) return;
     setD({
@@ -180,7 +185,7 @@ export default function EditarItemModal({
       codigoPos: '',
     });
     setSucio(false);
-  }, [item]);
+  }, [item, reinicio]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Código del POS de un artículo creado en Lazarillo (Diego 19/11/2026): con él se vinculan sus
   // ventas. Se trae aparte porque la tabla no lo tiene.
@@ -193,6 +198,9 @@ export default function EditarItemModal({
       .catch(() => {});
     return () => { vivo = false; };
   }, [esArticuloManual, item?.id]);
+
+  useEffect(() => { onSucio?.(sucio); }, [sucio, onSucio]);
+  const descartar = () => setReinicio((n) => n + 1);
 
   const set = (k, v) => { setD((p) => ({ ...p, [k]: v })); setSucio(true); };
   // Cambiar de rubro vacía el subrubro: uno de otro rubro no tiene sentido acá.
@@ -274,7 +282,7 @@ export default function EditarItemModal({
   }, [lista, onNavegar, confirmarSiSucio]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || embebido) return;
     const k = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'ArrowLeft') irA(i - 1);
@@ -282,7 +290,7 @@ export default function EditarItemModal({
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [open, i, irA]);
+  }, [open, embebido, i, irA]);
 
   if (!item) return null;
 
@@ -300,12 +308,13 @@ export default function EditarItemModal({
 
   const faltan = vacio(d.nombre) || vacio(d.rubro) || (tipo === 'insumo' && vacio(d.unidad));
 
-  const guardar = () => {
+  const guardar = async () => {
     if (faltan) return;
     const payload = { ...d };
     if (tipo === 'articulo') payload.precioBase = numOrNull(d.precioBase);
     else payload.precio = numOrNull(d.precio);
-    onGuardar?.({ id: item.id ?? item.codigo, tipo, ...payload });
+    const r = await onGuardar?.({ id: item.id ?? item.codigo, tipo, ...payload });
+    if (embebido && r !== false) setSucio(false);
   };
 
   const subirFoto = async (e) => {
@@ -315,9 +324,15 @@ export default function EditarItemModal({
     if (url) set('foto', url);
   };
 
+  const Envoltorio = embebido ? EnvoltorioFicha : Dialog;
+  const propsEnvoltorio = embebido ? {} : {
+    open: !!open, onClose: cerrar, maxWidth: 'md', fullWidth: true,
+    PaperProps: { sx: { borderRadius: 2, overflow: 'visible' } },
+  };
+
   return (
-    <Dialog open={!!open} onClose={cerrar} maxWidth="md" fullWidth
-      PaperProps={{ sx: { borderRadius: 2, overflow: 'visible' } }}>
+    <Envoltorio {...propsEnvoltorio}>
+      {!embebido && (<>
 
       {/* ───────── encabezado: navegación, posición y buscador ─────────
           Mismo estilo y lugar que el header de RecetaModal: flecha
@@ -416,9 +431,10 @@ export default function EditarItemModal({
           <CloseIcon fontSize="small" />
         </IconButton>
       </Stack>
+      </>)}
 
       {/* ───────── cuerpo ───────── */}
-      <DialogContent sx={{ p: 2 }}>
+      <DialogContent sx={{ p: 2, ...(embebido ? { flex: 1, overflowY: 'auto' } : {}) }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="stretch">
 
           {/* foto, como en el modal de receta */}
@@ -625,7 +641,7 @@ export default function EditarItemModal({
       </DialogContent>
 
       <Divider />
-      <Stack direction="row" alignItems="center" spacing={1.6} sx={{ px: 2, py: 1.4 }}>
+      <Stack direction="row" alignItems="center" spacing={1.6} sx={{ px: 2, py: 1.4, flexShrink: 0 }}>
         {onBorrar && (
           <Button size="small" color="error" startIcon={<DeleteOutlineIcon fontSize="small" />}
             onClick={() => onBorrar(item.id ?? item.codigo)}>
@@ -633,11 +649,21 @@ export default function EditarItemModal({
           </Button>
         )}
         <Box sx={{ flex: 1 }} />
-        <Button size="small" onClick={cerrar} sx={{ color: 'text.secondary' }}>CANCELAR</Button>
-        <Button size="small" variant="contained" onClick={guardar} disabled={faltan || !sucio}>
-          GUARDAR CAMBIOS
+        {embebido ? (
+          <Button size="small" onClick={descartar} disabled={!sucio} sx={{ color: 'text.secondary', minHeight: { xs: 44, sm: 0 } }}>DESCARTAR</Button>
+        ) : (
+          <Button size="small" onClick={cerrar} sx={{ color: 'text.secondary' }}>CANCELAR</Button>
+        )}
+        <Button size="small" variant="contained" onClick={guardar} disabled={faltan || !sucio}
+          sx={{ whiteSpace: 'nowrap', minHeight: embebido ? { xs: 44, sm: 0 } : undefined }}>
+          GUARDAR<Box component="span" sx={{ display: embebido ? { xs: 'none', sm: 'inline' } : 'inline' }}>&nbsp;CAMBIOS</Box>
         </Button>
       </Stack>
-    </Dialog>
+    </Envoltorio>
   );
+}
+
+// Sin Dialog: ocupa el cuerpo del modal del artículo, con el pie abajo.
+function EnvoltorioFicha({ children }) {
+  return <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>{children}</Box>;
 }
