@@ -1988,16 +1988,19 @@ export default function TablaArticulos({
       }
     } catch (e) {
       openSnack?.(`No se pudo guardar: ${e?.message || 'error'}`, 'error');
-      return;
+      return false;
     }
 
     setEditandoArticuloId(null);
     const v = respuesta?.vinculo;
+    // Vinculado: el artículo a mano se unió al del POS y deja de existir con este código.
+    if (v?.vinculado) setRecetaArticulo(null);
     openSnack?.(v?.vinculado
       ? `Vinculado con el artículo ${v.posId} del POS: sus ventas ya cuentan`
       : v ? `Código ${v.codigo} guardado: se vincula cuando ese artículo llegue del POS`
         : 'Artículo actualizado', 'success');
     refetchLocal();
+    return true;
   }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, todosParaEditModal]);
 
   // {id,name,description,color,ajuste_pct,is_favorite} (PriceListsAPI) →
@@ -2570,7 +2573,12 @@ export default function TablaArticulos({
             )}
           </span>
           <span
-            onClick={(e) => { e.stopPropagation(); setEditandoArticuloId(id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Código → el modal del artículo en la pestaña FICHA (Diego 19/11/2026, igual que insumos).
+              const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
+              setRecetaArticulo({ ...a, objetivoResuelto: getObjetivoArticulo(a, agrupId), esPromo, __tab: 'ficha' });
+            }}
             data-tour="art-codigo"
             title="Editar artículo"
             style={{
@@ -2587,7 +2595,7 @@ export default function TablaArticulos({
         <div data-tour="art-nombre" onClick={() => {
           const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
           const objetivoResuelto = getObjetivoArticulo(a, agrupId);
-          setRecetaArticulo({ ...a, objetivoResuelto, esPromo });
+          setRecetaArticulo({ ...a, objetivoResuelto, esPromo, __tab: 'receta' });
         }}
           style={{ cursor: 'pointer', overflow: 'hidden', display: 'flex', alignItems: 'flex-start', gap: 4 }}
           title={hayAlertaInsumo ? textoAlertaReceta(recetaData) : undefined}>
@@ -3067,7 +3075,10 @@ export default function TablaArticulos({
                 <div key="acciones" style={{ textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                   <ArticuloAccionesMenu
                     onMutateGroups={onMutateGroups} baseById={baseById} articulo={a}
-                    onEditar={(art) => setEditandoArticuloId(getId(art))}
+                    onEditar={(art) => {
+                      const ep = art.origen === 'promo' || promoIds.has(Number(getId(art))) || promoGroupIds.has(Number(getId(art)));
+                      setRecetaArticulo({ ...art, objetivoResuelto: getObjetivoArticulo(art, String(agrupacionSeleccionada?.id || '')), esPromo: ep, __tab: 'ficha' });
+                    }}
                     reparto={isTodo ? (repartoPorGrupoKey.get(String(a?.[campoRepartoActual] || '').trim().toLowerCase()) || []) : undefined}
                     esPromo={esPromo}
                     onCrearPromo={(art) => {
@@ -3147,6 +3158,25 @@ export default function TablaArticulos({
           open={!!recetaArticulo} onClose={() => {setRecetaArticulo(null); }}
           articulo={recetaArticulo}
           onVerFicha={(id) => setEditandoArticuloId(id)}
+          fichaArticulo={{
+            items: itemsParaEditModal,
+            todos: todosParaEditModal,
+            agrupaciones,
+            rubros: rubrosParaEditModal,
+            listas: listasParaEditModal,
+            precioManualDe: (artId) => getPrecioManualArticulo({ id: artId }),
+            onGuardar: guardarEdicionArticulo,
+            onBorrar: Number(recetaArticulo.id) < 0
+              ? async (id) => {
+                  const ok = await showConfirm('¿Seguro que querés eliminar este artículo? Esta acción no se puede deshacer.', { danger: true });
+                  if (!ok) return;
+                  await BusinessesAPI.deleteManualArticle(activeBizId, Number(id));
+                  setRecetaArticulo(null);
+                  refetchLocal();
+                  window.dispatchEvent(new CustomEvent('articulos:updated'));
+                }
+              : undefined,
+          }}
           modoPromoNueva={recetaArticulo.__promoNueva === true}
           businessId={activeBizId}
           activeBizId={activeBizId}
