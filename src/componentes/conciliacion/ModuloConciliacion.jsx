@@ -33,9 +33,13 @@ export default function ModuloConciliacion({
   const data = React.useMemo(() => (dataBase.banco ? { ...dataBase, banco: aplicarCorte(dataBase.banco, corte) } : dataBase), [dataBase, corte]);
   const [result, setResult] = React.useState(null);
   const [tol, setTol] = React.useState(0); // arranca en "mismo día"
-  const [desde, setDesde] = React.useState(null);
-  const [hasta, setHasta] = React.useState(null);
-  const [mesActivo, setMesActivo] = React.useState(null);
+  // Período y día elegidos (19/11, Diego: «la fecha a conciliar la debe recordar entre sesiones»).
+  // Se recuerdan por negocio y sucursal en este navegador.
+  const periodoKey0 = "lz-conc-periodo:" + ((business && (business.id || business.name)) || "");
+  const periodoGuardado = React.useMemo(() => { try { return JSON.parse(localStorage.getItem(periodoKey0) || "null") || {}; } catch (e) { return {}; } }, []);
+  const [desde, setDesde] = React.useState(periodoGuardado.desde || null);
+  const [hasta, setHasta] = React.useState(periodoGuardado.hasta || null);
+  const [mesActivo, setMesActivo] = React.useState(periodoGuardado.mes || null);
   const [filterV, setFilterV] = React.useState("all");
   const [subFilterV, setSubFilterV] = React.useState("all");
   const [difFiltro, setDifFiltro] = React.useState(null); // filtro de conciliaciones por signo de diferencia: null | 'mas' | 'menos'
@@ -195,7 +199,11 @@ export default function ModuloConciliacion({
   const [colFilterOpen, setColFilterOpen] = React.useState(null); // "banco:campo" | "ingresos:campo" | null
   // vista "por día" para pendientes: modo on/off + día centro (YYYY-MM-DD)
   const [dayView, setDayView] = React.useState(false);
-  const [dayCenter, setDayCenter] = React.useState(null);
+  const [dayCenter, setDayCenter] = React.useState(periodoGuardado.dia || null);
+  React.useEffect(() => {
+    if (!desde || !hasta) return;
+    try { localStorage.setItem(periodoKey0, JSON.stringify({ desde, hasta, mes: mesActivo, dia: dayCenter })); } catch (e) { /* sin storage */ }
+  }, [desde, hasta, mesActivo, dayCenter]);
   const [expandedGroups, setExpandedGroups] = React.useState(new Set()); // grupos de importe expandidos en banco
   // ── Sugerencias de conciliación manual ──
   const [sugerir, setSugerir] = React.useState(true); // panel de sugerencias (activo por defecto en pendientes)
@@ -248,7 +256,7 @@ export default function ModuloConciliacion({
 
   // al cargar datos, si no hay mes elegido, tomar el último
   React.useEffect(() => {
-    if (months.length && !mesActivo) selectMonth(months[months.length - 1]);
+    if (months.length && !mesActivo && !desde) selectMonth(months[months.length - 1]); // si había un período recordado, se respeta
      
   }, [months.length]);
 
