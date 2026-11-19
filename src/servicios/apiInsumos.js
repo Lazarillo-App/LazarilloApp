@@ -131,6 +131,22 @@ export const insumoUpdate = async (id, payload, bizId) => {
   return data;
 };
 
+// POST /api/insumos/:id/costo-manual/deshacer — saca el costo cargado a mano: vuelve al de las
+// compras o, si no tiene, al precio de antes. Devuelve { ok, precio_ref, deCompras }.
+export const insumoDeshacerCostoManual = async (id, bizId) => {
+  const res = await fetch(`${BASE}/insumos/${id}/costo-manual/deshacer`, {
+    method: 'POST',
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error((data && data.error) || 'No se pudo deshacer el costo manual');
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+};
+
 /**
  * DELETE /api/insumos/:id
  * Discontinúa un insumo (soft delete)
@@ -1008,4 +1024,3 @@ export default {
   toggleInsumoElaborado,
   toggleInsumosElaboradosBulk,
 };
-
