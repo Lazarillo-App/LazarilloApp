@@ -2505,7 +2505,7 @@ export default function RecetaModal({
           <Box sx={{
             px: 3, py: 1.5,
             // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
-            ...(fotoEnHeader ? { pl: verFicha ? 3 : '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
+            ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
             // zIndex 4: por encima del encabezado fijo de las tablas del cuerpo (z 2–3). Con 2, el
             // desplegable del ranking de compras quedaba tapado por la cabecera de la tabla (FALLA 12/11).
             position: 'relative', zIndex: 4,
@@ -2731,7 +2731,7 @@ export default function RecetaModal({
           </Box>
 
           {/* Foto que arranca en el header (artículo/promo, y la receta del insumo); al bajar la lista se achica */}
-          {fotoEnHeader && entradaElegida && !verFicha && (<>
+          {fotoEnHeader && entradaElegida && (<>
                     {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
                     <Box
                       ref={recFotoRef}
