@@ -9,6 +9,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import SelectorBuscable from './SelectorBuscable';
+import { BotonesReceta } from './RecetaModal/AccionesReceta';
 import { showConfirm } from '@/servicios/appConfirm';
 import { httpBiz } from '@/servicios/apiBusinesses';
 
@@ -168,6 +169,7 @@ export default function EditarItemModal({
   const [d, setD] = useState({});
   const [sucio, setSucio] = useState(false);
   const [reinicio, setReinicio] = useState(0);
+  const [guardando, setGuardando] = useState(false);
   useEffect(() => {
     if (!item) return;
     setD({
@@ -313,8 +315,11 @@ export default function EditarItemModal({
     const payload = { ...d };
     if (tipo === 'articulo') payload.precioBase = numOrNull(d.precioBase);
     else payload.precio = numOrNull(d.precio);
-    const r = await onGuardar?.({ id: item.id ?? item.codigo, tipo, ...payload });
-    if (embebido && r !== false) setSucio(false);
+    setGuardando(true);
+    try {
+      const r = await onGuardar?.({ id: item.id ?? item.codigo, tipo, ...payload });
+      if (embebido && r !== false) setSucio(false);
+    } finally { setGuardando(false); }
   };
 
   const subirFoto = async (e) => {
@@ -439,6 +444,9 @@ export default function EditarItemModal({
 
           {/* foto, como en el modal de receta */}
           <Box sx={{ width: { xs: '100%', sm: tipo === 'articulo' ? 228 : 148 }, flex: { sm: tipo === 'articulo' ? '0 0 228px' : '0 0 148px' } }}>
+            {/* Embebido (pestaña FICHA): la foto es la del encabezado del modal, en el mismo lugar que en
+                RECETA (Diego 19/11/2026). Acá queda solo el lugar que ocupa al bajar sobre el cuerpo. */}
+            {embebido ? <Box sx={{ height: 72 }} /> : (<>
             <Box component="label"
               sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -460,6 +468,7 @@ export default function EditarItemModal({
             <Typography sx={{ fontSize: '0.65rem', color: 'text.disabled', textAlign: 'center', mt: .7 }}>
               {d.foto ? 'Tocá para cambiarla' : 'Tocá para agregar foto'}
             </Typography>
+            </>)}
 
             {/* Precios por lista, debajo de la foto. Solo en artículo:
                 un insumo tiene un precio de referencia y nada más.
@@ -643,6 +652,15 @@ export default function EditarItemModal({
         </Stack>
       </DialogContent>
 
+      {/* Pestaña FICHA: los mismos botones y en el mismo lugar que el pie de RECETA (Diego 19/11/2026). */}
+      {embebido ? (
+        <Stack direction="row" justifyContent="flex-end"
+          sx={{ px: 4.5, py: 1.5, borderTop: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+          <BotonesReceta enPie receta={!!onBorrar} saving={guardando} deleting={false} loading={false}
+            hasDuplicates={faltan || !sucio}
+            onBorrar={() => onBorrar?.(item.id ?? item.codigo)} onCancel={descartar} onSave={guardar} />
+        </Stack>
+      ) : (<>
       <Divider />
       <Stack direction="row" alignItems="center" spacing={1.6} sx={{ px: 2, py: 1.4, flexShrink: 0 }}>
         {onBorrar && (
@@ -662,6 +680,7 @@ export default function EditarItemModal({
           GUARDAR<Box component="span" sx={{ display: embebido ? { xs: 'none', sm: 'inline' } : 'inline' }}>&nbsp;CAMBIOS</Box>
         </Button>
       </Stack>
+      </>)}
     </Envoltorio>
   );
 }
