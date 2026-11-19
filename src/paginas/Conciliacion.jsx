@@ -173,6 +173,7 @@ export default function Conciliacion() {
   if (!inicial) return <div style={{ padding: 32, color: '#64748b' }}>Cargando la conciliación…</div>;
 
   const business = {
+    id: `${bid}:${suc}`, // para recordar período, día y corte por negocio y sucursal
     group: active?.organization_name || active?.org_name || '',
     name: reales.length && sucNombre ? `${active?.name || 'Negocio'} · ${sucNombre}` : (active?.name || 'Negocio'),
     initials: iniciales(active?.name),
