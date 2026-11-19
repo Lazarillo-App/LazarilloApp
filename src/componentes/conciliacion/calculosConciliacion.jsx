@@ -3,38 +3,24 @@
 import { esMP, fmtFecha, pagadorCoincide } from './motorConciliacion';
 
 // ccPorDia (useMemo de ModuloConciliacion)
-export function calcCcPorDia({ ccConc, data, facturasCC }) {
+// 19/11 (Diego, Comercio): «en ese sector no me interesa su deuda (la consulto en su cuenta); necesito
+// los registros de PAGO de ese día para usarlos en la conciliación». Antes se listaban los tickets
+// vendidos a cuenta corriente ese día; ahora, cada COBRO del 72 hecho por Mercado Pago ese día (fecha
+// de cobro), suelto, para tildarlo junto con la venta del día y el pago del banco (ej. montaldo 18/11:
+// venta $21.440 + cobro de su cuenta $11.600 = transferencia $33.040). Efectivo/retiros no pasan
+// por el banco: no se listan.
+export function calcCcPorDia({ ccConc, data }) {
     const m = {};
-    const add = (f, r) => { if (!f) return; (m[f] = m[f] || { items: [], total: 0 }); m[f].items.push(r); };
-    const nC = (s) => String(s || "").toUpperCase().replace(/\s+/g, " ").trim();
-    const cobPorTicket = {};
-    (data.pagos || []).forEach((p) => { (cobPorTicket[nC(p.comp)] = cobPorTicket[nC(p.comp)] || []).push(p); });
-    const tickets = facturasCC.filter((f) => f.c === "cc");
-    const enPeriodo = new Set(tickets.map((t) => nC(t.comp)));
-    // estado según cómo dice el ERP que se cobró:
-    //  MP sin conciliar → "erp" (falta en banco)
-    //  MP conciliado / efectivo / retiros / Banco Galicia (no se controla por banco) → saldada
-    const estadoDe = (cs) => {
-      if (!cs.length) return { estado: "impaga", saldado: false, ids: [] };
-      const mpPend = cs.filter((p) => esMP(p) && !ccConc.has(p.id));
-      if (mpPend.length) return { estado: "erp", saldado: false, ids: mpPend.map((p) => p.id) };
-      const formas = [...new Set(cs.map((p) => (esMP(p) ? "banco" : String(p.cobro || "").toLowerCase())))];
-      return { estado: "saldada", saldado: true, ids: [], formas };
-    };
-    tickets.forEach((t) => {
-      const cs = cobPorTicket[nC(t.comp)] || [];
-      const e = estadoDe(cs);
-      add(t.fecha, { key: "t-" + t.id, tipo: "ticket", cliente: t.cli, comp: t.comp, hora: t.hora, imp: t.total, saldado: e.saldado,
-        estado: e.estado, formas: e.formas || [], cobroIds: e.ids,
-        cobroFecha: cs.map((p) => p.fecha).sort().slice(-1)[0] || "", cobrado: cs.reduce((a, p) => a + p.imp, 0) });
-    });
     (data.pagos || []).forEach((p) => {
-      if (enPeriodo.has(nC(p.comp))) return;
-      const e = estadoDe([p]);
-      add(p.fecha, { key: "c-" + p.id, tipo: "cobro", cliente: p.cliente, comp: p.comp, hora: p.hora, imp: p.imp, saldado: e.saldado,
-        estado: e.saldado ? "saldada" : (e.estado === "galicia" ? "galicia" : "otro"), formas: e.formas || [], cobroIds: e.ids, cobroFecha: p.fecha, cobrado: p.imp, ticketFecha: p.fechaFact });
+      if (!esMP(p) || !p.fecha) return;
+      const conc = ccConc.has(p.id);
+      (m[p.fecha] = m[p.fecha] || { items: [], total: 0 }).items.push({
+        key: "c-" + p.id, tipo: "cobro", cliente: p.cliente, comp: p.comp, hora: p.hora, imp: p.imp,
+        saldado: conc, estado: conc ? "conciliado" : "pendiente", formas: [], cobroIds: conc ? [] : [p.id],
+        cobroFecha: p.fecha, cobrado: p.imp, ticketFecha: p.fechaFact,
+      });
     });
-    Object.values(m).forEach((d) => { d.items.sort((a, b) => (a.hora || "").localeCompare(b.hora || "")); d.total = d.items.reduce((a, r) => a + r.imp, 0); });
+    Object.values(m).forEach((d) => { d.items.sort((a, b) => (a.cliente || "").localeCompare(b.cliente || "") || b.imp - a.imp); d.total = d.items.reduce((a, r) => a + r.imp, 0); });
     return m;
   }
 
