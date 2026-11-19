@@ -13,6 +13,7 @@
 import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ANT } from '@/componentes/asistente/anthonyAssets';
+import { rectVisual } from '@/utils/rectVisual';
 
 // La burbuja va por encima del aviso «Hay una versión nueva» (zIndex 9999, abajo al centro): lo
 // tapaba y no se podía tocar Siguiente (Diego 14/11/2026).
@@ -82,7 +83,8 @@ function SpotlightTourContenido({
   const recompute = useCallback(() => {
     const el = targetRef?.current;
     if (!el) { setRect(null); return; }
-    const r = el.getBoundingClientRect();
+    // En píxeles de pantalla también en Safari (Diego 19/11/2026: ahí el recuadro quedaba corrido).
+    const r = rectVisual(el);
     const zoom = getZoomFactor();
     const nuevo = { top: r.top / zoom, left: r.left / zoom, width: r.width / zoom, height: r.height / zoom };
     setRect((prev) => (prev && ['top', 'left', 'width', 'height'].every((k) => Math.abs(prev[k] - nuevo[k]) < 0.5) ? prev : nuevo));
@@ -111,14 +113,14 @@ function SpotlightTourContenido({
     const el = targetRef?.current;
     if (!el) return;
     // Si el elemento quedó fuera de la vista (pestañas que no entran a 1100 px), se lo trae.
-    const r0 = el.getBoundingClientRect();
+    const r0 = rectVisual(el);
     // Solo se corren los contenedores con scroll propio (las pestañas): scrollIntoView corría la
     // página entera de costado cuando el header no entra (Cronogramas a 1100 px).
     if (r0.right > window.innerWidth || r0.left < 0 || r0.bottom > window.innerHeight || r0.top < 0) {
       for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
         const cs = getComputedStyle(p);
-        const pr = p.getBoundingClientRect();
-        const er = el.getBoundingClientRect();
+        const pr = rectVisual(p);
+        const er = rectVisual(el);
         if (/(auto|scroll)/.test(cs.overflowX) && p.scrollWidth > p.clientWidth) {
           if (er.right > pr.right) p.scrollLeft += er.right - pr.right + 16;
           else if (er.left < pr.left) p.scrollLeft -= pr.left - er.left + 16;
