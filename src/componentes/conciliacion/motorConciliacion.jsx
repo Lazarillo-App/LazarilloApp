@@ -375,6 +375,7 @@ export function parsePagos(rows) {
       // específicos de Cta cte por comprobante (72)
       fechaFact: excelSerialToISO(r["FECHA"]),
       codCli: String(r["COD_CLI"] || "").trim(),
+      tel: String(r["TELCLI"] || "").trim(),
     });
   });
   return out;

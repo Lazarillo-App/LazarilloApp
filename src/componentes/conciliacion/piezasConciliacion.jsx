@@ -68,9 +68,12 @@ export function FormaEditor({ actual, onSet }) {
   );
 }
 
-// Modal de cuenta corriente de un cliente (facturas + cobranzas + saldo)
-export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
+// Pestaña «Cuenta corriente» del modal del cliente (facturas + cobranzas + saldo)
+// Celular (19/11): el modal va a pantalla completa y las dos listas, una arriba de la otra.
+const esCelu = () => typeof window !== "undefined" && window.innerWidth < 600;
+function CuentaMovs({ cuenta, diaFoco }) {
   const c = cuenta;
+  const celu = esCelu();
   // movimientos del día en que estás parado: se marcan en las dos listas y se
   // scrollea a ellos al abrir
   const refF = React.useRef(null), refC = React.useRef(null);
@@ -151,16 +154,7 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
   const colHead = { display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", background: "#F7F9FB", borderBottom: "1px solid " + C.line2 };
   const titulo = { padding: "8px 14px", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".4px", color: C.tinta, fontWeight: 800, background: "#00000006", borderBottom: "1px solid " + C.line, display: "flex", justifyContent: "space-between" };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(18,17,31,.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: C.paper, borderRadius: 14, width: "min(920px, 96vw)", height: "min(760px, 90vh)", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: C.tinta, flexShrink: 0 }}>
-          <span style={{ width: 34, height: 34, borderRadius: "50%", background: "#5BC2EA33", color: C.celeste, fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{(c.cliente || "?").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".5px", color: "#8fa0c0", fontWeight: 700 }}>Cuenta corriente</div>
-            <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 16, color: C.white }}>{c.cliente}</div>
-          </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.12)", color: C.white, cursor: "pointer", fontSize: 18 }}>×</button>
-        </div>
+      <>
         <div data-tour="cc-periodo" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "12px 18px 0", flexShrink: 0 }}>
           <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".4px", color: C.txt3, fontWeight: 800, marginRight: 4 }}>Período</span>
           {[["todo", "Todo"], ["mes", "Este mes"], ["ant", "Mes anterior"], ["anio", "Este año"], ["pers", "Personalizado"]].map(([k, l]) => (
@@ -184,26 +178,14 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
             </div>
           ))}
         </div>
-        {/* memoria de pagadores de esta cuenta */}
-        <div style={{ margin: "0 18px 12px", background: C.white, border: "1px solid " + C.line2, borderRadius: 10, padding: "9px 14px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".4px", color: C.txt3, fontWeight: 800, marginRight: 4 }}>{"🔗"} Pagadores conocidos</span>
-          {(c.pagadores || []).length ? c.pagadores.map((pg) => (
-            <span key={pg.key} title={"Pagó " + pg.veces + (pg.veces === 1 ? " vez" : " veces") + (pg.ultimo ? " · última " + fmtF(pg.ultimo) : "") + ". La conciliación lo usa para reconocer sus pagos."}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#5BC2EA14", border: "1px solid #5BC2EA66", color: C.celesteDeep, borderRadius: 14, padding: "3px 6px 3px 10px", fontSize: 12, fontWeight: 600 }}>
-              {pg.nombre}
-              <span style={{ fontSize: 10, color: C.txt3, fontWeight: 700 }}>×{pg.veces}{pg.ultimo ? " · " + fmtF(pg.ultimo) : ""}</span>
-              {onQuitarPagador && <button onClick={() => onQuitarPagador(pg.key)} title="Quitar: no es pagador de esta cuenta" style={{ border: "none", background: "transparent", color: C.txt3, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>×</button>}
-            </span>
-          )) : <span style={{ fontSize: 12, color: C.txt3 }}>Todavía ninguno — se graban solos cuando una cobranza de esta cuenta se concilia con su pago.</span>}
-        </div>
         {/* listas: cada columna scrollea por su cuenta, con títulos fijos y ordenables */}
-        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1.35fr 1fr", gridTemplateRows: "minmax(0, 1fr)", margin: "0 18px 18px", border: "1px solid " + C.line2, borderRadius: 10, overflow: "hidden", background: C.white }}>
-          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid " + C.line }}>
+        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: celu ? "minmax(0, 1fr)" : "minmax(0, 1.35fr) minmax(0, 1fr)", gridTemplateRows: celu ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)", margin: celu ? "0 10px 10px" : "0 18px 18px", border: "1px solid " + C.line2, borderRadius: 10, overflow: "hidden", background: C.white }}>
+          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, [celu ? "borderBottom" : "borderRight"]: "1px solid " + C.line }}>
             <div style={titulo}><span>Compras ({fVis.length}){nDiaF > 0 && <span style={{ color: C.celesteDeep }}> · {nDiaF} del {fmtF(diaFoco)}</span>}</span>{totImp > 0 && <span style={{ color: C.amber }}>{totImp} con saldo</span>}</div>
             <div style={colHead}>
               <Th label="Fecha" k="fecha" s={sF} set={setSF} w={78} />
               <Th label="Comprobante" k="comp" s={sF} set={setSF} flex />
-              <Th label="Medio" k="medio" s={sF} set={setSF} w={52} />
+              {!celu && <Th label="Medio" k="medio" s={sF} set={setSF} w={52} />}
               <Th label="Importe" k="imp" s={sF} set={setSF} w={84} right />
               <Th label="Estado" k="estado" s={sF} set={setSF} w={58} right />
             </div>
@@ -213,7 +195,7 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
                   style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderBottom: "1px solid " + C.line, fontSize: 12.5, cursor: "pointer", background: f.estado === "impaga" ? "#d94f6306" : f.estado === "parcial" ? "#c77d0806" : undefined, ...(f.fecha === diaFoco ? marca : {}), ...(selComp && nComp(f.comp) === selComp ? marcaSel : {}) }}>
                   <span style={{ width: 78, flexShrink: 0, fontSize: 11, color: f.fecha === diaFoco ? C.celesteDeep : C.txt3, fontWeight: f.fecha === diaFoco ? 700 : 400, whiteSpace: "nowrap" }}>{fmtF(f.fecha)}{f.hora ? <span style={{ opacity: 0.7 }}> {f.hora}</span> : null}</span>
                   <span style={{ flex: 1, minWidth: 0, color: C.txt2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.comp}</span>
-                  <span style={{ width: 52, flexShrink: 0, fontSize: 10.5, color: f.c === "cc" ? "#7c5fd3" : C.txt3, fontWeight: f.c === "cc" ? 700 : 400 }}>{medioLbl[f.c] || "—"}</span>
+                  {!celu && <span style={{ width: 52, flexShrink: 0, fontSize: 10.5, color: f.c === "cc" ? "#7c5fd3" : C.txt3, fontWeight: f.c === "cc" ? 700 : 400 }}>{medioLbl[f.c] || "—"}</span>}
                   <span style={{ width: 84, flexShrink: 0, textAlign: "right", fontFamily: "'Sora',sans-serif", fontWeight: 700, color: C.tinta }}>{fmt(f.total)}</span>
                   <span style={{ width: 58, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}><span style={{ fontSize: 8.5, fontWeight: 800, borderRadius: 5, padding: "1px 5px", textTransform: "uppercase", background: f.estado === "pagada" ? "#1a9c6e1c" : f.estado === "parcial" ? "#c77d081c" : "#d94f631c", color: f.estado === "pagada" ? C.green : f.estado === "parcial" ? C.amber : C.red }}>{f.estado}</span></span>
                 </div>
@@ -252,6 +234,140 @@ export function CuentaModal({ cuenta, onClose, onQuitarPagador, diaFoco }) {
             </div>
           </div>
         </div>
+      </>
+  );
+}
+
+// Modal del cliente (Diego 19/11/2026): se abre desde un nombre de la conciliación o desde
+// CLIENTES en el header, vacío y con el buscador. Dos pestañas: Cuenta corriente y Ficha.
+const fDMA = (d) => { if (!d) return "—"; const p = d.split("-"); return p[2] + "/" + p[1] + "/" + p[0].slice(2); };
+
+function BuscadorCliente({ valor, clientes, onElegir, autoFocus }) {
+  const [txt, setTxt] = React.useState(null); // null = muestra el cliente elegido
+  const [abierto, setAbierto] = React.useState(!!autoFocus);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!abierto) return undefined;
+    const f = (e) => { if (ref.current && !ref.current.contains(e.target)) { setAbierto(false); setTxt(null); } };
+    document.addEventListener("mousedown", f);
+    return () => document.removeEventListener("mousedown", f);
+  }, [abierto]);
+  const q = String(txt || "").toLowerCase().trim();
+  const opciones = (clientes || []).filter((c) => !q || c.nombre.toLowerCase().includes(q)).slice(0, 60);
+  const elegir = (c) => { onElegir(c.nombre); setTxt(null); setAbierto(false); };
+  return (
+    <div ref={ref} style={{ position: "relative", flex: 1, minWidth: 0, maxWidth: 420 }}>
+      <input value={txt == null ? (valor || "") : txt} autoFocus={autoFocus} placeholder="Buscá un cliente…"
+        onFocus={(e) => { setAbierto(true); e.target.select(); }} onChange={(e) => { setTxt(e.target.value); setAbierto(true); }}
+        onKeyDown={(e) => { if (e.key === "Enter" && opciones[0]) elegir(opciones[0]); if (e.key === "Escape") { setAbierto(false); setTxt(null); } }}
+        style={{ width: "100%", boxSizing: "border-box", height: 40, padding: "0 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.1)", color: C.white, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 15, outline: "none" }} />
+      {abierto && (
+        <div style={{ position: "absolute", top: 44, left: 0, right: 0, zIndex: 5, background: C.white, borderRadius: 10, boxShadow: "0 12px 30px rgba(0,0,0,.25)", maxHeight: 340, overflowY: "auto" }}>
+          {opciones.length ? opciones.map((c) => (
+            <div key={c.key} onMouseDown={(e) => { e.preventDefault(); elegir(c); }}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 14px", minHeight: 40, borderBottom: "1px solid " + C.line, cursor: "pointer", fontSize: 13, color: C.tinta }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#5BC2EA14"; }} onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}>
+              <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>{c.nombre}</span>
+              {c.saldo > 0 && <span style={{ fontSize: 11.5, color: C.amber, fontWeight: 700, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>debe {fmt(c.saldo)}</span>}
+            </div>
+          )) : <div style={{ padding: "12px 14px", fontSize: 12.5, color: C.txt3 }}>Ningún cliente coincide.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Pestaña «Ficha»: lo que Lazarillo sabe del cliente, sacado del POS (ventas y cobranzas) y de la
+// conciliación (pagadores). Solo lectura: nada se escribe en el POS.
+function FichaCliente({ c, onQuitarPagador }) {
+  const fact = c.fact || [];
+  const fechas = fact.map((f) => f.fecha).filter(Boolean).sort();
+  const n = fact.length;
+  const porMedio = { cc: 0, mp: 0, efec: 0, otro: 0 };
+  fact.forEach((f) => { porMedio[f.c] = (porMedio[f.c] || 0) + f.total; });
+  const tot = c.facturado || 0;
+  const pct = (x) => (tot ? Math.round((x / tot) * 100) : 0);
+  // «cardholder_name» es el texto de relleno de Mercado Pago cuando no manda el nombre: no es un pagador.
+  const pagadores = (c.pagadores || []).filter((pg) => !/^cardholder[_ ]?name$/i.test(String(pg.nombre || "").trim()));
+  const ultCob = (c.cob || []).map((k) => k.fecha).filter(Boolean).sort().pop();
+  const caja = { background: C.white, border: "1px solid " + C.line2, borderRadius: 10, padding: "12px 16px" };
+  const tit = { fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".4px", color: C.txt3, fontWeight: 800, marginBottom: 8 };
+  const Dato = ({ l, v, gris }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "5px 0", borderBottom: "1px solid " + C.line }}>
+      <span style={{ width: 150, flexShrink: 0, fontSize: 12, color: C.txt3 }}>{l}</span>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: v ? C.tinta : C.txt3, fontWeight: v ? 600 : 400, overflowWrap: "anywhere" }}>{v || gris || "—"}</span>
+    </div>
+  );
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 18px 18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignContent: "start" }}>
+      <div style={caja}>
+        <div style={tit}>Datos del cliente en el POS</div>
+        <Dato l="Nombre" v={c.cliente} />
+        <Dato l="Nº de cliente" v={c.codCli} gris="—" />
+        <Dato l="CUIT / DNI" v={c.cuit} gris="sin dato" />
+        <Dato l="Teléfono" v={c.tel} gris="sin dato" />
+        {(c.sucursales || []).length > 0 && <Dato l="Sucursales" v={c.sucursales.join(", ")} />}
+        <div style={{ fontSize: 11.5, color: C.txt3, marginTop: 8, lineHeight: 1.45 }}>Salen de las ventas y cobranzas que trae el POS. Email, dirección y tope de crédito todavía no se traen.</div>
+      </div>
+      <div style={caja}>
+        <div style={tit}>Cómo compra</div>
+        <Dato l="Primera compra" v={fechas[0] ? fDMA(fechas[0]) : ""} />
+        <Dato l="Última compra" v={fechas.length ? fDMA(fechas[fechas.length - 1]) : ""} />
+        <Dato l="Compras" v={n ? n + " · ticket promedio " + fmt(tot / n) : ""} />
+        <Dato l="Cómo paga" v={tot ? [["cc", "Cta cte"], ["mp", "Mercado Pago"], ["efec", "Efectivo"], ["otro", "Otros"]].filter(([k]) => porMedio[k]).map(([k, l]) => l + " " + pct(porMedio[k]) + "%").join(" · ") : ""} />
+        <Dato l="Último cobro de cta cte" v={ultCob ? fDMA(ultCob) : ""} />
+        <Dato l="Saldo" v={<span style={{ color: c.saldo > 0 ? C.amber : C.green }}>{fmt(c.saldo)}</span>} />
+        <div style={{ fontSize: 11.5, color: C.txt3, marginTop: 8 }}>Con lo que está cargado en Lazarillo.</div>
+      </div>
+      <div style={{ ...caja, gridColumn: "1 / -1" }}>
+        <div style={tit}>{"🔗"} Pagadores conocidos</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {pagadores.length ? pagadores.map((pg) => (
+            <span key={pg.key} title={"Pagó " + pg.veces + (pg.veces === 1 ? " vez" : " veces") + ". La conciliación lo usa para reconocer sus pagos."}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#5BC2EA14", border: "1px solid #5BC2EA66", color: C.celesteDeep, borderRadius: 14, padding: "3px 6px 3px 10px", fontSize: 12.5, fontWeight: 600 }}>
+              {pg.nombre}
+              <span style={{ fontSize: 10.5, color: C.txt3, fontWeight: 700 }}>×{pg.veces}{pg.ultimo ? " · " + fDMA(pg.ultimo) : ""}</span>
+              {onQuitarPagador && <button onClick={() => onQuitarPagador(pg.key)} title="Quitar: no es pagador de esta cuenta" style={{ border: "none", background: "transparent", color: C.txt3, cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px" }}>×</button>}
+            </span>
+          )) : <span style={{ fontSize: 12.5, color: C.txt3 }}>Todavía ninguno. Se graban solos cuando una cobranza de este cliente se concilia con su pago.</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CuentaModal({ cuenta, clientes, onElegir, onClose, onQuitarPagador, diaFoco }) {
+  const c = cuenta;
+  const celu = esCelu();
+  const [tab, setTab] = React.useState("cc");
+  React.useEffect(() => {
+    const f = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [onClose]);
+  const pest = (k, l) => (
+    <button key={k} type="button" onClick={() => setTab(k)} disabled={!c}
+      style={{ height: 44, padding: "0 16px", border: "none", background: "transparent", cursor: c ? "pointer" : "default", fontFamily: "'Sora',sans-serif", fontSize: 13, fontWeight: 700, color: !c ? C.txt3 : tab === k ? C.celesteDeep : C.txt2, boxShadow: c && tab === k ? "inset 0 -3px 0 " + C.celeste : "none" }}>{l}</button>
+  );
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(18,17,31,.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: celu ? 0 : 20 }}>
+      <div data-tour="cc-modal" onClick={(e) => e.stopPropagation()} style={{ background: C.paper, borderRadius: celu ? 0 : 14, width: celu ? "100%" : "min(920px, 96vw)", height: celu ? "100%" : "min(760px, 90vh)", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px 12px 18px", background: C.tinta, flexShrink: 0 }}>
+          <span style={{ width: 34, height: 34, flexShrink: 0, borderRadius: "50%", background: "#5BC2EA33", color: C.celeste, fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{c ? (c.cliente || "?").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "?"}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".5px", color: "#8fa0c0", fontWeight: 700, marginBottom: 3 }}>Cliente</div>
+            <BuscadorCliente key={c ? c.cliente : ""} valor={c ? c.cliente : ""} clientes={clientes} onElegir={onElegir} autoFocus={!c} />
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 10, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.12)", color: C.white, cursor: "pointer", fontSize: 20 }}>×</button>
+        </div>
+        <div style={{ display: "flex", gap: 4, padding: "0 10px", background: C.white, borderBottom: "1px solid " + C.line, flexShrink: 0 }}>
+          {pest("cc", "Cuenta corriente")}
+          {pest("ficha", "Ficha")}
+        </div>
+        {!c
+          ? <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13.5, color: C.txt3, padding: 20, textAlign: "center" }}>Buscá un cliente arriba para ver su cuenta corriente y su ficha.</div>
+          : tab === "ficha" ? <FichaCliente c={c} onQuitarPagador={onQuitarPagador} />
+          : <CuentaMovs key={c.cliente} cuenta={c} diaFoco={diaFoco} />}
       </div>
     </div>
   );
