@@ -20,6 +20,7 @@ export default function SelectorBuscable({
   onChange,                 // (nombre) => void
   onCrear,                  // (nombre) => void   · si no se pasa, no hay fila de crear
   textoCrear,               // "Crear rubro nuevo…"  (por defecto se arma con label)
+  nombreCrear,              // opcional: nombre ya sabido (crear sin escribir lo usa directo, sin pedirlo)
   requerido = false,
   deshabilitado = false,
   placeholder = '',
@@ -58,6 +59,7 @@ export default function SelectorBuscable({
   const elegir = (o) => { onChange?.(o); setAbierto(false); };
   const crear = () => {
     const nombre = q.trim();
+    if (!nombre && nombreCrear) { onCrear?.(nombreCrear); setAbierto(false); return; }
     if (!nombre) { setNuevoAbierto(true); setTimeout(() => nuevoRef.current?.focus(), 30); return; }
     onCrear?.(nombre);
     setAbierto(false);
