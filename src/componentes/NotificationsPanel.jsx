@@ -62,7 +62,7 @@ const esDeRrhh = (n) => String(n?.kind || '').startsWith('rrhh_');
 import { useBusiness } from '@/context/BusinessContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { http } from '../servicios/apiBusinesses';
-import { insumoDeshacerCostoManual } from '../servicios/apiInsumos';
+import { insumoDeshacerCostoManual, insumosDeshacerCostoManualLote } from '../servicios/apiInsumos';
 import { emitUiUndo } from '@/servicios/uiEvents';
 
 /* =========================
@@ -135,9 +135,20 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   // Costo manual de un insumo deshecho desde la campanita (Diego 19/11/2026).
   const [costosDeshechos, setCostosDeshechos] = useState(() => new Set());
   const deshacerCostoManual = async (notif) => {
-    const insumoId = notif.metadata?.ids?.[0];
+    const ids = (notif.metadata?.ids || []).filter((x) => x != null);
+    const insumoId = ids[0];
     if (!businessId || insumoId == null) return;
     try {
+      // Recargo a varios insumos (todo un proveedor): se deshace el lote entero.
+      if (ids.length > 1) {
+        const r = await insumosDeshacerCostoManualLote(ids, businessId);
+        setCostosDeshechos((x) => new Set(x).add(notif.id));
+        try { window.dispatchEvent(new CustomEvent('insumos:costos-lote', { detail: { insumoIds: ids } })); } catch { /* nada */ }
+        queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey?.[0] || '').startsWith('insumos') });
+        const n = r?.items?.length || 0;
+        showAlert(`Listo: ${n} insumo${n === 1 ? '' : 's'} volvieron a su costo${r?.saltados ? ` (${r.saltados} ya no estaban manuales)` : ''}.`, 'success');
+        return;
+      }
       const r = await insumoDeshacerCostoManual(insumoId, businessId);
       setCostosDeshechos((x) => new Set(x).add(notif.id));
       try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId } })); } catch { /* nada */ }
