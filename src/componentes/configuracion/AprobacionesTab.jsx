@@ -17,7 +17,7 @@ import {
   listarPropuestas, aprobarPropuesta, rechazarPropuesta, pedirRevisionPropuesta,
   listarPropuestasEquipo, jefeOkPropuesta, reasignarPropuesta,
 } from '@/servicios/apiRecetaProposals';
-import SelectorRevisor from '@/componentes/SelectorRevisor';
+import SelectorRevisor, { precargarRevisores } from '@/componentes/SelectorRevisor';
 import { showAlert } from '@/servicios/appAlert';
 import { useAuth } from '@/context/AuthContext';
 
@@ -474,6 +474,8 @@ export default function AprobacionesTab({ businessId, onCountChange, onAbrirRece
   }, [businessId, esJefe]);
 
   useEffect(() => { cargar(); }, [cargar]);
+  // El equipo para «Reasignar» se pide junto con la bandeja: el modal abre con la lista lista.
+  useEffect(() => { if (businessId && !esJefe) precargarRevisores(businessId); }, [businessId, esJefe]);
   useEffect(() => { onCountChange?.(proposals.length); }, [proposals.length, onCountChange]);
 
   const handleDecided = (id) => {
