@@ -535,11 +535,11 @@ export default function EditarItemModal({
             </Stack>
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.4}>
-              <TextField label="Cod. Lazarillo" size="small" disabled
-                value={codigoLazarilloMostrar} sx={{ width: { sm: 140 }, flexShrink: 0 }} />
+              {/* Primero el código del POS, después el de Lazarillo (Diego 19/11/2026). Un artículo que vino
+                  del POS lleva el mismo código en los dos; el del POS queda vacío solo en lo creado en Lazarillo. */}
               {!esManual && (
                 <TextField label="Cód. del POS" size="small" disabled
-                  value={item.codigo_maxi ?? item.codigoMaxi ?? ''} sx={{ width: { sm: 140 }, flexShrink: 0 }} />
+                  value={item.codigo_maxi ?? item.codigoMaxi ?? (tipo === 'articulo' ? item.id : '') ?? ''} sx={{ width: { sm: 140 }, flexShrink: 0 }} />
               )}
               {esManual && tipo === 'articulo' && (
                 <TextField label="Cód. del POS" size="small"
@@ -547,8 +547,11 @@ export default function EditarItemModal({
                   onChange={(e) => set('codigoPos', e.target.value.replace(/[^0-9]/g, ''))}
                   title="Con el código del POS se vinculan sus ventas"
                   inputProps={{ inputMode: 'numeric' }}
+                  InputLabelProps={{ shrink: true }}
                   sx={{ width: { sm: 140 }, flexShrink: 0 }} />
               )}
+              <TextField label="Cód. Lazarillo" size="small" disabled
+                value={codigoLazarilloMostrar} sx={{ width: { sm: 140 }, flexShrink: 0 }} />
               <TextField label="Nombre original" size="small" disabled fullWidth
                 value={item.nombreOriginal ?? item.nombre ?? ''} />
             </Stack>
