@@ -461,8 +461,8 @@ export default function ModuloConciliacion({
     if (!result || (parV.size === 0 && parB.size === 0)) return;
     const extra = [...parV].filter((id) => id.startsWith("ef-") || id.startsWith("cc-"));
     sacarExtras(extra);
-    const V = result.V.filter((v) => !extra.includes(v.id)).map((v) => parV.has(v.id) ? { ...v, status: "pend", matchedWith: [], matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined } : v);
-    const B = result.B.map((b) => parB.has(b.id) ? { ...b, status: "pend", matchedWith: null, matchTipo: null, porHora: false, serieNota: undefined, serieMult: undefined } : b);
+    const V = result.V.filter((v) => !extra.includes(v.id)).map((v) => parV.has(v.id) ? { ...v, status: "pend", desarmado: true, matchedWith: [], matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined } : v);
+    const B = result.B.map((b) => parB.has(b.id) ? { ...b, status: "pend", desarmado: true, matchedWith: null, matchTipo: null, porHora: false, serieNota: undefined, serieMult: undefined } : b);
     setResult({ V, B });
     setParV(new Set()); setParB(new Set());
   };
@@ -477,8 +477,8 @@ export default function ModuloConciliacion({
     const ex = sacarExtras(extra);
     if (ex.ef.length) setSelEfec(new Set(ex.ef));
     if (ex.cc.length) { setSelCC(new Set(ex.cc)); if (fecha) setCcOpen((s) => new Set(s).add(fecha)); }
-    const V = result.V.filter((v) => !extra.includes(v.id)).map((v) => parV.has(v.id) ? { ...v, status: "pend", matchedWith: [], matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined } : v);
-    const B = result.B.map((b) => parB.has(b.id) ? { ...b, status: "pend", matchedWith: null, matchTipo: null, porHora: false, serieNota: undefined, serieMult: undefined } : b);
+    const V = result.V.filter((v) => !extra.includes(v.id)).map((v) => parV.has(v.id) ? { ...v, status: "pend", desarmado: true, matchedWith: [], matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined } : v);
+    const B = result.B.map((b) => parB.has(b.id) ? { ...b, status: "pend", desarmado: true, matchedWith: null, matchTipo: null, porHora: false, serieNota: undefined, serieMult: undefined } : b);
     setResult({ V, B });
     setSelIng(new Set([...parV].filter((id) => !extra.includes(id)))); setSelBan(new Set([...parB]));
     setParV(new Set()); setParB(new Set());
@@ -644,13 +644,13 @@ export default function ModuloConciliacion({
     // efectivo reclasificado / cobranzas CC: no vuelven como pendientes, vuelven a su grupo
     const extra = ap.ingIds.filter((id) => id.startsWith("ef-") || id.startsWith("cc-"));
     const V = result.V.filter((v) => !extra.includes(v.id)).map((v) => ap.ingIds.includes(v.id)
-      ? { ...v, status: "pend", matchedWith: [], manual: false, matchTipo: undefined, manualDif: undefined } : v);
+      ? { ...v, status: "pend", desarmado: true, matchedWith: [], manual: false, matchTipo: undefined, manualDif: undefined } : v);
     const efX = extra.filter((id) => id.startsWith("ef-")).map((id) => id.slice(3));
     const ccX = extra.filter((id) => id.startsWith("cc-")).map((id) => id.slice(3));
     if (efX.length) setEfecReclas((s) => { const n = new Set(s); efX.forEach((id) => n.delete(id)); return n; });
     if (ccX.length) { setCcConc((s) => { const n = new Set(s); ccX.forEach((id) => n.delete(id)); return n; }); olvidarCobranzas(ccX); setCcNoAuto((s) => { const n = new Set(s); ccX.forEach((id) => n.add(id)); return n; }); }
     const B = result.B.map((b) => ap.banIds.includes(b.id)
-      ? { ...b, status: "pend", matchedWith: [], manual: false, matchTipo: undefined, manualDif: undefined } : b);
+      ? { ...b, status: "pend", desarmado: true, matchedWith: [], manual: false, matchTipo: undefined, manualDif: undefined } : b);
     setResult({ V, B });
     setAprobadas((prev) => prev.filter((a) => a.key !== ap.key));
   }
@@ -947,11 +947,15 @@ export default function ModuloConciliacion({
   const restaurarRef = React.useRef(null);   // { periodo, estado } esperando a que haya resultado
   const listoRef = React.useRef(null);       // período ya revisado: desde ahí se guarda solo
   const [restaurarTick, setRestaurarTick] = React.useState(0);
-  const CAMPOS_ESTADO = ["status", "matchedWith", "matchTipo", "manual", "manualDif", "autoDif", "porHora", "serieNota", "serieMult"];
+  const CAMPOS_ESTADO = ["status", "matchedWith", "matchTipo", "manual", "manualDif", "autoDif", "porHora", "serieNota", "serieMult", "cuponDif", "desarmado"];
   const compactar = (rows, baseIds) => {
     const est = {}, extra = [];
+    // 19/11: se guarda solo lo que hizo una persona (conciliado a mano / sugerencia aprobada = manual,
+    // o desarmado). Lo automático se recalcula cada vez, así las mejoras del motor (cupón, corte,
+    // venta + cobro de cuenta corriente…) llegan también a los períodos ya trabajados.
     (rows || []).forEach((r) => {
-      if (!baseIds.has(r.id)) { extra.push(r); return; }
+      if (!baseIds.has(r.id)) { if (!(String(r.id).startsWith("cc-") && !r.manual)) extra.push(r); return; }
+      if (!(r.manual || r.desarmado)) return;
       const o = {}; CAMPOS_ESTADO.forEach((k) => { if (r[k] !== undefined && r[k] !== null) o[k] = r[k]; });
       est[r.id] = o;
     });
@@ -984,16 +988,48 @@ export default function ModuloConciliacion({
   // Aplica un estado guardado encima de un resultado (solo las filas que vienen de los archivos;
   // las que arma el módulo —cobranzas "cc-", efectivo "ef-"— se reemplazan por las guardadas).
   const aplicarEstado = (res, e) => {
-    const aplicar = (rows, base, est, extra) => [
-      ...rows.filter((x) => base.has(x.id)).map((x) => (est && est[x.id]
-        ? { ...x, matchedWith: Array.isArray(x.matchedWith) ? [] : null, matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined, ...est[x.id] }
-        : x)),
-      ...(extra || []),
-    ];
+    // Solo se aplica lo que hizo una persona (manual o desarmado). Lo automático guardado por
+    // versiones anteriores se ignora: se usa el cálculo de ahora.
+    const util = (o) => o && (o.manual || o.desarmado);
+    const filtrar = (m) => { const out = {}; Object.keys(m || {}).forEach((k) => { if (util(m[k])) out[k] = m[k]; }); return out; };
+    const extrasDe = (arr) => (arr || []).filter((x) => !(String(x.id).startsWith("cc-") && !x.manual));
+    const estV = filtrar(e.V), estB = filtrar(e.B);
     const baseV = new Set((data.ventas || []).map((x) => x.id));
     const baseB = new Set((data.banco || []).map((x) => x.id));
-    return { V: aplicar(res.V, baseV, e.V, e.Vextra), B: aplicar(res.B, baseB, e.B, e.Bextra) };
+    const limpio = (x) => ({ matchedWith: Array.isArray(x.matchedWith) ? [] : null, matchTipo: null, manual: false, manualDif: undefined, autoDif: undefined, porHora: false, serieNota: undefined, serieMult: undefined });
+    let V = res.V.map((x) => (baseV.has(x.id) && estV[x.id] ? { ...x, ...limpio(x), ...estV[x.id] } : x));
+    let B = res.B.map((x) => (baseB.has(x.id) && estB[x.id] ? { ...x, ...limpio(x), ...estB[x.id] } : x));
+    const exV = extrasDe(e.Vextra), exB = extrasDe(e.Bextra);
+    const ponerExtras = (rows, ex) => { const m = new Map(ex.map((x) => [x.id, x])); const ya = new Set(rows.map((r) => r.id)); return [...rows.map((r) => m.get(r.id) || r), ...ex.filter((x) => !ya.has(x.id))]; };
+    V = ponerExtras(V, exV); B = ponerExtras(B, exB);
+    // lo restaurado manda: lo automático que usaba esos mismos registros vuelve a pendiente
+    const restV = new Set([...Object.keys(estV), ...exV.map((x) => x.id)]), restB = new Set([...Object.keys(estB), ...exB.map((x) => x.id)]);
+    const tocB = new Set(restB); V.forEach((v) => { if (restV.has(v.id)) (v.matchedWith || []).forEach((id) => tocB.add(id)); });
+    const tocV = new Set(restV); B.forEach((b) => { if (restB.has(b.id)) [].concat(b.matchedWith || []).forEach((id) => tocV.add(id)); });
+    const revV = new Set();
+    V = V.map((v) => {
+      if (restV.has(v.id) || v.status !== "ok") return v;
+      if (tocV.has(v.id) || (v.matchedWith || []).some((id) => tocB.has(id))) { revV.add(v.id); return { ...v, status: "pend", ...limpio(v) }; }
+      return v;
+    }).filter((v) => !(revV.has(v.id) && String(v.id).startsWith("cc-")));
+    B = B.map((b) => {
+      if (restB.has(b.id) || b.status !== "ok") return b;
+      const refs = [].concat(b.matchedWith || []);
+      if (tocB.has(b.id) || refs.some((id) => revV.has(id) || tocV.has(id))) return { ...b, status: "pend", ...limpio(b) };
+      return b;
+    });
+    // y sus pagos quedan del lado de lo restaurado
+    const idxB = new Map(B.map((b, i) => [b.id, i]));
+    V.forEach((v) => { if (!restV.has(v.id) || v.status !== "ok") return; (v.matchedWith || []).forEach((bid) => { const i = idxB.get(bid); if (i !== undefined && !restB.has(bid)) B[i] = { ...B[i], status: "ok", matchedWith: v.id, matchTipo: v.matchTipo, manual: v.manual }; }); });
+    return { V, B };
   };
+  // las cobranzas conciliadas son las filas "cc-" conciliadas del resultado (así quedan bien también
+  // después de restaurar o mezclar)
+  React.useEffect(() => {
+    if (!result) return;
+    const s = new Set(result.V.filter((v) => String(v.id).startsWith("cc-") && v.status === "ok" && v.ccCobranza != null).map((v) => v.ccCobranza));
+    setCcConc((prev) => (prev.size === s.size && [...s].every((x) => prev.has(x)) ? prev : s));
+  }, [result]);
   const aplicarResto = (e) => {
     setTips(e.tips || {}); setAprobadas(e.aprobadas || []); setFaltantes(e.faltantes || []);
     setNotas(e.notas || {});
