@@ -23,7 +23,8 @@ export function conIdsEstables(parsed, rows, prefijo) {
   return parsed.map((x) => {
     const i = Number(String(x.id).replace(/^\D+/, ''));
     const comp = Number.isInteger(i) && i >= 0 && i < rows.length ? compDe[i] : (x.comp || '');
-    const base = `mx${prefijo}:${x.fecha}:${comp}:${x.cobro || x.c || ''}:${x.imp ?? x.total ?? ''}`;
+    // facturas: el id usa el bruto (como antes de 19/11) para que lo ya guardado conserve su id
+    const base = `mx${prefijo}:${x.fecha}:${comp}:${x.cobro || x.c || ''}:${x.imp ?? x.bruto ?? x.total ?? ''}`;
     const n = (vistos.get(base) || 0) + 1;
     vistos.set(base, n);
     return { ...x, id: n > 1 ? `${base}:${n}` : base };
