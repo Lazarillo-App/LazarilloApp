@@ -21,6 +21,9 @@ export default function TabFichaInsumo({ insumoId, businessId, insumoData }) {
   const [rubros, setRubros] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [estado, setEstado] = useState(null); // null | 'guardando' | 'ok' | mensaje de error
+  // Costo manual como excepción (Diego 19/11/2026): vale hasta la próxima compra de este insumo.
+  const [manualDesde, setManualDesde] = useState(null);
+  useEffect(() => { setManualDesde(ins.precio_manual_at || null); }, [insumoId, ins.precio_manual_at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setD({
@@ -56,6 +59,7 @@ export default function TabFichaInsumo({ insumoId, businessId, insumoData }) {
           .map((g) => (g.nombre === cambio.agrupacion ? { ...g, items: [...(g.items || []), { id: Number(insumoId) }] } : g)));
       } else {
         await insumoUpdate(insumoId, cambio, businessId);
+        if ('precioRef' in cambio) setManualDesde(new Date().toISOString());
       }
       setEstado('ok');
       window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: Number(insumoId) } }));
@@ -125,7 +129,11 @@ export default function TabFichaInsumo({ insumoId, businessId, insumoData }) {
             onChange={(v) => { if (v && v !== d.rubro) { setD((p) => ({ ...p, rubro: v })); guardar({ rubro: v }); } }} />
           <SelectorBuscable label="Unidad" requerido value={d.unidad || null} opciones={UNIDADES} ancho="150px"
             onChange={(v) => { if (v && v !== d.unidad) { setD((p) => ({ ...p, unidad: v })); guardar({ unidadMed: v }); } }} />
-          <TextField label="Precio de referencia" value={d.precio ?? ''} {...campo} sx={{ ...campo.sx, width: { sm: 200 }, flexShrink: 0 }}
+          <TextField label={`Costo${d.unidad ? ` por ${d.unidad}` : ''}`} value={d.precio ?? ''} {...campo} sx={{ ...campo.sx, width: { sm: 200 }, flexShrink: 0 }}
+            helperText={manualDesde
+              ? `✎ Manual desde el ${new Date(manualDesde).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} · lo reemplaza la próxima compra`
+              : 'Si lo cambiás, queda como excepción hasta la próxima compra'}
+            FormHelperTextProps={{ sx: { mx: 0, color: manualDesde ? '#b45309' : 'text.secondary', fontWeight: manualDesde ? 600 : 400, lineHeight: 1.3 } }}
             onChange={(e) => setD((p) => ({ ...p, precio: e.target.value }))}
             onBlur={() => {
               const num = Number(String(d.precio ?? '').replace(/\./g, '').replace(',', '.'));
