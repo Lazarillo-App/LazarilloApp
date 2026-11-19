@@ -42,6 +42,9 @@ export const MercadoPagoAPI = {
   // Lo que descuenta MP, al tablero (15/11): resumen del mes, proveedor/concepto por tipo y encendido.
   cargos: (bid, mes) => http(`${mpBase(bid)}/cargos?mes=${encodeURIComponent(mes || '')}`, { cache: false, timeoutMs: 60000 }),
   cargosConfig: (bid, body) => http(`${mpBase(bid)}/cargos/config`, { method: 'POST', body }),
+  cargosDetalle: (bid, mes, grupo) => http(`${mpBase(bid)}/cargos/detalle?mes=${encodeURIComponent(mes || '')}&grupo=${encodeURIComponent(grupo)}`, { cache: false, timeoutMs: 60000 }),
+  cargosCrearConceptos: (bid, body) => http(`${mpBase(bid)}/cargos/crear-conceptos`, { method: 'POST', body, timeoutMs: 60000 }),
+  cargosCrearProveedor: (bid, body) => http(`${mpBase(bid)}/cargos/crear-proveedor`, { method: 'POST', body }),
   cargosActivar: (bid, body) => http(`${mpBase(bid)}/cargos/activar`, { method: 'POST', body }),
   // Marcas a mano sobre los movimientos (19/11): «Gasto personal» en lo que salió.
   marcas: (bid, suc) => http(`${mpBase(bid)}/marcas${q(suc)}`, { cache: false }),
