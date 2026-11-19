@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Box, Typography, TextField, IconButton, Tooltip, Chip,
   Select, MenuItem, Checkbox, InputAdornment,
-  Popover,
+  Popover, Button,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import SearchIcon from '@mui/icons-material/Search';
@@ -82,6 +82,27 @@ export default function ItemRow({
   const [precioManualEdit, setPrecioManualEdit] = useState(false);
   const [precioManualVal, setPrecioManualVal] = useState('');
   const [precioManualSaving, setPrecioManualSaving] = useState(false);
+  // Cambiar el costo del insumo desde la fila, tocando el «$X/u» (Diego 19/11/2026): queda como costo
+  // manual del insumo (todas las recetas, todos los locales) hasta que entra una compra nueva.
+  const [costoEl, setCostoEl] = useState(null);
+  const [costoVal, setCostoVal] = useState('');
+  const [costoSaving, setCostoSaving] = useState(false);
+  const [costoError, setCostoError] = useState('');
+  const guardarCostoInsumo = async () => {
+    const raw = String(costoVal).replace(/\./g, '').replace(',', '.').replace(/[^0-9.]/g, '');
+    const val = raw === '' ? NaN : Number(raw);
+    if (!(val > 0)) { setCostoError('Poné un costo mayor a 0'); return; }
+    setCostoSaving(true); setCostoError('');
+    try {
+      await insumoUpdate(item.supplyId, { precioRef: val }, insumosBizId || businessId);
+      try { window.dispatchEvent(new CustomEvent('insumos:updated', { detail: { insumoId: item.supplyId } })); } catch { }
+      setCostoEl(null);
+    } catch (e) {
+      setCostoError(e?.message || 'No se pudo guardar');
+    } finally {
+      setCostoSaving(false);
+    }
+  };
   const [notasOpen, setNotasOpen] = useState(false);
   const showAdvanced = !!advancedOpen;
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -622,11 +643,22 @@ export default function ItemRow({
                     return `Precio de DB: $${fmt(item.precioRefDB)}/${unidadStr} (fijo)`;
                   })();
 
+                  // Insumo simple: tocar el precio abre la carga del costo manual.
+                  const costoEditable = !item.articleRefId && !item.esArticulo && !elaborado && !esElab && !!item.supplyId;
+                  const manualDesde = insumoData?.precio_manual_at || insumoDeFila?.precio_manual_at || null;
                   return (
-                    <Tooltip title={titleStr} arrow placement="top">
+                    <Tooltip title={costoEditable
+                      ? `${manualDesde ? `✎ Costo manual desde el ${fmtDate(manualDesde)} · ` : ''}Tocá para cambiar el costo del insumo`
+                      : titleStr} arrow placement="top">
                       <Chip
-                        label={label}
+                        label={costoEditable && manualDesde ? `✎ ${label}` : label}
                         size="small"
+                        onClick={costoEditable ? (e) => {
+                          e.stopPropagation();
+                          setCostoVal(tienePrecio ? String(precioMostrado).replace('.', ',') : '');
+                          setCostoError('');
+                          setCostoEl(e.currentTarget);
+                        } : undefined}
                         icon={sinCompras ? <WarningAmberIcon sx={{ fontSize: '0.8rem !important', color: '#d97706 !important' }} /> : undefined}
                         sx={{
                           height: 16, fontSize: '0.65rem', fontWeight: 700, flexShrink: 0,
@@ -651,6 +683,34 @@ export default function ItemRow({
                     </Tooltip>
                   );
                 })()}
+
+                {/* Costo manual del insumo, desde la fila (Diego 19/11/2026) */}
+                <Popover open={!!costoEl} anchorEl={costoEl} onClose={() => !costoSaving && setCostoEl(null)}
+                  onClick={(e) => e.stopPropagation()}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  slotProps={{ paper: { sx: { p: 1.5, width: 260, borderRadius: 2 } } }}>
+                  <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, mb: 1 }}>
+                    {`Costo de ${item.supplyNombre || 'este insumo'}`}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <TextField autoFocus size="small" value={costoVal} disabled={costoSaving}
+                      onChange={(e) => { setCostoVal(e.target.value.replace(/[^0-9.,]/g, '')); setCostoError(''); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); guardarCostoInsumo(); } if (e.key === 'Escape') setCostoEl(null); }}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                        endAdornment: <InputAdornment position="end">{`/${canonicalUnit(item.supplyMedida || 'u')}`}</InputAdornment>,
+                      }}
+                      inputProps={{ style: { textAlign: 'right' } }}
+                      sx={{ flex: 1, '& .MuiOutlinedInput-root': { height: 40 } }} />
+                    <Button variant="contained" size="small" onClick={guardarCostoInsumo} disabled={costoSaving}
+                      sx={{ height: 40, minWidth: 0, px: 1.5, bgcolor: PRIMARY, '&:hover': { bgcolor: PRIMARY } }}>
+                      {costoSaving ? '…' : 'Guardar'}
+                    </Button>
+                  </Box>
+                  <Typography sx={{ fontSize: '0.7rem', color: costoError ? 'error.main' : 'text.secondary', mt: 1, lineHeight: 1.35 }}>
+                    {costoError || 'Vale para todas las recetas. Queda manual hasta que cargues una compra nueva de este insumo.'}
+                  </Typography>
+                </Popover>
 
                 {/* Chip elaborado */}
                 {elaborado && (
