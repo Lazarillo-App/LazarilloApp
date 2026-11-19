@@ -1966,11 +1966,15 @@ export default function TablaArticulos({
     const antes = String(art?.descripcion_propia ?? art?.descripcion_original ?? '').trim();
     const ahora = String(datos.descripcion ?? '').trim();
     if (ahora !== antes) body.descripcion = (!ahora || ahora === original) ? null : ahora;
+    // Código del POS de un artículo creado en Lazarillo: vincula sus ventas (Diego 19/11/2026).
+    const codigoPos = String(datos.codigoPos ?? '').trim();
+    if (idNum < 0 && codigoPos) body.codigoExterno = codigoPos;
+    let respuesta = null;
     // httpBiz ya antepone /businesses/:id — antes se mandaba de nuevo acá
     // (/businesses/147/businesses/147/articles/…) → 404 y no guardaba nada,
     // sin avisar. Si falla, el modal queda abierto y se avisa.
     try {
-      await httpBiz(`/articles/${idNum}`, {
+      respuesta = await httpBiz(`/articles/${idNum}`, {
         method: 'PATCH',
         body,
       }, activeBizId);
@@ -1988,7 +1992,11 @@ export default function TablaArticulos({
     }
 
     setEditandoArticuloId(null);
-    openSnack?.('Artículo actualizado', 'success');
+    const v = respuesta?.vinculo;
+    openSnack?.(v?.vinculado
+      ? `Vinculado con el artículo ${v.posId} del POS: sus ventas ya cuentan`
+      : v ? `Código ${v.codigo} guardado: se vincula cuando ese artículo llegue del POS`
+        : 'Artículo actualizado', 'success');
     refetchLocal();
   }, [activeBizId, agrupacionActualDeArticulo, refetchLocal, openSnack, todosParaEditModal]);
 
@@ -3113,6 +3121,7 @@ export default function TablaArticulos({
           agrupaciones={agrupaciones}
           rubros={rubrosParaEditModal}
           listas={listasParaEditModal}
+          precioManualDe={(artId) => getPrecioManualArticulo({ id: artId })}
           onClose={() => setEditandoArticuloId(null)}
           onNavegar={(id) => setEditandoArticuloId(id)}
           onGuardar={guardarEdicionArticulo}
