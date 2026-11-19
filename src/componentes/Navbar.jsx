@@ -238,7 +238,6 @@ export default function Navbar() {
       window.removeEventListener('business:auto-sync-done', onDone);
     };
   }, []);
-
   const logout = () => {
     const uid = getUser()?.id || null;
     localStorage.removeItem('token');
@@ -289,6 +288,16 @@ export default function Navbar() {
                 // Pago) | CONECTÁ TU BANCO (las tarjetas de bancos: listos y próximamente).
                 // Administración › Clientes (14/11): sin botonera propia todavía.
                 if (path.startsWith('/clientes')) return null;
+                // Administración › Conciliación (Diego 19/11/2026): CLIENTES abre el modal del cliente sin cliente
+                // elegido (como PROVEEDORES en el Panel de gestión).
+                if (path.startsWith('/conciliacion')) {
+                  return (
+                    <Button color="inherit" sx={{ color: 'inherit', position: 'relative' }}
+                      onClick={() => navigate('/conciliacion?clientes=1')}>
+                      Clientes
+                    </Button>
+                  );
+                }
                 if (path.startsWith('/movimientos-bancarios')) {
                   const enBancos = mpConectado !== true || new URLSearchParams(location.search).get('vista') === 'bancos';
                   return (
@@ -566,6 +575,9 @@ export default function Navbar() {
                     puedeVer('conceptos') && <MenuItem key="g-conc" component={NavLink} to="/gestion/conceptos" onClick={() => setNavEl(null)}>Conceptos de caja</MenuItem>,
                     puedeVer('recetas') && <MenuItem key="g-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>Insumos</MenuItem>,
                     puedeVer('carga') && <MenuItem key="g-prov" onClick={() => { setNavEl(null); navigate('/gestion?proveedores=1'); }}>Proveedores</MenuItem>,
+                  ] : null}
+                  {!enAlta && !isAppAdmin && location.pathname.startsWith('/conciliacion') ? [
+                    <MenuItem key="conc-cli" onClick={() => { setNavEl(null); navigate('/conciliacion?clientes=1'); }}>Clientes</MenuItem>,
                   ] : null}
                   {!enAlta && !isAppAdmin && location.pathname.startsWith('/movimientos-bancarios') ? [
                     mpConectado === true && <MenuItem key="mb-mp" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios'); }}>Mercado Pago</MenuItem>,
