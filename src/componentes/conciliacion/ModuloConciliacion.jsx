@@ -298,6 +298,7 @@ export default function ModuloConciliacion({
     if (months.length && !mesActivo && !desde) selectMonth(months[months.length - 1]); // si había un período recordado, se respeta
      
   }, [months.length]);
+
   function lastDayOfMonth(ym) { const [y, m] = ym.split("-").map(Number); return new Date(y, m, 0).getDate(); }
   function selectMonth(ym) {
     setMesActivo(ym);
@@ -616,6 +617,7 @@ export default function ModuloConciliacion({
       if (siguiente) setDayCenter(siguiente);
     }
   }, [sugerencias]);
+
   // aplicar una sugerencia = conciliar ese par como manual
   function aplicarSugerencia(s) {
     if (!result) return;
