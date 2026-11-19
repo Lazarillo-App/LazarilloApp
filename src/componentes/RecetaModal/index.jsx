@@ -85,6 +85,8 @@ import { marcarARevision } from '@/servicios/apiRecetaProposals';
 import { showAlert } from '@/servicios/appAlert';
 import SelectorRevisor from '../SelectorRevisor';
 import { downwardMenuProps } from '@/utils/menuProps';
+import EditarItemModal from '@/componentes/EditarItemModal';
+import { showConfirm } from '@/servicios/appConfirm';
 
 /* ════════════════════════════════════════
    MODAL PRINCIPAL
@@ -104,6 +106,10 @@ export default function RecetaModal({
   canNavigate = { prev: false, next: false },
   // ⓘ del encabezado: abre la ficha del artículo («Editar artículo») encima del modal (Diego 12/11/2026).
   onVerFicha = null,
+  // Pestaña FICHA del artículo (Diego 19/11/2026, igual que en insumos): las props de
+  // EditarItemModal (items, todos, rubros, listas, agrupaciones, onGuardar, onBorrar…).
+  // Sin esto el artículo no tiene pestañas y la ⓘ abre la ficha aparte, como antes.
+  fichaArticulo = null,
   // "Top por gasto" dentro de la pestaña Compras (solo modoInsumo): saltar a
   // otro insumo sin cerrar el modal. Recibe la fila del ranking {id, nombre, unidad_med}.
   onSaltarAInsumo = null,
@@ -137,6 +143,20 @@ export default function RecetaModal({
   const { allBusinesses } = useOrganization() || {};
   const [receta, setReceta] = useState(null);
   const [tab, setTab] = useState('receta');
+  // Pestañas del artículo: 'receta' | 'ficha'. Se abre en la que pidió la tabla (código → ficha,
+  // nombre → receta) y se mantiene al pasar con ‹ › a otro artículo.
+  const [tabArt, setTabArt] = useState(articulo?.__tab || 'receta');
+  useEffect(() => { if (articulo?.__tab) setTabArt(articulo.__tab); }, [articulo?.id, articulo?.__tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  const conPestanasArt = !modoInsumo && !!fichaArticulo && !modoPromoNueva && articulo?.id != null;
+  const verFicha = conPestanasArt && tabArt === 'ficha';
+  const fichaSucioRef = useRef(false);
+  const onFichaSucio = useCallback((v) => { fichaSucioRef.current = v; }, []);
+  const puedeDejarFicha = useCallback(async () => {
+    if (!verFicha || !fichaSucioRef.current) return true;
+    const ok = await showConfirm('Tenés cambios sin guardar en la ficha. ¿Descartarlos y continuar?', { danger: true, confirmText: 'Descartar' });
+    if (ok) fichaSucioRef.current = false;
+    return ok;
+  }, [verFicha]);
   // Foto en el header (propuesta 11/11/2026): artículo/promo siempre; insumo solo en su pestaña Receta.
   const [fotoChica, setFotoChica] = useState(false); // 'merma' | 'receta' | 'compras' | 'equivalencias' — solo aplica si modoInsumo
   // Selector previo: null = mostrar selector (solo en modoInsumo), true = ya eligió, mostrar modal
@@ -2180,6 +2200,7 @@ export default function RecetaModal({
 
   const handleClose = useCallback(async () => {
     if (saving || deleting) return;
+    if (!(await puedeDejarFicha())) return;
     // La bandera solo protege el autoguardado PUNTUAL disparado justo después de un
     // reemplazo de insumo (para no pisar con estado viejo lo que el reemplazo ya
     // escribió). Antes, al cerrar con la bandera prendida se salteaba el guardado
@@ -2202,7 +2223,7 @@ export default function RecetaModal({
       }
       onClose();
     }
-  }, [saving, deleting, items, notas, foto, hasDuplicates, handleSave]);
+  }, [saving, deleting, items, notas, foto, hasDuplicates, handleSave, puedeDejarFicha]);
 
   const handleCancel = useCallback(() => {
     if (saving || deleting) return;
@@ -2469,7 +2490,7 @@ export default function RecetaModal({
           <Box sx={{
             px: 3, py: 1.5,
             // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
-            ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
+            ...(fotoEnHeader ? { pl: verFicha ? 3 : '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
             // zIndex 4: por encima del encabezado fijo de las tablas del cuerpo (z 2–3). Con 2, el
             // desplegable del ranking de compras quedaba tapado por la cabecera de la tabla (FALLA 12/11).
             position: 'relative', zIndex: 4,
@@ -2479,6 +2500,8 @@ export default function RecetaModal({
             // iconos) aunque el ancho se agote y space-between no tenga más
             // espacio sobrante para repartir — antes quedaban pegados.
             gap: 2,
+            // Celular: las pestañas FICHA / RECETA bajan a su propio renglón (antes se salían de la pantalla).
+            ...(conPestanasArt ? { flexWrap: { xs: 'wrap', md: 'nowrap' }, rowGap: 1 } : {}),
             flexShrink: 0,
           }}>
             <Stack direction="row" alignItems="flex-start" spacing={1.5}>
@@ -2486,16 +2509,16 @@ export default function RecetaModal({
               {onNavigate && !fotoEnHeader && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3 }}
                   disabled={!canNavigate.prev}
-                  onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
+                  onClick={async () => { if (!(await puedeDejarFicha())) return; await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
                   <KeyboardArrowLeftIcon />
                 </IconButton>
               )}
 
               {fotoEnHeader ? (
-                <Box sx={{ minWidth: modoInsumo ? 150 : 260, flex: 1 }}>
+                <Box sx={{ minWidth: { xs: 0, sm: modoInsumo ? 150 : 260 }, flex: 1 }}>
                   <Stack direction="row" alignItems="center" spacing={0.5} sx={{ lineHeight: 1.2 }}>
                     <Typography variant="caption" sx={{ opacity: 0.85, fontWeight: 700, letterSpacing: 0.6, lineHeight: 1.2 }}>
-                      {modoInsumo ? 'INSUMO' : promoMode ? 'PROMOCIÓN' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
+                      {modoInsumo ? 'INSUMO' : promoMode ? 'PROMOCIÓN' : conPestanasArt ? 'ARTÍCULO' : 'RECETA'}{articulo?.id ? ` · #${articulo.id}` : ''}
                     </Typography>
                     {/* ⓘ Ficha del artículo (Diego 12/11/2026): cómo se llama en MaxiRest, rubro y precio; al tocarla abre la ficha. */}
                     {!modoInsumo && articulo?.id && (
@@ -2507,9 +2530,9 @@ export default function RecetaModal({
                           </>) : <div>Artículo creado en Lazarillo (no está en MaxiRest)</div>}
                           {fichaArt && (fichaArt.rubro || fichaArt.subrubro) && <div>Rubro: <b>{[fichaArt.rubro, fichaArt.subrubro].filter(Boolean).join(' › ')}</b></div>}
                           {fichaArt && fichaArt.precio != null && <div>Precio de lista: <b>{fmtPrecio(fichaArt.precio)}</b></div>}
-                          {onVerFicha && <div style={{ marginTop: 4, opacity: 0.8 }}>Tocá para abrir la ficha</div>}
+                          {(onVerFicha || conPestanasArt) && <div style={{ marginTop: 4, opacity: 0.8 }}>Tocá para abrir la ficha</div>}
                         </Box>}>
-                        <IconButton size="small" onClick={onVerFicha ? () => onVerFicha(articulo.id) : undefined}
+                        <IconButton size="small" onClick={conPestanasArt ? async () => { await autoSave(); setTabArt('ficha'); } : onVerFicha ? () => onVerFicha(articulo.id) : undefined}
                           sx={{ p: '1px', color: 'inherit', opacity: 0.85, cursor: onVerFicha ? 'pointer' : 'default', '&:hover': { opacity: 1 } }}>
                           <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                         </IconButton>
@@ -2522,7 +2545,7 @@ export default function RecetaModal({
                   {onNavigate && (
                     <IconButton size="small" sx={{ p: 0.25, color: 'inherit', opacity: canNavigate.prev ? 1 : 0.3, flexShrink: 0 }}
                       disabled={!canNavigate.prev}
-                      onClick={async () => { await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
+                      onClick={async () => { if (!(await puedeDejarFicha())) return; await autoSave(); onNavigate('prev', modoInsumo ? tab : undefined); }}>
                       <KeyboardArrowLeftIcon />
                     </IconButton>
                   )}
@@ -2544,7 +2567,7 @@ export default function RecetaModal({
                   {onNavigate && (
                     <IconButton size="small" sx={{ p: 0.25, ml: 0.5, color: 'inherit', opacity: canNavigate.next ? 1 : 0.3, flexShrink: 0 }}
                       disabled={!canNavigate.next}
-                      onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
+                      onClick={async () => { if (!(await puedeDejarFicha())) return; await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
                       <KeyboardArrowRightIcon />
                     </IconButton>
                   )}
@@ -2572,11 +2595,33 @@ export default function RecetaModal({
               {onNavigate && !fotoEnHeader && (
                 <IconButton size="small" sx={{ p: 0.25, mt: '-2px', color: 'inherit', opacity: canNavigate.next ? 1 : 0.3 }}
                   disabled={!canNavigate.next}
-                  onClick={async () => { await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
+                  onClick={async () => { if (!(await puedeDejarFicha())) return; await autoSave(); onNavigate('next', modoInsumo ? tab : undefined); }}>
                   <KeyboardArrowRightIcon />
                 </IconButton>
               )}
             </Stack>
+            {conPestanasArt && (
+              <Stack direction="row" spacing={0.5} sx={{ alignSelf: 'flex-end', order: { xs: 3, md: 0 }, width: { xs: '100%', md: 'auto' }, justifyContent: 'center', mb: { xs: -1.5, md: 0 } }}>
+                {[{ id: 'ficha', label: 'FICHA' }, { id: 'receta', label: 'RECETA' }].map(t => (
+                  <Box key={t.id}
+                    onClick={async () => {
+                      if (t.id === tabArt) return;
+                      if (t.id === 'ficha') await autoSave();
+                      else if (!(await puedeDejarFicha())) return;
+                      setTabArt(t.id);
+                    }}
+                    sx={{
+                      px: 1.75, py: 0.9, borderRadius: '8px 8px 0 0',
+                      bgcolor: tabArt === t.id ? 'background.paper' : 'rgba(255,255,255,0.25)',
+                      color: tabArt === t.id ? PRIMARY : ON_PRIMARY,
+                      fontWeight: 800, fontSize: '0.72rem', letterSpacing: 0.4,
+                      cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
+                    }}>
+                    {t.label}
+                  </Box>
+                ))}
+              </Stack>
+            )}
             {modoInsumo && entradaElegida && (
               <Stack direction="row" alignItems="center" spacing={1} sx={{ alignSelf: 'flex-end' }}>
                 {tab === 'compras' && onSaltarAInsumo && veMontos && (
@@ -2617,7 +2662,7 @@ export default function RecetaModal({
             )}
             {/* Todo a 32 px: Marcar medía 29 y los íconos 30/34 (revisión de alineación 11/11/2026) */}
             <Stack direction="row" alignItems="center" spacing={0.5} sx={{ '& .MuiIconButton-root': { width: 32, height: 32 } }}>
-              {!isStaff && !promoMode && (
+              {!isStaff && !promoMode && !verFicha && (
                 <Button size="small" data-tour="rec-marcar" onClick={() => (marcarModo ? salirMarcar() : setMarcarModo(true))}
                   sx={{ color: 'inherit', textTransform: 'none', fontWeight: 700, border: '1px solid rgba(255,255,255,0.5)', minWidth: 0, px: 1, py: 0, height: 32 }}>
                   {marcarModo ? 'Listo' : 'Marcar'}
@@ -2671,7 +2716,7 @@ export default function RecetaModal({
           </Box>
 
           {/* Foto que arranca en el header (artículo/promo, y la receta del insumo); al bajar la lista se achica */}
-          {fotoEnHeader && entradaElegida && (<>
+          {fotoEnHeader && entradaElegida && !verFicha && (<>
                     {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
                     <Box
                       ref={recFotoRef}
@@ -2717,7 +2762,14 @@ export default function RecetaModal({
           {/* minHeight 0: el cuerpo es lo que cede si no entra todo, así el pie y los botones
               siempre quedan a la vista. El alto mínimo de antes (cuerpo 60vh, que incluía el pie)
               ahora lo pone el Paper, para que el modal no cambie de alto entre recetas. */}
-          <Box ref={bodyRef} onScroll={(e) => { const c = e.currentTarget.scrollTop > 24; if (c !== fotoChica) setFotoChica(c); }} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0 }}>
+          {verFicha && (
+            <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <EditarItemModal open embebido tipo="articulo" itemId={articulo.id}
+                {...fichaArticulo} onSucio={onFichaSucio} />
+            </Box>
+          )}
+          {/* La receta queda montada (oculta) mientras se ve la ficha: al volver está igual. */}
+          <Box ref={bodyRef} onScroll={(e) => { const c = e.currentTarget.scrollTop > 24; if (c !== fotoChica) setFotoChica(c); }} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0, display: verFicha ? 'none' : undefined }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
             ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
@@ -3350,7 +3402,7 @@ export default function RecetaModal({
 
           {/* Pie de costos fijo (no scrollea con los ingredientes): solo donde antes se veía, la receta;
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
-          {pieVisible && (
+          {pieVisible && !verFicha && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
             <PieCostos
               modoInsumo={modoInsumo}
@@ -3416,7 +3468,7 @@ export default function RecetaModal({
             </Box>
           )}
           {/* ── FOOTER ── (en artículos los botones van en el pie de costos) */}
-          {!accionesEnPie && <Box sx={{
+          {!accionesEnPie && !verFicha && <Box sx={{
             px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             flexShrink: 0, bgcolor: 'background.paper',
