@@ -1306,6 +1306,21 @@ export default function RecetaModal({
     return () => window.removeEventListener('receta-elaborado:costo-changed', onCostoChanged);
   }, [refrescarInsumoPuntual]);
 
+  // Recargo a todo un proveedor (Diego 19/11/2026): de los insumos que cambiaron, se refrescan solo
+  // los que usa esta receta (los demás no se ven acá; el listado se actualiza al reabrir).
+  useEffect(() => {
+    const onLote = (e) => {
+      const ids = new Set((e?.detail?.insumoIds || []).map(String));
+      if (!ids.size) return;
+      setItems(prev => {
+        prev.forEach(it => { if (it.supplyId != null && ids.has(String(it.supplyId))) refrescarInsumoPuntual(it.supplyId); });
+        return prev;
+      });
+    };
+    window.addEventListener('insumos:costos-lote', onLote);
+    return () => window.removeEventListener('insumos:costos-lote', onLote);
+  }, [refrescarInsumoPuntual]);
+
   /* ── Enriquecer items con data fresca de insumos ── */
   useEffect(() => {
     if (!insumos.length) return;
