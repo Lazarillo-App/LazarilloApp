@@ -897,6 +897,9 @@ function ModalNuevaCarga(props) {
   // blue): se carga en US$ con el dólar de referencia (sugerido del día, editable) y el importe en pesos
   // sale solo. { monto, cotizacion, tipo, editada, ref: { fecha, venta } | null, buscando }.
   const [usdV, setUsdV] = useState(null);
+  // Proveedor del gasto vario: desde la vista Proveedor del Panel viene el de esa fila (Diego 20/11/2026).
+  const [provV, setProvV] = useState(ctx.proveedorVario ?? null);
+  const nombreProvV = provV != null ? ((proveedores.find((p) => p.id === provV) || {}).nombre || "el proveedor") : null;
   useEffect(() => {
     if (!usdV || usdV.editada) return undefined;
     let vivo = true;
@@ -1153,7 +1156,7 @@ function ModalNuevaCarga(props) {
     const payload = {
       reparto: repartoV && !igualReglaV ? repartoV.filter((x) => parseFloat(x.pct) > 0).map((x) => ({ puntoDeVentaId: idPdv(x.pdv), pct: parseFloat(x.pct) })) : null,
       lugarId: idPdv(pdvV), conceptoCodigo: codConcepto(conceptoV), detalle: detalle.trim() || null,
-      importe: Math.round(parseImp(importeV) * 100) / 100, fecha: fAct, forzar: !!forzar, moneda: monedaV,
+      importe: Math.round(parseImp(importeV) * 100) / 100, fecha: fAct, forzar: !!forzar, moneda: monedaV, proveedorId: provV,
       pago: pagarV ? { fecha: fechaPago, medio: medioPago, referencia: pidePagoId && refPago.trim() ? refPago.trim() : null, pdvPagaId: idPdv(pagadoPor) } : null,
     };
     setGuardando(true);
@@ -1933,6 +1936,16 @@ function ModalNuevaCarga(props) {
               <Combo opciones={conceptosDe(rubroV)} fuera={rubroV ? conceptosDe(null) : undefined} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
             <div><span style={lab}>Rubro</span>
               <Combo opciones={rubros} valor={rubroV} placeholder="Buscar rubro..." onElegir={(r) => { setRubroV(r); if (rubroDe(conceptoV) !== r) setConceptoV(""); }} /></div>
+            {provV != null && (
+              <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                <span style={{ ...lab, marginBottom: 0 }}>Proveedor</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 14, background: "#f3fafd", border: "1px solid #bfe0f0", color: "#2a6f8f", fontWeight: 600 }}>
+                  {nombreProvV}
+                  <span role="button" title="Cargarlo a nombre de Gastos Varios" onClick={() => setProvV(null)} style={{ cursor: "pointer", color: C.gris, fontWeight: 400 }}>×</span>
+                </span>
+                <span style={{ fontSize: 11.5, color: C.gris }}>queda en su fila y en su cuenta corriente</span>
+              </div>
+            )}
             <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Detalle</span>
               <input style={inp} value={detalle} maxLength={200} onChange={(e) => setDetalle(e.target.value)} placeholder="Ej: ferretería, flete, devolución seña cancha" /></div>
             <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", alignItems: "center" }}>

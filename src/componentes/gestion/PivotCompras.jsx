@@ -249,15 +249,17 @@ export default function PivotCompras({
     );
   };
 
-  // Mes vacío de un concepto: carga un Gasto Vario ya armado (no en Financiera, Proveedor ni Insumos).
-  const cargaEnCelda = agrupacion === 'concepto' && modo !== 'financiera' && sucursalCaja !== undefined && !!pedirCarga;
+  // Mes vacío de un concepto: carga un Gasto Vario ya armado (no en Financiera ni Insumos). En la vista
+  // Proveedor también (Diego 20/11/2026: el alquiler), a nombre de ese proveedor.
+  const cargaEnCelda = (agrupacion === 'concepto' || agrupacion === 'proveedor') && modo !== 'financiera' && sucursalCaja !== undefined && !!pedirCarga;
   const celdaConcepto = (c, mes, filtro) => {
     if (hasValue(c.values[mes])) return { props: { onClick: () => abrirDetalle({ mes, ...filtro }) }, sx: sxClic };
     if (!cargaEnCelda) return { props: {}, sx: {} };
     return {
       props: {
         title: `Cargar ${c.nombre} en este mes como gasto vario`,
-        onClick: () => pedirCarga({ anio: year, mes, conceptoCodigo: c.conceptoCodigo, conceptoNombre: c.nombre, prev: mesAnteriorConValor(c.values, mes) }),
+        onClick: () => pedirCarga({ anio: year, mes, conceptoCodigo: c.conceptoCodigo, conceptoNombre: c.nombre, prev: mesAnteriorConValor(c.values, mes),
+          ...(agrupacion === 'proveedor' && filtro?.proveedorId != null ? { proveedorId: filtro.proveedorId } : {}) }),
       },
       sx: { cursor: 'copy', '&:hover': { bgcolor: '#f0f9ff' } },
     };

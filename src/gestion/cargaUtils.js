@@ -73,6 +73,8 @@ export function ctxDesdeCelda(p, fechaPagoPrev) {
     importe: p.prev?.importe ?? 0,
     importeAnterior: p.prev ? `${p.anio}-${p2(p.prev.mes)}` : null,
     fechaPago: p.prev ? correrFecha(fechaPagoPrev, p.mes - p.prev.mes) : null,
+    // Desde la vista Proveedor: el gasto va a nombre de ese proveedor (no de «Gastos Varios»).
+    ...(p.proveedorId != null ? { proveedorVario: p.proveedorId } : {}),
   };
 }
 
