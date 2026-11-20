@@ -1357,6 +1357,7 @@ export default function RecetaModal({
     new Map(items.map((it, idx) => [String(it.supplyId), idx]).filter(([id]) => id !== 'undefined' && id !== 'null')),
     [items]
   );
+
   // El mismo insumo puede ir más de una vez (Diego 12/11/2026: 20 g con mamadera para decorar y 50 g
   // en un dip aparte); cada renglón con su cantidad y su observación. Ya no se bloquea el guardado.
   const hasDuplicates = false;
@@ -1806,6 +1807,7 @@ export default function RecetaModal({
       }
       return;
     }
+
     // ── Editar una promo YA EXISTENTE (agregar/quitar/ajustar componentes) ──
     // Antes esta rama no existía: esPromo nunca se chequeaba acá (solo en
     // handleDelete), así que guardar una promo ya creada caía en el guardado
