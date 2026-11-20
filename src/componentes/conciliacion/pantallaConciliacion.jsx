@@ -169,8 +169,8 @@ export function renderCuerpo({ destinos, mandarA, cobrosCcPorDia, diaFiltro, set
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "-6px 0 14px", padding: "8px 14px", background: C.white, border: "1px solid " + C.line2, borderRadius: 10 }}>
                 <span style={{ fontSize: 12.5, color: C.txt2, fontWeight: 600 }}>Mandar lo tildado a otro PDV:</span>
                 {destinos.map((d) => (
-                  <button key={d.suc} type="button" onClick={() => mandarA(d.suc)} title={"Pasa estos registros a la conciliación de " + d.nombre}
-                    style={{ minHeight: 36, padding: "0 14px", borderRadius: 18, border: "1px solid " + C.celeste, background: "#5BC2EA14", color: C.celesteDeep, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{"→ "}{d.nombre}</button>
+                  <button key={d.bid + ":" + d.suc} type="button" onClick={() => mandarA(d)} title={"Pasa estos registros a la conciliación de " + d.label}
+                    style={{ minHeight: 36, padding: "0 14px", borderRadius: 18, border: "1px solid " + C.celeste, background: "#5BC2EA14", color: C.celesteDeep, fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{"→ "}{d.label}</button>
                 ))}
               </div>
             )}
