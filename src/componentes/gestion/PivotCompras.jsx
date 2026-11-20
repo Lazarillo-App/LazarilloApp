@@ -16,6 +16,7 @@ import LayersIcon from '@mui/icons-material/Layers';
 import {
   sortPivotRows, flattenRows, sortPivotRowsPorProveedor, flattenRowsPorProveedor, TANDA_PIVOT, hasValue,
   separarSinMovimiento,
+  plegarConceptosSinMovimiento,
 } from '@/gestion/pivotUtils';
 import { filtroFilaProveedor } from '@/gestion/detalleFilter';
 import { usePanelGestion } from '@/gestion/panelContext';
@@ -384,6 +385,8 @@ export default function PivotCompras({
             <TableCell colSpan={colsDespues} />
           </TableRow>
         );
+      case 'conceptosSinMov':
+        return <FilaSinMovimiento key={d.id} n={d.n} abierto={d.abierto} onToggle={() => toggle(d.id)} colSpan={colSpan} anio={year} que="concepto" indent={d.indent} />;
       default:
         return null;
     }
@@ -436,10 +439,11 @@ export default function PivotCompras({
           {(() => {
             // «Desde el banco» (19/11/2026): debajo de Sin rubro (o arriba de todo si no hay), informativo.
             const banco = sinTotalesRubro ? null : <FilasDesdeElBanco key="__banco" months={months} sinColTotal={sinColTotal} />;
-            const iSin = filas.findIndex((f) => (f.type === 'rubro' || f.type === 'rubroTop') && f.data.rubroCodigo === '__sin_rubro');
-            const corte = iSin < 0 ? 0 : (() => { const j = filas.findIndex((f, k) => k > iSin && (f.type === 'rubro' || f.type === 'rubroTop')); return j < 0 ? filas.length : j; })();
-            const { con, sin, n } = separarSinMovimiento(filas);
-            const corteCon = corte - filas.slice(0, corte).filter((f) => !con.includes(f)).length;
+            const plegadas = plegarConceptosSinMovimiento(filas, expanded);
+            const iSin = plegadas.findIndex((f) => (f.type === 'rubro' || f.type === 'rubroTop') && f.data.rubroCodigo === '__sin_rubro');
+            const corte = iSin < 0 ? 0 : (() => { const j = plegadas.findIndex((f, k) => k > iSin && (f.type === 'rubro' || f.type === 'rubroTop')); return j < 0 ? plegadas.length : j; })();
+            const { con, sin, n } = separarSinMovimiento(plegadas);
+            const corteCon = corte - plegadas.slice(0, corte).filter((f) => !con.includes(f)).length;
             return [...con.slice(0, corteCon).map(renderFila), banco, ...con.slice(corteCon).map(renderFila),
               <FilaSinMovimiento key="__sinmov" n={n} abierto={verSinMov} onToggle={() => setVerSinMov((v) => !v)} colSpan={colSpan} anio={year} />,
               ...(verSinMov ? sin.map(renderFila) : [])];
