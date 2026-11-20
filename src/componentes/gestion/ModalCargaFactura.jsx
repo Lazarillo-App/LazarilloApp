@@ -429,6 +429,7 @@ export function edeDesdeFactura(rowId, f, { maestros, pdvsRef }) {
     fecha: f.fecha,
     periodo: f.periodo || null,
     obs: f.observacion || "",
+    moneda: f.moneda && typeof f.moneda === "object" ? f.moneda : null,
     pdv: nomPdv((f.registros[0] || {}).puntoDeVentaId),
     impInt: f.impIntGeneral || 0,
     percepciones: (f.percepciones || []).map((x) => ({ tipo: x.tipo, importe: fmtNum(x.importe) })),
@@ -594,6 +595,87 @@ function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, periodo, onUsar
 // vista: "nueva" (alta) | "ver" (solo lectura, con Editar / Eliminar) | "editar".
 // embebido: sin overlay propio (va adentro de un Dialog, p.ej. desde Detalle de compras).
 /** @param {any} props */
+// ── Gasto en dólares que se paga en pesos (Diego 19/11/2026, el alquiler en dólares billete comprados al
+// blue). Lo mismo en Gastos Varios y en Factura (Diego 20/11/2026): se carga en US$ con el dólar de
+// referencia del día (sugerido, editable) y los pesos salen solos. usd = { monto, cotizacion, tipo,
+// editada, ref, buscando } | null.
+// conservar: al editar una carga ya guardada se respeta su dólar (no se vuelve a buscar el del día).
+const nuevoUsd = (m, conservar = false) => {
+  const fijo = !!(m && m.cotizacion && (conservar || m.tipo === "manual"));
+  return { monto: m && m.monto ? fmtNum(m.monto) : "", cotizacion: fijo ? fmtNum(m.cotizacion) : "",
+    tipo: m && m.tipo && m.tipo !== "manual" ? m.tipo : "blue", editada: fijo, ref: null, buscando: false };
+};
+function useDolar(fechaISO, setPesos, inicial = null) {
+  const [usd, setUsd] = useState(inicial ? nuevoUsd(inicial, true) : null);
+  useEffect(() => {
+    if (!usd || usd.editada) return undefined;
+    let vivo = true;
+    setUsd((u) => (u ? { ...u, buscando: true } : u));
+    gestionFetch(`/api/cotizacion?tipo=${usd.tipo}&fecha=${fechaISO || ""}`).then((r) => r.json())
+      .then((d) => { if (vivo) setUsd((u) => (u && !u.editada ? { ...u, buscando: false, ref: d && d.disponible ? d : null, cotizacion: d && d.disponible ? fmtNum(d.venta) : u.cotizacion } : u)); })
+      .catch(() => vivo && setUsd((u) => (u ? { ...u, buscando: false, ref: null } : u)));
+    return () => { vivo = false; };
+  }, [usd && usd.tipo, usd && usd.editada, !!usd, fechaISO]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!usd) return;
+    const m = parseImp(usd.monto), c = parseImp(usd.cotizacion);
+    setPesos(m > 0 && c > 0 ? fmtNum(Math.round(m * c * 100) / 100) : "");
+  }, [usd && usd.monto, usd && usd.cotizacion]); // eslint-disable-line react-hooks/exhaustive-deps
+  const moneda = usd && parseImp(usd.monto) > 0 && parseImp(usd.cotizacion) > 0
+    ? { codigo: "USD", monto: parseImp(usd.monto), cotizacion: parseImp(usd.cotizacion), tipo: usd.editada ? "manual" : usd.tipo } : null;
+  return { usd, setUsd, moneda, pasarAUsd: (m) => setUsd(nuevoUsd(m)) };
+}
+// «US$ 2.500 a $ 1.480 (blue)» al final de la observación (se cambia, no se repite, al editar).
+const NOM_DOLAR = { blue: "blue", oficial: "oficial", mep: "MEP", manual: "a mano" };
+const RE_TXT_USD = /\s*·?\s*US\$ [\d.,]+ a \$ [\d.,]+ \([^)]*\)\s*$/;
+const obsConMoneda = (obs, m) => [String(obs || "").replace(RE_TXT_USD, "").trim(), m ? `US$ ${fmtNum(m.monto)} a $ ${fmtNum(m.cotizacion)} (${NOM_DOLAR[m.tipo]})` : null].filter(Boolean).join(" · ");
+function ToggleMoneda({ enUsd, onCambio }) {
+  return (
+    <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", textTransform: "none", letterSpacing: 0, lineHeight: "14px", margin: "-2px 0" }}>
+      {[["$", false], ["US$", true]].map(([t, on]) => (
+        <span key={t} role="button" onClick={() => { if (on !== enUsd) onCambio(on); }}
+          style={{ padding: "1px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: enUsd === on ? "#1f2937" : "#fff", color: enUsd === on ? "#fff" : C.gris }}>{t}</span>
+      ))}
+    </span>
+  );
+}
+function CampoUsd({ usd, setUsd, onTocar, onBlur, autoFocus = true }) {
+  return (
+    <div style={{ ...inp, display: "flex", alignItems: "center", gap: 6, padding: "0 10px" }}>
+      <span style={{ color: C.gris, fontWeight: 700, fontSize: 13 }}>US$</span>
+      <input autoFocus={autoFocus} value={usd.monto} placeholder="0,00" onFocus={(e) => e.target.select()}
+        onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setUsd((u) => ({ ...u, monto: v })); if (onTocar) onTocar(); }} onBlur={onBlur}
+        style={{ border: 0, outline: 0, flex: 1, minWidth: 0, textAlign: "right", fontWeight: 700, fontSize: 13.5, background: "transparent" }} />
+    </div>
+  );
+}
+function FranjaDolar({ usd, setUsd, pesos }) {
+  const ref = usd.ref;
+  const dia = ref ? `${ref.fecha.slice(8, 10)}/${ref.fecha.slice(5, 7)}` : "";
+  return (
+    <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid #bfe0f0", background: "#f3fafd", borderRadius: 9, padding: "8px 10px" }}>
+      <span style={{ ...lab, marginBottom: 0 }}>Dólar</span>
+      <select style={{ ...sel, width: 120, height: 34 }} value={usd.tipo} onChange={(e) => setUsd((u) => ({ ...u, tipo: e.target.value, editada: false }))}>
+        <option value="blue">Blue</option><option value="oficial">Oficial BNA</option><option value="mep">MEP</option>
+      </select>
+      <div style={{ ...inp, width: 130, height: 34, display: "flex", alignItems: "center", gap: 4, padding: "0 8px" }}>
+        <span style={{ color: C.gris, fontSize: 13 }}>$</span>
+        <input value={usd.cotizacion} placeholder={usd.buscando ? "buscando…" : "0,00"} onFocus={(e) => e.target.select()}
+          onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setUsd((u) => ({ ...u, cotizacion: v, editada: true })); }}
+          style={{ border: 0, outline: 0, flex: 1, minWidth: 0, textAlign: "right", fontWeight: 700, fontSize: 13.5, background: "transparent" }} />
+      </div>
+      <span style={{ fontSize: 12, color: C.gris, flex: "1 1 160px" }}>
+        {usd.editada
+          ? <>el que pagaste{ref ? <> · {ref.nombre} venta del {dia}: <span role="button" onClick={() => setUsd((u) => ({ ...u, editada: false }))} style={{ color: C.cel, fontWeight: 700, cursor: "pointer" }}>$ {fmtNum(ref.venta)}</span></> : null}</>
+          : usd.buscando ? "buscando la cotización…"
+          : ref ? <>{ref.nombre} venta del {dia} · si pagaste otro, cambialo</>
+          : "no se encontró la cotización: ponela a mano"}
+      </span>
+      <span style={{ fontSize: 13.5, whiteSpace: "nowrap" }}>= <b>{pesos ? `$ ${pesos}` : "$ —"}</b></span>
+    </div>
+  );
+}
+
 function ModalNuevaCarga(props) {
   const { ctx = {}, maestros, pdvsRef, pdvActual, reglaDe, onCerrar, onGuardado,
     vista = "nueva", editRowId = null, editable = false, aviso = null, onEditar, onEliminado, onRepetir, embebido = false,
@@ -764,6 +846,8 @@ function ModalNuevaCarga(props) {
   const [obs, setObs] = useState(ede ? ede.obs || "" : "");
   // Total del comprobante, antes del desglose: al terminar, el desglose tiene que coincidir (Diego 05/11/2026).
   const [totalCtrl, setTotalCtrl] = useState("");
+  // Factura en dólares (Diego 20/11/2026): el total en US$ × dólar de referencia = total en pesos.
+  const { usd: usdF, setUsd: setUsdF, moneda: monedaF, pasarAUsd: pasarAUsdF } = useDolar(fecha, setTotalCtrl, ede && ede.moneda ? ede.moneda : null);
   // Descuento general de la factura: se reparte proporcional al neto de cada línea.
   const [descG, setDescG] = useState("");
   const [descGTipo, setDescGTipo] = useState("%");
@@ -780,7 +864,7 @@ function ModalNuevaCarga(props) {
     return r.alic != null ? r.alic : 21;
   };
   const abrirPrecarga = (ls, comp) => ls.map((l, ix) => ({ ...l, alic: ivaPrecarga(l, comp), editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
-  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas, rde.comp) : conceptoCtx ? [{ tipo: "concepto", item: conceptoCtx, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
+  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas, rde.comp) : conceptoCtx ? [{ tipo: "concepto", item: conceptoCtx, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }] : []);
   // Aviso de "un 0 de más" (Diego 05/11/2026). Se calla si la línea se aceptó con ese mismo
   // valor ("Está bien así").
   //  - Insumo: el unitario contra el último precio del maestro (por unidad base).
@@ -897,30 +981,11 @@ function ModalNuevaCarga(props) {
   const [rubroV, setRubroV] = useState(ctx.rubro || (concCtx && concCtx.rubro) || "");
   const [conceptoV, setConceptoV] = useState(ctx.concepto || (concCtx && concCtx.concepto) || "");
   const [importeV, setImporteV] = useState(ctx.importe > 0 ? fmtNum(ctx.importe) : "");
-  // Gasto en dólares que se paga en pesos (Diego 19/11/2026, el alquiler en dólares billete comprados al
-  // blue): se carga en US$ con el dólar de referencia (sugerido del día, editable) y el importe en pesos
-  // sale solo. { monto, cotizacion, tipo, editada, ref: { fecha, venta } | null, buscando }.
-  const [usdV, setUsdV] = useState(null);
-  // Proveedor del gasto vario: desde la vista Proveedor del Panel viene el de esa fila (Diego 20/11/2026).
+  // En dólares (Diego 19/11/2026): ver useDolar.
+  const { usd: usdV, setUsd: setUsdV, moneda: monedaV, pasarAUsd } = useDolar(fechaV, setImporteV);
+  // Proveedor del gasto vario (opcional, ctx.proveedorVario); con proveedor la celda abre Factura (Diego 20/11/2026).
   const [provV, setProvV] = useState(ctx.proveedorVario ?? null);
   const nombreProvV = provV != null ? ((proveedores.find((p) => p.id === provV) || {}).nombre || "el proveedor") : null;
-  useEffect(() => {
-    if (!usdV || usdV.editada) return undefined;
-    let vivo = true;
-    setUsdV((u) => (u ? { ...u, buscando: true } : u));
-    gestionFetch(`/api/cotizacion?tipo=${usdV.tipo}&fecha=${fechaV || ""}`).then((r) => r.json())
-      .then((d) => { if (vivo) setUsdV((u) => (u && !u.editada ? { ...u, buscando: false, ref: d && d.disponible ? d : null, cotizacion: d && d.disponible ? fmtNum(d.venta) : u.cotizacion } : u)); })
-      .catch(() => vivo && setUsdV((u) => (u ? { ...u, buscando: false, ref: null } : u)));
-    return () => { vivo = false; };
-  }, [usdV && usdV.tipo, usdV && usdV.editada, !!usdV, fechaV]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!usdV) return;
-    const m = parseImp(usdV.monto), c = parseImp(usdV.cotizacion);
-    setImporteV(m > 0 && c > 0 ? fmtNum(Math.round(m * c * 100) / 100) : "");
-  }, [usdV && usdV.monto, usdV && usdV.cotizacion]); // eslint-disable-line react-hooks/exhaustive-deps
-  const monedaV = usdV && parseImp(usdV.monto) > 0 && parseImp(usdV.cotizacion) > 0
-    ? { codigo: "USD", monto: parseImp(usdV.monto), cotizacion: parseImp(usdV.cotizacion), tipo: usdV.editada ? "manual" : usdV.tipo } : null;
-  const pasarAUsd = (m) => setUsdV({ monto: m && m.monto ? fmtNum(m.monto) : "", cotizacion: "", tipo: m && m.tipo && m.tipo !== "manual" ? m.tipo : "blue", editada: false, ref: null, buscando: false });
   useEffect(() => {
     const r = variosPdv ? reglaV(conceptoV) : null;
     setRepartoV(r ? r.map((x) => ({ ...x })) : undefined);
@@ -1070,6 +1135,8 @@ function ModalNuevaCarga(props) {
         if (!vivo || !d || !d.ultima) return;
         const e = edeDesdeFactura(d.ultima.rowId, d.ultima.factura, { maestros, pdvsRef });
         setUltFact({ ...e, importe: d.ultima.totalFilas });
+        // La última factura de este proveedor fue en US$: esta arranca en US$, con el dólar del día (Diego 20/11/2026).
+        if (e.moneda) setUsdF((u) => u || nuevoUsd({ tipo: e.moneda.tipo }));
       })
       .catch(() => {});
     return () => { vivo = false; };
@@ -1245,7 +1312,7 @@ function ModalNuevaCarga(props) {
     });
     const payload = {
       proveedorId: p ? p.id : null, tipo: tipoCpb, prefijo: pad(compPref, 4), numero: pad(compNum, 8), fecha: fAct, periodo: periodoF || periodoDe(fAct),
-      observacion: obs || null, registros,
+      observacion: obsConMoneda(obs, monedaF) || null, registros, moneda: monedaF,
       percepciones: percepciones.filter((x) => parseImp(x.importe) > 0).map((x) => ({ tipo: x.tipo, importe: parseImp(x.importe) })),
       impIntGeneral: impIntLineas > 0 ? 0 : parseImp(impIntG),
       // Pago en la misma transacción que la factura (sin importe: la salda entera).
@@ -1404,13 +1471,16 @@ function ModalNuevaCarga(props) {
               <div><span style={lab}>Fecha</span><FechaTriple inputRef={fechaRef} error={errFecha} iso={fecha}
                   onISO={(v) => { setFecha(v); setErrFecha(false); }} />
                 {errFecha && <div style={{ fontSize: 11, color: C.rojo, fontWeight: 700, marginTop: 3 }}>Falta una fecha válida.</div>}</div>
-              <div><span style={lab}>Total factura</span>
+              <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", alignItems: "center" }}>Total factura
+                  {!soloVer && <ToggleMoneda enUsd={!!usdF} onCambio={(on) => { if (on) pasarAUsdF(null); else setUsdF(null); setTotalCtrl(""); }} />}</span>
+                {usdF ? <CampoUsd usd={usdF} setUsd={setUsdF} autoFocus={false} /> : (
                 <input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={totalCtrl} placeholder="$ 0,00"
                   title="El total del comprobante (con IVA y percepciones). Al terminar el desglose tiene que coincidir."
-                  onFocus={(e) => e.target.select()} onChange={(e) => setTotalCtrl(fmtImp(e.target.value, e.nativeEvent))} /></div>
+                  onFocus={(e) => e.target.select()} onChange={(e) => setTotalCtrl(fmtImp(e.target.value, e.nativeEvent))} />)}</div>
               <div><span style={lab}>Observaciones</span>
                 <input style={inp} tabIndex={-1} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Opcional" /></div>
             </div>
+            {usdF && <FranjaDolar usd={usdF} setUsd={setUsdF} pesos={totalCtrl} />}
 
             {yaCargada && (
               <div style={{ border: "1.5px solid #f0c179", background: "#fdf8ef", borderRadius: 11, padding: "8px 12px", fontSize: 12.5, color: "#8a5a00" }}>
@@ -1955,21 +2025,9 @@ function ModalNuevaCarga(props) {
             <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span>Importe{importeRevisar && <span style={{ textTransform: "none", fontWeight: 700, letterSpacing: 0, color: "#b45309" }}> · el de {nombrePeriodo(ctx.importeAnterior)}, corregilo</span>}</span>
                 {/* $ / US$ (Diego 19/11/2026) */}
-                <span style={{ display: "inline-flex", border: `1px solid ${C.borde}`, borderRadius: 7, overflow: "hidden", textTransform: "none", letterSpacing: 0 }}>
-                  {[["$", false], ["US$", true]].map(([t, on]) => (
-                    <span key={t} role="button" onClick={() => { if (on && !usdV) { pasarAUsd(null); setImporteV(""); } if (!on && usdV) { setUsdV(null); setImporteV(""); } }}
-                      style={{ padding: "1px 9px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", background: !!usdV === on ? "#1f2937" : "#fff", color: !!usdV === on ? "#fff" : C.gris }}>{t}</span>
-                  ))}
-                </span>
+                <ToggleMoneda enUsd={!!usdV} onCambio={(on) => { if (on) pasarAUsd(null); else setUsdV(null); setImporteV(""); }} />
               </span>
-              {usdV ? (
-                <div style={{ ...inp, display: "flex", alignItems: "center", gap: 6, padding: "0 10px" }}>
-                  <span style={{ color: C.gris, fontWeight: 700, fontSize: 13 }}>US$</span>
-                  <input autoFocus value={usdV.monto} placeholder="0,00" onFocus={(e) => e.target.select()}
-                    onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setUsdV((u) => ({ ...u, monto: v })); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)}
-                    style={{ border: 0, outline: 0, flex: 1, minWidth: 0, textAlign: "right", fontWeight: 700, fontSize: 13.5, background: "transparent" }} />
-                </div>
-              ) : (
+              {usdV ? <CampoUsd usd={usdV} setUsd={setUsdV} onTocar={() => setImporteRevisar(false)} onBlur={() => setTocadoV(true)} /> : (
               <input style={{ ...inp, textAlign: "right", fontWeight: 700, ...(importeRevisar ? { border: "1.6px solid #f59e0b", background: "#fffbeb" } : {}) }} value={importeV} placeholder="0,00"
                 autoFocus={vieneConImporte} onFocus={(e) => e.target.select()}
                 onChange={(e) => { setImporteV(fmtImp(e.target.value, e.nativeEvent)); setImporteRevisar(false); }} onBlur={() => setTocadoV(true)} />)}
@@ -1982,28 +2040,7 @@ function ModalNuevaCarga(props) {
                 ? <div style={{ ...inp, display: "flex", alignItems: "center", color: "#2a88ad", fontWeight: 600, background: "#f3fafd", borderColor: "#bfe0f0" }}>⇄ {txtReparto({ reparto: repartoV }) || "repartido"}</div>
                 : variosPdv ? <select style={sel} value={pdvV} onChange={(e) => setPdvV(e.target.value)}>{PDVS.map((p) => <option key={p}>{p}</option>)}</select>
                 : <div style={{ ...inp, display: "flex", alignItems: "center", fontWeight: 600 }}>{PDVS[0]}</div>}</div>
-            {usdV && (
-              <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid #bfe0f0", background: "#f3fafd", borderRadius: 9, padding: "8px 10px" }}>
-                <span style={{ ...lab, marginBottom: 0 }}>Dólar</span>
-                <select style={{ ...sel, width: 120, height: 34 }} value={usdV.tipo} onChange={(e) => setUsdV((u) => ({ ...u, tipo: e.target.value, editada: false }))}>
-                  <option value="blue">Blue</option><option value="oficial">Oficial BNA</option><option value="mep">MEP</option>
-                </select>
-                <div style={{ ...inp, width: 130, height: 34, display: "flex", alignItems: "center", gap: 4, padding: "0 8px" }}>
-                  <span style={{ color: C.gris, fontSize: 13 }}>$</span>
-                  <input value={usdV.cotizacion} placeholder={usdV.buscando ? "buscando…" : "0,00"} onFocus={(e) => e.target.select()}
-                    onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); setUsdV((u) => ({ ...u, cotizacion: v, editada: true })); }}
-                    style={{ border: 0, outline: 0, flex: 1, minWidth: 0, textAlign: "right", fontWeight: 700, fontSize: 13.5, background: "transparent" }} />
-                </div>
-                <span style={{ fontSize: 12, color: C.gris, flex: "1 1 160px" }}>
-                  {usdV.editada
-                    ? <>el que pagaste{usdV.ref ? <> · {usdV.ref.nombre} venta del {usdV.ref.fecha.slice(8, 10)}/{usdV.ref.fecha.slice(5, 7)}: <span role="button" onClick={() => setUsdV((u) => ({ ...u, editada: false }))} style={{ color: C.cel, fontWeight: 700, cursor: "pointer" }}>$ {fmtNum(usdV.ref.venta)}</span></> : null}</>
-                    : usdV.buscando ? "buscando la cotización…"
-                    : usdV.ref ? <>{usdV.ref.nombre} venta del {usdV.ref.fecha.slice(8, 10)}/{usdV.ref.fecha.slice(5, 7)} · si pagaste otro, cambialo</>
-                    : "no se encontró la cotización: ponela a mano"}
-                </span>
-                <span style={{ fontSize: 13.5, whiteSpace: "nowrap" }}>= <b>{importeV ? `$ ${importeV}` : "$ —"}</b></span>
-              </div>
-            )}
+            {usdV && <FranjaDolar usd={usdV} setUsd={setUsdV} pesos={importeV} />}
             {repartoV && (() => {
               const tot = repartoV.reduce((a, x) => a + (parseFloat(x.pct) || 0), 0);
               const ok = Math.abs(tot - 100) < 0.01;
