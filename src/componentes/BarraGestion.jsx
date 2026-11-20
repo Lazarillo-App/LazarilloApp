@@ -112,6 +112,8 @@ export default function BarraGestion() {
           onChange={fcVentas.onChange}
           periodoLabel={fc.periodoLabel}
           porMes={fc.porMes}
+          proyeccion={fcVentas.proyeccion}
+          onRubrosProyeccion={fcVentas.setRubrosProy}
         />
         </span>
   );
