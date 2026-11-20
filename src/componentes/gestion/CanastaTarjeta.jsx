@@ -20,7 +20,7 @@ const COMO = {
   sueldos: 'mismo empleado mes a mes, sin SAC',
   mercaderias: 'precio por insumo, canasta fija',
   servicios: 'por proveedor × concepto',
-  alquiler: 'en revisión: no entra al %',
+  alquiler: 'el monto del mes',
 };
 
 /** Tooltip del aumento: cuánto subió cada agrupación. */
