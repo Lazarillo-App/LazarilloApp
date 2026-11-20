@@ -460,11 +460,11 @@ export function PanelHead({ titulo, count, tabs, active, onTab, colMenu, onToggl
         <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 15, color: C.tinta }}>{titulo}</span> <span style={{ fontSize: 13, color: C.txt3 }}>{count}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 3, background: C.paper, borderRadius: 8, padding: 2 }}>
+        {tabs && <div style={{ display: "flex", gap: 3, background: C.paper, borderRadius: 8, padding: 2 }}>
           {tabs.map(([f, lbl]) => (
             <button key={f} onClick={() => onTab(f)} style={{ fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 12.5, padding: "4px 10px", borderRadius: 6, border: "none", cursor: "pointer", background: active === f ? C.white : "transparent", color: active === f ? C.celesteDeep : C.txt3, boxShadow: active === f ? "0 1px 3px rgba(0,0,0,.08)" : "none" }}>{lbl}</button>
           ))}
-        </div>
+        </div>}
         {allCols && (
           <button data-colmenu onClick={onToggleColMenu} title="Columnas" style={{ fontFamily: "'Archivo',sans-serif", fontWeight: 600, fontSize: 13, padding: "5px 10px", borderRadius: 8, border: "1px solid " + C.line2, background: C.white, color: C.txt2, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
             <span style={{ fontSize: 14 }}>▦</span> Columnas <span style={{ fontSize: 11 }}>▾</span>

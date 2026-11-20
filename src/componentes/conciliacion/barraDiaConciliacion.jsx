@@ -114,6 +114,8 @@ export function BarraDia({ modo = "pend", dayCenter, diaFiltro, onFiltrarDia, re
         <button type="button" disabled={!mesPrev} onClick={() => mesPrev && onMes(mesPrev)} title="Mes anterior" style={mini(!!mesPrev)}>‹</button>
         <span style={{ minWidth: 150, textAlign: "center", fontSize: 13.5, fontWeight: 700, color: C.tinta }}>{lblPer}</span>
         <button type="button" disabled={!mesNext} onClick={() => mesNext && onMes(mesNext)} title="Mes siguiente" style={mini(!!mesNext)}>›</button>
+        {/* 20/11 (Diego): con un rango elegido no había cómo volver al mes entero */}
+        {!mesEntero && <button type="button" onClick={() => { onMes(ymRef); setFechasAb(false); }} title="Volver a ver el mes completo" style={{ ...chip, marginLeft: 6, borderColor: C.celeste, color: C.celesteDeep, background: "#5BC2EA14" }}>Ver el mes completo ✕</button>}
         <button type="button" onClick={() => setFechasAb((v) => !v)} style={{ ...chip, marginLeft: 6, ...(fechasAb ? { borderColor: C.celeste, color: C.celesteDeep } : {}) }}>Elegir fechas</button>
         {fechasAb && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
