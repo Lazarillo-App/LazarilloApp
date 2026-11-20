@@ -137,3 +137,18 @@ export function flattenRowsPorProveedor(
   }
   return result;
 }
+
+// Rubros sin movimiento en el año (Diego 20/11/2026: «no me gusta en gris mezclado con lo que vengo
+// cargando»): van al final, juntos y cerrados detrás de una fila «N rubros sin movimiento». Un rubro de
+// nivel 1 vacío se lleva sus filas hijas.
+const esRubroTop = (f) => f.type === 'rubro' || f.type === 'rubroTop';
+export function separarSinMovimiento(filas) {
+  const con = [];
+  const sin = [];
+  let destino = con;
+  for (const f of filas) {
+    if (esRubroTop(f)) destino = f.data?.vacio ? sin : con;
+    destino.push(f);
+  }
+  return { con, sin, n: sin.filter(esRubroTop).length };
+}

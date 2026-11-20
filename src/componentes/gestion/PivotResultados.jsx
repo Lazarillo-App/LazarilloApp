@@ -21,7 +21,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { useQueryClient } from '@tanstack/react-query';
-import { sortPivotRows, flattenRows, TANDA_PIVOT, hasValue } from '@/gestion/pivotUtils';
+import { sortPivotRows, flattenRows, TANDA_PIVOT, hasValue, separarSinMovimiento } from '@/gestion/pivotUtils';
 import { MESES, fmtARS, fmtARSDecimal, normalize, fechaCorta } from '@/gestion/formato';
 import {
   RESULT_COLORS, pctSobreIngresos, parseMontoARS, montoNoGuardable, sumarDiferenciaCajaVisible,
@@ -31,7 +31,7 @@ import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/es
 import { GestionAPI } from '@/servicios/apiGestion';
 import { useDiferenciaCaja, useFlujoCaja } from '@/gestion/hooksPanel';
 import { usePanelGestion } from '@/gestion/panelContext';
-import { PivotLoading, PivotError, Expansor, CabeceraOrden, SectionDivider, KpiBlock } from './piezasPivot';
+import { PivotLoading, PivotError, Expansor, CabeceraOrden, SectionDivider, KpiBlock, FilaSinMovimiento } from './piezasPivot';
 import { useAccess } from '@/context/AccessContext';
 
 const Espacio = ({ colSpan }) => <TableRow aria-hidden><TableCell colSpan={colSpan} sx={{ p: 0, height: 12, border: 0 }} /></TableRow>;
@@ -39,8 +39,9 @@ const Espacio = ({ colSpan }) => <TableRow aria-hidden><TableCell colSpan={colSp
 export default function PivotResultados({ operacion, resultados, ventas, months, sort, onSort }) {
   // Rol a medida: sin el bloque Ingresos · Egresos · Resultado · Equilibrio, o sin la caja.
   const { oculto = () => false } = useAccess() || {};
-  const { abrirDetalle } = usePanelGestion();
+  const { abrirDetalle, year } = usePanelGestion();
   const [expanded, setExpanded] = useState(() => new Set());
+  const [verSinMov, setVerSinMov] = useState(false);
   const [mostrar, setMostrar] = useState(() => new Map());
   const toggle = useCallback((id) => {
     setExpanded((prev) => {
@@ -185,7 +186,12 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
                 </Box>
               </TableCell>
             </TableRow>
-          ) : filas.map(renderFila)}
+          ) : (() => {
+            const { con, sin, n } = separarSinMovimiento(filas);
+            return [...con.map(renderFila),
+              <FilaSinMovimiento key="__sinmov" n={n} abierto={verSinMov} onToggle={() => setVerSinMov((v) => !v)} colSpan={colSpan} anio={year} />,
+              ...(verSinMov ? sin.map(renderFila) : [])];
+          })()}
         </TableBody>
       </Table>
     </Box>
