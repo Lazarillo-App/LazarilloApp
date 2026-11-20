@@ -16,7 +16,7 @@
 //  - STAFF (isStaff): sin sugerido ni %.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from 'react';
-import { Box, Typography, IconButton, Stack, Slider, TextField, InputAdornment } from '@mui/material';
+import { Box, Typography, IconButton, Stack, Slider, TextField, InputAdornment, MenuItem } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -72,6 +72,9 @@ export default function PieCostos({
   precioEsNuevo = false,
   precioSugeridoObjetivo = 0,
   onObjetivoMovido = null,
+  // Para cuántos comensales es el plato (Diego 20/11/2026): «te queda» por comensal. onComensales null = solo lectura.
+  comensales = 1,
+  onComensales = null,
 }) {
   // Staff: lo que ve depende de su rol (Diego 11/11/2026).
   const { staffPuede = () => true } = useAccess() || {};
@@ -127,6 +130,23 @@ export default function PieCostos({
         const conPct = !modoInsumo && verPct && pctCostoActual !== null;
         const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
         const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
+        // Te queda (precio − costo) por comensal (Diego 20/11/2026).
+        const nCom = Math.min(10, Math.max(1, Number(comensales) || 1));
+        const queda = Number(precioActual) > 0 ? Number(precioActual) - Number(costoXRendimiento || 0) : null;
+        const selectorComensales = onComensales ? (
+          <TextField select size="small" value={nCom} onChange={(e) => onComensales(Number(e.target.value))}
+            title="Para cuántos comensales es el plato"
+            SelectProps={{ renderValue: (v) => `Para ${v} comensal${v > 1 ? 'es' : ''}` }}
+            sx={{ justifySelf: 'end', minWidth: 150, bgcolor: 'background.paper', '& .MuiOutlinedInput-root': { height: 32, fontSize: '0.8rem', fontWeight: 600 } }}>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <MenuItem key={n} value={n}>{`${n} comensal${n > 1 ? 'es' : ''}`}</MenuItem>
+            ))}
+          </TextField>
+        ) : (
+          <Typography variant="caption" sx={{ justifySelf: 'end', fontSize: '0.75rem', fontWeight: 600, color: 'text.secondary' }}>
+            {`Para ${nCom} comensal${nCom > 1 ? 'es' : ''}`}
+          </Typography>
+        );
         if (!modoInsumo) {
           // Artículo y promo (Diego 11/11/2026): grilla de 2 columnas — costo | % ; el campo del % costo objetivo
           // va pegado debajo del % costo actual (los dos % alineados) y el precio actual al final.
@@ -134,9 +154,10 @@ export default function PieCostos({
           const colorPct = !verObjetivo ? 'text.primary' : (pctCostoActual > pctCostoIdeal ? '#ef4444' : 'success.main');
           const ANCHO_PCT = 54;
           return (
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(112px, max-content) auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(112px, max-content) auto auto', columnGap: 4, rowGap: 0, alignItems: 'end', justifyContent: 'start' }}>
               <Typography {...titulo}>{labelBase}</Typography>
               <Typography {...titulo} sx={{ ...titulo.sx, justifySelf: 'end' }}>% costo actual</Typography>
+              <Typography {...titulo} sx={{ ...titulo.sx, justifySelf: 'end' }}>{nCom > 1 ? 'Te queda por comensal' : 'Te queda'}</Typography>
               <Typography variant="h6" fontWeight={800} sx={{ whiteSpace: 'nowrap', lineHeight: '30px' }}>${fmt(costoXRendimiento)}</Typography>
               {/* Mismo armado que el campo de abajo (caja de ANCHO_PCT + «%») para que el 65 y el 66
                   arranquen en el mismo lugar y los dos % queden alineados (Diego 11/11/2026). */}
@@ -146,6 +167,10 @@ export default function PieCostos({
                 </Typography>
                 <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1, color: 'inherit' }}>%</Typography>
               </Stack>
+              <Typography variant="h6" fontWeight={800} sx={{ justifySelf: 'end', whiteSpace: 'nowrap', lineHeight: '30px', fontVariantNumeric: 'tabular-nums',
+                color: queda == null ? 'text.disabled' : queda >= 0 ? 'success.main' : '#ef4444' }}>
+                {queda == null ? '—' : `${queda < 0 ? '−' : ''}$${fmt(Math.abs(queda) / nCom, 0)}`}
+              </Typography>
               {/* Objetivo (Diego 11/11/2026): título en la columna izquierda y el precio actual debajo;
                   el campo, chico, en la columna del %, con el % afuera y alineado con el % actual. */}
               {conObjetivo ? (<>
@@ -166,6 +191,7 @@ export default function PieCostos({
                   />
                   <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1 }}>%</Typography>
                 </Stack>
+                {selectorComensales}
               </>) : null}
               {/* «P. actual» sin decimales (Diego 11/11/2026). La columna del costo tiene un ancho mínimo
                   que lo contiene, así el % queda igual en artículo y promo; si el precio es más largo,
@@ -175,6 +201,7 @@ export default function PieCostos({
                 {precioActual > 0 && ((promoMode && !isStaff) || (isStaff && verPrecio)) ? `P. actual: $${fmt(precioActual, 0)}` : ''}
               </Typography>
               <span />
+              {conObjetivo ? <span /> : selectorComensales}
             </Box>
           );
         }
