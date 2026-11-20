@@ -87,10 +87,10 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
     return () => { vivo = false; };
   }, [articleId, pedir]);
 
-  const guardar = useCallback(async (nueva, artId = articleId) => {
+  const guardar = useCallback(async (nueva, artId = articleId, extra = {}) => {
     setGuardando(true); setError('');
     try {
-      const r = await pedir(`/${artId}`, { method: 'PUT', body: JSON.stringify({ config: nueva }) });
+      const r = await pedir(`/${artId}`, { method: 'PUT', body: JSON.stringify({ config: nueva, ...extra }) });
       if (artId === articleId) setConfig(r.config);
       if (r.calculo) setCalculo(r.calculo);
       if (r.config?.tipo === 'ancla' || artId !== articleId) setAnclas((await pedir('/anclas')).anclas || []);
@@ -271,6 +271,36 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
             {caida == null ? 'Sin datos' : caida < -0.1 ? `${pctTxt(caida * 100)} contra el año: no subas el precio, empujá la venta` : `${caida >= 0 ? '+' : ''}${pctTxt(caida * 100)} contra el promedio del año`}
           </Typography>
         </Box>
+      </Box>
+
+      {/* Desde el último aumento (parte 3): la hora sube lo mismo que suben los costos del servicio. */}
+      <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, p: 1.25, px: 1.5, borderRadius: 1.5,
+        border: '1px solid', borderColor: c?.vsBase?.suba >= 0.05 ? '#f5c4b3' : 'divider', bgcolor: c?.vsBase?.suba >= 0.05 ? '#fff7ed' : 'transparent' }}>
+        <Box sx={{ minWidth: 0 }}>
+          {c?.vsBase ? (
+            <>
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
+                Desde el aumento del {c.vsBase.desde.slice(8, 10)}/{c.vsBase.desde.slice(5, 7)}/{c.vsBase.desde.slice(2, 4)} tus costos {c.vsBase.suba >= 0 ? 'subieron' : 'bajaron'} {pctTxt(Math.abs((c.vsBase.suba || 0) * 100))}
+                {c.vsBase.precioSugerido ? <> → hora a <span style={{ fontVariantNumeric: 'tabular-nums' }}>{pesos(Math.round(c.vsBase.precioSugerido / 100) * 100)}</span></> : null}
+              </Typography>
+              <Typography sx={{ ...gris, fontSize: 11.5 }}>
+                {c.vsBase.suba >= 0.05 ? 'Pasaste el 5 %: es momento de actualizar la hora y los servicios atados se recalculan solos.' : 'Te avisamos en la campanita cuando acumulen 5 % (y en marzo, para revisar).'}
+                {c.margen != null && c.vsBase.margenBase != null ? ` Margen hoy ${pctTxt(c.margen * 100)} (al aumentar: ${pctTxt(c.vsBase.margenBase * 100)}).` : ''}
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Marcá el día que aumentás</Typography>
+              <Typography sx={{ ...gris, fontSize: 11.5 }}>Desde ese día Lazarillo mide cuánto suben tus costos y te avisa a cuánto llevar la hora para sostener el margen.</Typography>
+            </>
+          )}
+        </Box>
+        {!soloLectura && (
+          <Button variant="outlined" disabled={guardando} onClick={() => guardar(config, articleId, { tomarBase: true })}
+            sx={{ height: 44, flexShrink: 0, borderColor: CELESTE, color: '#0C447C', textTransform: 'none', fontWeight: 700 }}>
+            Aumenté hoy: tomar como base
+          </Button>
+        )}
       </Box>
 
       <Box sx={{ mt: 2.5 }}><Titulo>Servicios que salen de esta ancla ({familiaSinAncla.length})</Titulo></Box>
