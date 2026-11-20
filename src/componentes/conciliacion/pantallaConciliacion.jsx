@@ -133,15 +133,6 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
 
             {/* El día que se concilia, en grande, con la tira del mes (19/11, opción A de Diego) */}
             {/* y en Todas / Conciliadas: tocar un día filtra la tabla (19/11) */}
-            {/* 20/11 (Diego: «los botones de conciliadas, pendientes, todas repetidos»): un solo selector para las dos tablas */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-              <div role="tablist" style={{ display: "flex", gap: 3, background: C.white, border: "1px solid " + C.line2, borderRadius: 10, padding: 3 }}>
-                {[["pend", "Pendientes"], ["ok", "Conciliadas"], ["all", "Todas"]].map(([f, lbl]) => (
-                  <button key={f} role="tab" aria-selected={activeTab === f} onClick={() => goTab(f)}
-                    style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13, minHeight: 36, padding: "0 16px", borderRadius: 8, border: "none", cursor: "pointer", background: activeTab === f ? C.celeste : "transparent", color: activeTab === f ? C.tinta : C.txt2 }}>{lbl}</button>
-                ))}
-              </div>
-            </div>
             <BarraDia modo={dayView ? "pend" : filterV} dayCenter={dayCenter} diaFiltro={diaFiltro} onFiltrarDia={setDiaFiltro} result={result} pendPorDia={pendPorDia} pendingDays={pendingDays}
               onMove={moveDay} onPick={elegirDia} desde={desde} hasta={hasta} nSugerencias={sugerir ? sugerencias.length : 0}
               meses={months} onMes={cambiarMes} onPeriodo={cambiarPeriodo} />
@@ -164,7 +155,7 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
             {/* Barra comparativa: sticky para no perderla (ni Conciliar) al scrollear.
                 Se destaca con una sombra celeste más fuerte cuando hay selección. */}
             <div data-keep-sel data-tour="conc-barra" style={{ position: "sticky", top: 8, zIndex: 40, filter: (haySeleccion || hayHighlight) ? "drop-shadow(0 8px 26px rgba(91,194,234,.5))" : "drop-shadow(0 5px 16px rgba(21,33,62,.18))", transition: "filter .18s" }}>
-            <DayCompareBar ing={barTotals.ing} ban={barTotals.ban} ctxIng={barTotals.ctxIng} ctxBan={barTotals.ctxBan}
+            <DayCompareBar dia={dayView ? dayCenter : diaFiltro} periodo={!dayView && !diaFiltro} ing={barTotals.ing} ban={barTotals.ban} ctxIng={barTotals.ctxIng} ctxBan={barTotals.ctxBan}
               refIng={barTotals.refIng} refBan={barTotals.refBan}
               cntIng={barTotals.cntIng} cntBan={barTotals.cntBan} cntIngRef={barTotals.cntIngRef} cntBanRef={barTotals.cntBanRef}
               conc={kpis} onDif={filtrarPorDif} difFiltro={difFiltro} tipsTotal={tipsInfo.total} tipsDia={(dayView && filterV === "pend" && dayCenter) ? (tipsInfo.porDia[dayCenter] || 0) : null}
@@ -187,7 +178,7 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
                       side="ingresos" rows={result.V} colFilter={colFilterV} setColFilter={setColFilterV} openKey={colFilterOpen} setOpenKey={setColFilterOpen} />
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <PanelHead titulo="Banco" count={diaCounts ? diaCounts.b + " del día" : view.fB.length + " de " + view.B.length}
+                    <PanelHead titulo="Banco" tabs={[["pend","Pendientes"],["ok","Conciliadas"],["all","Todas"]]} count={diaCounts ? diaCounts.b + " del día" : view.fB.length + " de " + view.B.length}
                       active={activeTab} onTab={goTab}
                       colMenu={colMenu === "banco"} onToggleColMenu={() => setColMenu(colMenu === "banco" ? null : "banco")}
                       allCols={COLS_BANCO} visibleCols={colsB} onToggleCol={(k) => setColsB((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} />
@@ -276,7 +267,7 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
 
               {/* BANCO */}
               <Panel>
-                <PanelHead titulo="Banco" count={(dayView && filterB === "pend" && diaCounts) ? diaCounts.b + " del día" : view.fB.length + " de " + view.B.length}
+                <PanelHead titulo="Banco" tabs={[["pend","Pendientes"],["ok","Conciliadas"],["all","Todas"]]} count={(dayView && filterB === "pend" && diaCounts) ? diaCounts.b + " del día" : view.fB.length + " de " + view.B.length}
                   active={activeTab}
                   onTab={goTab}
                   colMenu={colMenu === "banco"} onToggleColMenu={() => setColMenu(colMenu === "banco" ? null : "banco")}
