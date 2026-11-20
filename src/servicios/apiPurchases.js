@@ -28,11 +28,15 @@ export async function purchasesSync(bizId, {
   from, to, provdr, num,
   branch_id,   // id de sucursal o null
 } = {}) {
-  return {BASE}(`/purchases/sync`, {
+  // Antes era `return {BASE}(…)`: un objeto llamado como función → «no es una función» al sincronizar (20/11/2026).
+  const res = await fetch(`${BASE}/purchases/sync`, {
     method: 'POST',
+    headers: authHeaders(bizId),
     body: JSON.stringify({ from, to, provdr, num, branch_id: branch_id ?? null }),
-    bizId,
   });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+  return data;
 }
 
 // GET /api/purchases?from=&to=&limit=
