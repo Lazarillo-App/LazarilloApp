@@ -89,6 +89,7 @@ import EditarItemModal from '@/componentes/EditarItemModal';
 import { showConfirm } from '@/servicios/appConfirm';
 import useCelular from '@/componentes/base/useCelular';
 import RecetaConsultaCelular from './RecetaConsultaCelular';
+import RecetaServicio from './RecetaServicio';
 
 /* ════════════════════════════════════════
    MODAL PRINCIPAL
@@ -240,6 +241,9 @@ export default function RecetaModal({
   // índice abierto a la vez: al abrir uno nuevo, el anterior se cierra solo.
   const [openAdvancedIdx, setOpenAdvancedIdx] = useState(null);
   const [pctCostoIdeal, setPctCostoIdeal] = useState(30);
+  // Receta de tipo Servicio (Diego 20/11/2026): sin insumos, el costo lo calcula el servidor (RecetaServicio.jsx).
+  const [servicioMode, setServicioMode] = useState(false);
+  const [servicioCosto, setServicioCosto] = useState(null);
   // Edición directa del % objetivo con doble click, al lado de la barrita
   const [editandoObjetivo, setEditandoObjetivo] = useState(false);
   const [objetivoDraft, setObjetivoDraft] = useState('');
@@ -1090,6 +1094,8 @@ export default function RecetaModal({
       .then(rec => {
         if (cancelled) return;
         setReceta(rec);
+        setServicioMode(!!rec?.servicio);
+        setServicioCosto(null);
         if (rec) {
           // El nombre que se muestra es el del artículo/insumo (el de la tabla), no el guardado en la receta:
           // si difieren, el modal mostraba uno que la tabla no tenía (Diego 12/11/2026, promo #571).
@@ -1582,11 +1588,12 @@ export default function RecetaModal({
     return buildDirtySnapshot() !== pristineSnapshotRef.current;
   }, [buildDirtySnapshot, pristineReady]);
   const costoTotalMostrado = useMemo(() => {
+    if (servicioMode) return servicioCosto ?? Number(receta?.costo_total || 0);
     if (!hayCambiosSinGuardar && receta && receta.costo_total != null) {
       return Number(receta.costo_total);
     }
     return costoTotal;
-  }, [hayCambiosSinGuardar, receta, costoTotal]);
+  }, [hayCambiosSinGuardar, receta, costoTotal, servicioMode, servicioCosto]);
 
   // El costo guardado en la DB (el que se muestra arriba cuando no hay cambios, para
   // que coincida con la tabla) puede quedar VIEJO sin que nadie edite nada acá: si un
@@ -1597,11 +1604,12 @@ export default function RecetaModal({
   // pasó con Tacómetro: cada ingrediente, revisado uno por uno, daba bien, pero el
   // total de arriba seguía siendo el guardado de antes de corregir Bondiola/Crema Ácida).
   const costoGuardadoDesactualizado = useMemo(() => {
+    if (servicioMode) return false;
     if (hayCambiosSinGuardar || !receta || receta.costo_total == null) return false;
     const guardado = Number(receta.costo_total) || 0;
     const tolerancia = Math.max(1, guardado * 0.01);
     return Math.abs(costoTotal - guardado) > tolerancia;
-  }, [hayCambiosSinGuardar, receta, costoTotal]);
+  }, [hayCambiosSinGuardar, receta, costoTotal, servicioMode]);
 
   // Divisor efectivo: si hay peso equivalente (unidad no medible), usar ese; sino el rendimiento
   // El divisor del costo SIEMPRE es la cantidad de rendimiento (no el peso equivalente),
@@ -1883,7 +1891,7 @@ export default function RecetaModal({
     // Filtrar filas vacías: vale si tiene insumo (supplyId) o artículo (articleRefId)
     const itemsBase = itemsOverride || items;
     const itemsValidos = itemsBase.filter(it => it.supplyId || it.articleRefId);
-    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30; if (!tieneContenido && !itemsOverride) { setError('Agregá al menos un ingrediente'); return; }
+    const tieneContenido = itemsValidos.length > 0 || notas || foto || fotos.length > 0 || pctCostoIdeal !== 30 || servicioMode; if (!tieneContenido && !itemsOverride) { setError('Agregá al menos un ingrediente'); return; }
     if (hasDuplicates) { setError('Hay ingredientes duplicados'); return; }
     // No guardar con un ingrediente a medio definir: si su unidad ya no es válida (la
     // sub-receta/equivalente de ese insumo cambió), hay que elegirle una unidad de nuevo
@@ -3081,11 +3089,32 @@ export default function RecetaModal({
                         {!modoInsumo && (
                           <ToggleButtonGroup
                             data-tour="rec-tipo"
-                            value={promoMode ? 'promo' : 'producto'}
+                            value={servicioMode ? 'servicio' : promoMode ? 'promo' : 'producto'}
                             exclusive
                             size="small"
                             onChange={(e, val) => {
                               if (val == null) return;               // no permitir deseleccionar
+                              // Servicio (Diego 20/11/2026): sin insumos; el costo sale de Tu canasta del local.
+                              if (val === 'servicio') {
+                                if (servicioMode) return;
+                                if (promoMode) { setError('Para que sea un servicio, primero pasalo a Producto.'); return; }
+                                if (items.length > 0) { setError('Un servicio no lleva ingredientes: sacalos primero para pasarlo a Servicio.'); return; }
+                                setError(''); setServicioMode(true); return;
+                              }
+                              if (servicioMode) {
+                                const token = localStorage.getItem('token') || '';
+                                fetch(`${BASE}/businesses/${businessId}/servicios/${articulo.id}`, {
+                                  method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId) },
+                                }).then(async (r) => {
+                                  const d = await r.json().catch(() => ({}));
+                                  if (!r.ok) { setError(d?.message || d?.error || `Error ${r.status}`); return; }
+                                  setServicioMode(false); setServicioCosto(null);
+                                  setReceta((prev) => (prev ? { ...prev, servicio: null, costo_total: 0 } : prev));
+                                  try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { /* sin tabla */ }
+                                  if (val === 'promo') setPromoMode(true);
+                                }).catch((e) => setError(e.message));
+                                return;
+                              }
                               const quierePromo = val === 'promo';
                               if (quierePromo === promoMode) return;  // sin cambio
                               if (quierePromo) {
@@ -3116,6 +3145,9 @@ export default function RecetaModal({
                             <ToggleButton value="promo" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
                               Promoción
                             </ToggleButton>
+                            <ToggleButton value="servicio" sx={{ px: 1.5, height: 40, fontSize: '0.7rem', fontWeight: 700 }}>
+                              Servicio
+                            </ToggleButton>
                           </ToggleButtonGroup>
                         )}
                         {/* Costo objetivo */}
@@ -3136,6 +3168,10 @@ export default function RecetaModal({
                     </Box>
                   </Box>
 
+                  {servicioMode ? (
+                    <RecetaServicio businessId={businessId} articulo={articulo} allArticulos={allArticulos}
+                      soloLectura={isStaff} objetivoPct={pctCostoIdeal} onCosto={setServicioCosto} />
+                  ) : (<>{/* receta con ingredientes */}
                   <Divider sx={{ mb: 1.5 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
                       <Typography variant="caption" color="text.secondary" fontWeight={600}>
@@ -3419,6 +3455,7 @@ export default function RecetaModal({
                   </Stack>
 
                   <Divider sx={{ mb: 2 }} />
+                  </>)}
 
                   {costoGuardadoDesactualizado && veMontos && (
                     <Box sx={{

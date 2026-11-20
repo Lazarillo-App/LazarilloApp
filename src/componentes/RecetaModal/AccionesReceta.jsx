@@ -91,7 +91,7 @@ export function usePasosReceta({ open, recResumenRef, recAgregarRef, recIngredie
   const sector = useSectorGuia('receta');
   const TODOS = [
     { k: 'resumen', s: 'pie', ref: recResumenRef, pose: 'presenta', t: <>Acá ves el <b>precio de venta</b>, cuánto te cuesta hacer el plato y qué parte del precio se lleva el costo, contra tu <b>costo objetivo</b>. El <b>precio sugerido</b> es el que necesitás para llegar a ese objetivo.</> },
-    { k: 'rec-tipo', s: 'datos', ref: refTour('rec-tipo'), t: <><b>Producto</b> es un plato o bebida con su receta. <b>Promoción</b> arma un combo con otros artículos: su costo suma el de cada uno.</> },
+    { k: 'rec-tipo', s: 'datos', ref: refTour('rec-tipo'), t: <><b>Producto</b> es un plato o bebida con su receta. <b>Promoción</b> arma un combo con otros artículos: su costo suma el de cada uno. <b>Servicio</b> no lleva insumos (una hora de cancha, una noche): su costo sale de tus costos del local ÷ las horas que se usa.</> },
     { k: 'rec-rendimiento', s: 'datos', ref: refTour('rec-rendimiento'), t: <><b>Rendimiento</b>: cuántas porciones (o kilos, litros) salen de esta receta. El costo de los ingredientes se reparte en eso.</> },
     { k: 'rec-vincular', s: 'datos', ref: refTour('rec-vincular'), t: <><b>Vincular</b>: si otro artículo se hace igual (el mismo plato en otra carta o en el delivery), lo vinculás y usa esta misma receta.</> },
     { k: 'agregar', s: 'ingredientes', ref: recAgregarRef, t: <>Tocá <b>Agregar ingrediente</b> y escribí el nombre del insumo. Si todavía no existe, lo creás desde acá mismo.</> },
