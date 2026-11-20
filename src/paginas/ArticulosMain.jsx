@@ -50,6 +50,7 @@ import SucursalSelector from '@/componentes/SucursalSelector';
 import ArticleListSelector from '../componentes/ArticleListSelector';
 import PriceListConfigModal from '../componentes/PriceListConfigModal';
 import KpiFoodCost, { kpiGeneralSemilla } from '@/componentes/KpiFoodCost';
+import useCelular from '@/componentes/base/useCelular';
 import { purchasesFoodCost, purchasesFoodCostMonthly } from '@/servicios/apiPurchases';
 import { useArticleLists } from '../hooks/useArticleLists';
 import { useBranch } from '@/hooks/useBranch';
@@ -2705,6 +2706,8 @@ export default function ArticulosMain(props) {
     );
   }, [opcionesGlobales, opcionesBuscador]);
 
+  const celular = useCelular();
+
   // ── Barra única (BarraGestion): buscador y acciones de esta página ──
   useRegistrarBarra('menu', {
     placeholder: 'Buscar artículos, insumos…',
@@ -3183,6 +3186,73 @@ export default function ArticulosMain(props) {
     );
   }
 
+  // La misma barra de agrupaciones/rubros: al costado en la compu, compacta arriba de la lista en el celular.
+  const renderSidebar = (compacto) => (
+          <SidebarCategorias
+            compacto={compacto}
+            resumenTop20={resumenTop20}
+            resumenVendenPoco={resumenVendenPoco}
+            staff={!!isStaff}
+            businessId={activeBizId}
+            categorias={categorias}
+            soloConVentas={soloConVentasEfectivo}
+            categoriaSeleccionada={categoriaSeleccionada}
+            setCategoriaSeleccionada={setCategoriaSeleccionada}
+            agrupaciones={agrupacionesOrdenadas}
+            agrupacionSeleccionada={agrupacionSeleccionada}
+            setAgrupacionSeleccionada={setAgrupacionSeleccionada}
+            setFiltroBusqueda={setFiltroBusqueda}
+            setBusqueda={setFiltroBusqueda}
+            todoGroupId={todoInfo.todoGroupId}
+            todoIds={todoInfo.todoIds}
+            todoCountOverride={
+              todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
+            }
+            listMode={sidebarListMode}
+            visibleIds={effectiveVisibleIds}
+            lists={lists}
+            activeListId={activeListId}
+            onSelectList={(id) => {
+              // Si quedaba una agrupación/rubro seleccionado de antes, el filtro de
+              // la lista se aplicaba ADEMÁS de ese (intersección), no en su lugar —
+              // una lista casi nunca coincide con un solo rubro, así que mostraba
+              // "No hay artículos" aunque la lista tuviera items reales.
+              setAgrupacionSeleccionada(null);
+              setCategoriaSeleccionada(null);
+              selectList(id);
+            }}
+            onDeleteList={deleteList}
+            onDownloadList={handleDownloadList}
+            onManualPick={markManualPick}
+            onChangeListMode={handleChangeListMode}
+            priceConfig={priceConfig}
+            globalCostoIdeal={globalCostoIdeal}
+            onPriceConfigSave={handlePriceConfigSave}
+            agrupacionArticuloIds={agrupacionArticuloIds}
+            favoriteGroupId={favoriteGroupId}
+            onSetFavorite={isStaff ? undefined : handleSetFavorite}
+            onEditGroup={isStaff ? undefined : handleRenameGroup}
+            onDeleteGroup={isStaff ? undefined : handleDeleteGroup}
+            onRenameGroup={isStaff ? undefined : handleRenameGroup}
+            ventasMap={ventasMap}
+            metaById={metaById}
+            getAmountForId={getAmountForId}
+            onMutateGroups={mutateGroups}
+            onRefetch={refetchAgrupaciones}
+            notify={showMiss}
+            onCreateSubBusiness={isStaff ? undefined : (agrupacion) => {
+              setGroupForSubBiz(agrupacion);
+              setSubBizModalOpen(true);
+            }}
+            activeDivisionId={activeDivisionId}
+            firstDate={firstDateVentas}
+            loadingFirst={loadingFirstVentas}
+            activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
+            assignedAgrupacionIds={assignedAgrupacionIds}
+            refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
+          />
+  );
+
   // Vista de organización: early return cuando el principal está vacío y hay subnegocios
   // La barra (período, sucursal, buscador, food cost, Ventas/Compras, + Agregar)
   // vive en GestionLayout y no se desmonta al cambiar de página; acá solo van
@@ -3248,10 +3318,11 @@ export default function ArticulosMain(props) {
       )}
 
       <div className="lz-sectores" style={{
-        display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start',
+        display: 'grid', gridTemplateColumns: celular ? '1fr' : '280px 1fr', gap: 0, alignItems: 'start',
         borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0,
         boxShadow: '0 1px 4px rgba(0,0,0,.08)'
       }}>
+        {!celular && (
         <div
           ref={sidebarScrollRef}
           className="sidebar-scroll-wrap"
@@ -3259,74 +3330,16 @@ export default function ArticulosMain(props) {
             borderRight: '1px solid #eee', background: '#fafafa',
             height: '100%',
           }}>
-          <SidebarCategorias
-            resumenTop20={resumenTop20}
-            resumenVendenPoco={resumenVendenPoco}
-            staff={!!isStaff}
-            businessId={activeBizId}
-            categorias={categorias}
-            soloConVentas={soloConVentasEfectivo}
-            categoriaSeleccionada={categoriaSeleccionada}
-            setCategoriaSeleccionada={setCategoriaSeleccionada}
-            agrupaciones={agrupacionesOrdenadas}
-            agrupacionSeleccionada={agrupacionSeleccionada}
-            setAgrupacionSeleccionada={setAgrupacionSeleccionada}
-            setFiltroBusqueda={setFiltroBusqueda}
-            setBusqueda={setFiltroBusqueda}
-            todoGroupId={todoInfo.todoGroupId}
-            todoIds={todoInfo.todoIds}
-            todoCountOverride={
-              todoInfo.todoGroupId ? { [todoInfo.todoGroupId]: todoInfo.idsSinAgrupCount } : {}
-            }
-            listMode={sidebarListMode}
-            visibleIds={effectiveVisibleIds}
-            lists={lists}
-            activeListId={activeListId}
-            onSelectList={(id) => {
-              // Si quedaba una agrupación/rubro seleccionado de antes, el filtro de
-              // la lista se aplicaba ADEMÁS de ese (intersección), no en su lugar —
-              // una lista casi nunca coincide con un solo rubro, así que mostraba
-              // "No hay artículos" aunque la lista tuviera items reales.
-              setAgrupacionSeleccionada(null);
-              setCategoriaSeleccionada(null);
-              selectList(id);
-            }}
-            onDeleteList={deleteList}
-            onDownloadList={handleDownloadList}
-            onManualPick={markManualPick}
-            onChangeListMode={handleChangeListMode}
-            priceConfig={priceConfig}
-            globalCostoIdeal={globalCostoIdeal}
-            onPriceConfigSave={handlePriceConfigSave}
-            agrupacionArticuloIds={agrupacionArticuloIds}
-            favoriteGroupId={favoriteGroupId}
-            onSetFavorite={isStaff ? undefined : handleSetFavorite}
-            onEditGroup={isStaff ? undefined : handleRenameGroup}
-            onDeleteGroup={isStaff ? undefined : handleDeleteGroup}
-            onRenameGroup={isStaff ? undefined : handleRenameGroup}
-            ventasMap={ventasMap}
-            metaById={metaById}
-            getAmountForId={getAmountForId}
-            onMutateGroups={mutateGroups}
-            onRefetch={refetchAgrupaciones}
-            notify={showMiss}
-            onCreateSubBusiness={isStaff ? undefined : (agrupacion) => {
-              setGroupForSubBiz(agrupacion);
-              setSubBizModalOpen(true);
-            }}
-            activeDivisionId={activeDivisionId}
-            firstDate={firstDateVentas}
-            loadingFirst={loadingFirstVentas}
-            activeDivisionAgrupacionIds={activeDivisionAgrupacionIds}
-            assignedAgrupacionIds={assignedAgrupacionIds}
-            refetchAssignedAgrupaciones={refetchAssignedAgrupaciones}
-          />
+          {renderSidebar(false)}
         </div>
+        )}
 
         <div
           id="tabla-scroll"
           style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <TablaArticulos
+            celular={celular}
+            arribaCelular={celular ? renderSidebar(true) : null}
             unidadesModo={unidadesModo}
             onUnidadesModo={setUnidadesModo}
             abcVentas={rankingVentas.abc}
