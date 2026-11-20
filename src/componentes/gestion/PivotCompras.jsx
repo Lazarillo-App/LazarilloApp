@@ -15,6 +15,7 @@ import { alpha } from '@mui/material/styles';
 import LayersIcon from '@mui/icons-material/Layers';
 import {
   sortPivotRows, flattenRows, sortPivotRowsPorProveedor, flattenRowsPorProveedor, TANDA_PIVOT, hasValue,
+  separarSinMovimiento,
 } from '@/gestion/pivotUtils';
 import { filtroFilaProveedor } from '@/gestion/detalleFilter';
 import { usePanelGestion } from '@/gestion/panelContext';
@@ -29,6 +30,7 @@ import { computePctCelda, computePctLabel } from '@/gestion/resultadosCalc';
 import { MUTED, sxStickyNombre, sxNum, sxTablaPanel, sxClic } from '@/gestion/estilos';
 import {
   PivotLoading, PivotError, PivotEmpty, Expansor, CabeceraOrden, SectionDivider, KpiBlock,
+  FilaSinMovimiento,
 } from './piezasPivot';
 import { useAccess } from '@/context/AccessContext';
 import { habitualRubro, estadoMes, millones, colorCompletitud, rangoMeses, colorNumero, anchoBarra, nombreTramo, TOPE_BARRA, pendientesPorMes } from '@/gestion/completitud';
@@ -104,6 +106,7 @@ export default function PivotCompras({
   const porProveedor = agrupacion === 'proveedor';
   const porInsumo = agrupacion === 'insumo';
   const [expanded, setExpanded] = useState(() => new Set());
+  const [verSinMov, setVerSinMov] = useState(false);
   // Registros visibles por concepto (de a TANDA_PIVOT). "Ver todos" = Infinity.
   const [mostrar, setMostrar] = useState(() => new Map());
   // % de cada fila sobre ingresos o sobre egresos (usePctMode de gestion).
@@ -435,7 +438,11 @@ export default function PivotCompras({
             const banco = sinTotalesRubro ? null : <FilasDesdeElBanco key="__banco" months={months} sinColTotal={sinColTotal} />;
             const iSin = filas.findIndex((f) => (f.type === 'rubro' || f.type === 'rubroTop') && f.data.rubroCodigo === '__sin_rubro');
             const corte = iSin < 0 ? 0 : (() => { const j = filas.findIndex((f, k) => k > iSin && (f.type === 'rubro' || f.type === 'rubroTop')); return j < 0 ? filas.length : j; })();
-            return [...filas.slice(0, corte).map(renderFila), banco, ...filas.slice(corte).map(renderFila)];
+            const { con, sin, n } = separarSinMovimiento(filas);
+            const corteCon = corte - filas.slice(0, corte).filter((f) => !con.includes(f)).length;
+            return [...con.slice(0, corteCon).map(renderFila), banco, ...con.slice(corteCon).map(renderFila),
+              <FilaSinMovimiento key="__sinmov" n={n} abierto={verSinMov} onToggle={() => setVerSinMov((v) => !v)} colSpan={colSpan} anio={year} />,
+              ...(verSinMov ? sin.map(renderFila) : [])];
           })()}
         </TableBody>
         {!sinTotalesRubro && <TableFooter>
