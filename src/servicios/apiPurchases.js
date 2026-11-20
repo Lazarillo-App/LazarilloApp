@@ -78,6 +78,20 @@ export async function purchasesFoodCost(bizId, { from, to, branch_id } = {}) {
 // GET /api/purchases/food-cost-monthly?from=&to=&branch_id=
 // Igual que purchasesFoodCost pero partido mes a mes — [{mes:'2026-01', items:[...]}]
 // para el gráfico de evolución de KpiFoodCost.jsx (prop `porMes`).
+// Mes en curso proyectado a fin de mes (calendario de feriados + efecto víspera). Diego 20/11/2026.
+// rubros: los de las compras que mira el KPI. Devuelve null si el mes ya cerró o no hay datos.
+export async function purchasesFoodCostProyeccion(bizId, { rubros = [], branch_id } = {}) {
+  const params = {};
+  if (rubros.length) params.rubros = rubros.join('|');
+  if (branch_id !== null && branch_id !== undefined) params.branch_id = branch_id;
+  const res = await fetch(`${BASE}/purchases/food-cost-proyeccion${qs(params)}`, {
+    headers: authHeaders(bizId),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `Error ${res.status}`);
+  return data.proyeccion || null;
+}
+
 export async function purchasesFoodCostMonthly(bizId, { from, to, branch_id } = {}) {
   const params = {};
   if (from) params.from = from;

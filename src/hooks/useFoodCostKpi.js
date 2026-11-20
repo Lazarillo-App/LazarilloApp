@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/servicios/apiBase';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
-import { purchasesFoodCost, purchasesFoodCostMonthly } from '@/servicios/apiPurchases';
+import { purchasesFoodCost, purchasesFoodCostMonthly, purchasesFoodCostProyeccion } from '@/servicios/apiPurchases';
 import { useArticlesTree } from '@/hooks/useArticlesTree';
 import { useAgrupacionesQuery } from '@/hooks/useAgrupacionesQuery';
 import { STALE } from '@/lib/reactQueryClient';
@@ -163,6 +163,21 @@ export function useFoodCostKpi({ bizId, from, to, activeBranchFilter }) {
     return [...byMes.values()].sort((a, b) => a.mes.localeCompare(b.mes));
   }, [ventasMes, comprasMes, recorrerArbol]);
 
+  // Proyección del mes en curso (Diego 20/11/2026): ventas con el calendario de feriados y compras con
+  // el efecto víspera del local. KpiFoodCost avisa qué rubros de compras mira el KPI (onRubrosProyeccion).
+  const [rubrosProy, setRubrosProyRaw] = useState(null);
+  const setRubrosProy = useCallback((r) => {
+    const k = Array.isArray(r) ? [...r].sort() : null;
+    setRubrosProyRaw((prev) => (JSON.stringify(prev) === JSON.stringify(k) ? prev : k));
+  }, []);
+  const { data: proyeccion } = useQuery({
+    enabled: biz > 0 && Array.isArray(rubrosProy),
+    queryKey: ['fcProyeccion', biz, branchParam, rubrosProy],
+    staleTime: STALE.SALES,
+    gcTime: 30 * 60 * 1000,
+    queryFn: () => purchasesFoodCostProyeccion(biz, { rubros: rubrosProy, branch_id: branchParam }),
+  });
+
   // KPIs configurados (se guardan en el negocio, compartidos con Menú).
   const [kpis, setKpis] = useState([]);
   const cargadoRef = useRef(false);
@@ -191,5 +206,5 @@ export function useFoodCostKpi({ bizId, from, to, activeBranchFilter }) {
     return `${f(from)} — ${f(to)}`;
   }, [from, to]);
 
-  return { ventas, compras, kpis, onChange, periodoLabel, porMes };
+  return { ventas, compras, kpis, onChange, periodoLabel, porMes, proyeccion: proyeccion || null, setRubrosProy };
 }
