@@ -152,3 +152,34 @@ export function separarSinMovimiento(filas) {
   }
   return { con, sin, n: sin.filter(esRubroTop).length };
 }
+
+// Conceptos sin movimiento dentro de un rubro con carga (Diego 20/11/2026: «hacé lo mismo que con
+// rubros»): van al final del rubro (o del proveedor, en la vista por proveedor), plegados detrás de una
+// fila «N conceptos sin movimiento». Se abren con el mismo `expanded` (id `<padre>|sinmov`). En un rubro
+// vacío no se pliega nada: ahí se abre para cargar.
+const PADRES = new Set(['rubro', 'rubroTop', 'proveedorSub']);
+const CONCEPTOS = new Set(['concepto', 'conceptoSub']);
+export function plegarConceptosSinMovimiento(filas, abiertos) {
+  const out = [];
+  let padre = null;
+  let sin = [];
+  let aSin = false;
+  const cerrar = () => {
+    const n = sin.filter((f) => CONCEPTOS.has(f.type)).length;
+    if (n) {
+      const id = `${padre.data.id}|sinmov`;
+      const abierto = abiertos.has(id);
+      out.push({ type: 'conceptosSinMov', data: { id, n, abierto, indent: padre.type === 'proveedorSub' ? 5 : 2.5 } });
+      if (abierto) out.push(...sin);
+    }
+    sin = [];
+    aSin = false;
+  };
+  for (const f of filas) {
+    if (PADRES.has(f.type)) { cerrar(); padre = f; out.push(f); continue; }
+    if (CONCEPTOS.has(f.type)) aSin = !!f.data?.vacio && !!padre && !padre.data?.vacio;
+    (aSin ? sin : out).push(f);
+  }
+  cerrar();
+  return out;
+}
