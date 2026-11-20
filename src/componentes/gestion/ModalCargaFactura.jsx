@@ -1136,12 +1136,44 @@ function ModalNuevaCarga(props) {
         const e = edeDesdeFactura(d.ultima.rowId, d.ultima.factura, { maestros, pdvsRef });
         setUltFact({ ...e, importe: d.ultima.totalFilas });
         // La última factura de este proveedor fue en US$: esta arranca en US$, con el dólar del día (Diego 20/11/2026).
-        if (e.moneda) setUsdF((u) => u || nuevoUsd({ tipo: e.moneda.tipo }));
+        if (e.moneda && !(ctx.precargar && !precargadaRef.current)) setUsdF((u) => u || nuevoUsd({ tipo: e.moneda.tipo }));
       })
       .catch(() => {});
     return () => { vivo = false; };
   }, [prov]);
   const ultConLineas = () => ultFact;
+  // Ticket: no discrimina IVA (Diego 20/11/2026: «ya le definí Ticket y me sugiere IVA»). Los renglones
+  // van al 0 %; si alguno se cambia a mano, se respeta.
+  useEffect(() => {
+    if (normTipo(tipoCpb) !== "Ticket") return;
+    setLineas((ls) => (ls.some((l) => !l.alicManual && Number(l.alic) !== 0) ? ls.map((l) => (l.alicManual ? l : { ...l, alic: 0 })) : ls));
+  }, [tipoCpb, lineas.map((l) => `${l.item}|${l.alic}|${l.alicManual ? 1 : 0}`).join("~")]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Desde una celda del Panel (Diego 20/11/2026: «aprendé de la carga»): se abre como la última factura
+  // de ese proveedor — mismo tipo (si es Ticket, ya con número generado), mismo total (o los mismos US$
+  // con el dólar de hoy) y los mismos renglones. Todo editable.
+  const precargadaRef = useRef(false);
+  useEffect(() => {
+    if (!ctx.precargar || precargadaRef.current || !ultFact || vista !== "nueva") return;
+    precargadaRef.current = true;
+    const t = normTipo(ultFact.tipoCpb || "");
+    if (t && !tipoCpb) {
+      setTipoCpb(t);
+      if (t === "Ticket") {
+        const ahora = new Date();
+        setCompPref(String(ahora.getHours()).padStart(2, "0") + String(ahora.getMinutes()).padStart(2, "0"));
+        setCompNum(String(ahora.getDate()).padStart(2, "0") + String(ahora.getMonth() + 1).padStart(2, "0") + ahora.getFullYear());
+      }
+    }
+    if (ultFact.moneda) setUsdF(nuevoUsd({ monto: ultFact.moneda.monto, tipo: ultFact.moneda.tipo }));
+    else if (ultFact.importe > 0) setTotalCtrl(fmtNum(Math.round(ultFact.importe * 100) / 100));
+    if (ultFact.lineas && ultFact.lineas.length) {
+      setOrigenPre(ultFact.comp);
+      const ls = abrirPrecarga(ultFact.lineas, ultFact.comp);
+      // Un solo renglón: su neto sigue al total (si cambia el total o el dólar, se acomoda solo).
+      setLineas(ls.length === 1 ? [{ ...ls[0], neto: "", autoNeto: true }] : ls);
+      setPercepciones((ultFact.percepciones || []).map((p) => ({ ...p })));
+    }
+  }, [ultFact]); // eslint-disable-line react-hooks/exhaustive-deps
   // Precargada la estructura y después se cambia el proveedor: se saca la precarga (era de otro
   // proveedor) y vuelve a aparecer la opción de precargar la del nuevo (Diego, 28/10/2026).
   const provAnterior = useRef(prov);
@@ -1761,7 +1793,7 @@ function ModalNuevaCarga(props) {
                           const impint = fmtImp(e.target.value, e.nativeEvent); const t = parseImp(impint); const c = parseFloat(l.cant) || 0;
                           setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, impint, iiu: esIns && t > 0 && c > 0 ? fmtNum(Math.round(t / c * 100) / 100) : esIns ? "" : undefined } : x));
                         }} />
-                      <select style={{ ...sel, padding: "8px 18px 8px 4px", backgroundPosition: "right 5px center", textAlign: "center", textAlignLast: "center" }} value={l.alic} onChange={(e) => setLinea(i, "alic", parseFloat(e.target.value))}>
+                      <select style={{ ...sel, padding: "8px 18px 8px 4px", backgroundPosition: "right 5px center", textAlign: "center", textAlignLast: "center" }} value={l.alic} onChange={(e) => { const v = parseFloat(e.target.value); setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, alic: v, alicManual: true } : x)); }}>
                         {ALICUOTAS.map((a) => <option key={a} value={a}>{fmtNum(a)}%</option>)}
                       </select>
                       <span style={{ fontSize: 12.5, ...celda }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />) : ""}</span>

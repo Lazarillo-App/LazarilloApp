@@ -65,11 +65,14 @@ export function correrFecha(iso, meses) {
   const ult = new Date(Date.UTC(y, mo, 0)).getUTCDate();
   return `${y}-${p2(mo)}-${p2(Math.min(Number(m[3]), ult))}`;
 }
-export function ctxDesdeCelda(p, fechaPagoPrev) {
-  // Con proveedor (vista Proveedor del Panel) va directo a Factura con ese proveedor, concepto y período;
-  // Gastos Varios es para lo que no tiene proveedor (Diego 20/11/2026).
-  if (p.proveedorId != null) {
-    return { modo: 'factura', proveedorId: p.proveedorId, conceptoCodigo: p.conceptoCodigo, periodo: `${p.anio}-${p2(p.mes)}` };
+// aprendido: { proveedorId } de la última carga del concepto (mes anterior con valor), si tenía proveedor.
+export function ctxDesdeCelda(p, fechaPagoPrev, aprendido = null) {
+  // Con proveedor (el de la fila en la vista Proveedor, o el que se usó la última vez) va directo a
+  // Factura, precargada como la última de ese proveedor; Gastos Varios es para lo que no tiene
+  // proveedor (Diego 20/11/2026: «aprendé de la carga»).
+  const proveedorId = p.proveedorId ?? aprendido?.proveedorId ?? null;
+  if (proveedorId != null) {
+    return { modo: 'factura', proveedorId, conceptoCodigo: p.conceptoCodigo, periodo: `${p.anio}-${p2(p.mes)}`, precargar: true };
   }
   return {
     modo: 'vario',
