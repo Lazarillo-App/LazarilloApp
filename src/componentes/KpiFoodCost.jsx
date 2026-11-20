@@ -5,6 +5,7 @@ import SpotlightTour from "./SpotlightTour";
 import { useRecorrido } from "@/hooks/useRecorrido";
 import { useAbrirGuia } from "@/componentes/asistente/guias";
 import { refTour, seVe } from "@/componentes/asistente/pasosHeader";
+import useCelular from "@/componentes/base/useCelular";
 
 /* ──────────────────────────────────────────────────────────────
    KPI de Food Cost — Lazarillo Gestión
@@ -887,6 +888,9 @@ export default function KpiFoodCost({
   periodoAnterior = null,
 }) {
   const [abierto, setAbierto] = useState(false);
+  // Celular (Diego 20/11/2026): solo consulta — sin Configurar ni «+ Nuevo» (eso se hace en la compu),
+  // con «cuadra / no cuadra» a la vista y números + gráfico juntos en una sola vista.
+  const celular = useCelular();
   // Sin nada configurado el resumen muestra 0% y no dice qué hacer: se abre
   // directo en Configurar, con la explicación.
   const [modo, setModo] = useState(() => {
@@ -895,6 +899,7 @@ export default function KpiFoodCost({
     return g && vacio(g.ventas) && vacio(g.compras) ? "config" : "resumen";
   }); // resumen | config
   const [vista, setVista] = useState("datos");     // datos | grafico
+  useEffect(() => { if (celular && modo === "config") setModo("resumen"); }, [celular, modo]);
   const [serie, setSerie] = useState("foodcost");  // foodcost | compras | ventas
   const [actual, setActual] = useState(kpis[0]?.id);
   const [nivel, setNivel] = useState({ ventas: "agrupacion", compras: "rubro" });
@@ -966,15 +971,15 @@ export default function KpiFoodCost({
       const caja = raiz.current?.getBoundingClientRect();
       if (!caja) return;
       const vw = document.documentElement.clientWidth || window.innerWidth;
-      const ancho = Math.min(860, vw * 0.94);
-      const izq = Math.max(8, Math.min(caja.right - ancho, vw - ancho - 8));
+      const ancho = celular ? vw - 16 : Math.min(860, vw * 0.94);
+      const izq = celular ? 8 : Math.max(8, Math.min(caja.right - ancho, vw - ancho - 8));
       const libre = window.innerHeight - (caja.bottom + 7) - 12;
       setPosPanel({ left: Math.round(izq - caja.left), alto: Math.max(320, Math.round(libre)) });
     };
     medir();
     window.addEventListener("resize", medir);
     return () => window.removeEventListener("resize", medir);
-  }, [abierto, modo]);
+  }, [abierto, modo, celular]);
 
   // Si cambia el negocio activo y llegan otros kpis (otro id[0]), seguir el actual.
   useEffect(() => {
@@ -1260,6 +1265,7 @@ export default function KpiFoodCost({
           ref={panelRef}
           style={posPanel ? {
             left: posPanel.left, right: "auto",
+            ...(celular ? { width: (document.documentElement.clientWidth || window.innerWidth) - 16, maxWidth: "none" } : null),
             maxHeight: Math.min(700, posPanel.alto),
             ...(modo === "config" ? { height: Math.min(670, posPanel.alto) } : null),
           } : undefined}
@@ -1308,35 +1314,41 @@ export default function KpiFoodCost({
             })}
             {/* Crear uno y quedarse parado en el anterior obliga a ir a
                 buscarlo: se salta al nuevo y directo a configurarlo. */}
-            <span className="kfc-tbk add" onClick={() => {
+            {!celular && <span className="kfc-tbk add" onClick={() => {
               const nuevo = nuevoKpi(kpis);
               onChange?.([...kpis, nuevo]);
               setActual(nuevo.id);
               setModo("config");
               setAviso("");
-            }}>+ Nuevo</span>
+            }}>+ Nuevo</span>}
             {/* Los controles de la derecha viven juntos: así Configurar queda
                 siempre pegado al borde, esté o no el switch de vista. */}
             <span className="kfc-tright">
-              {hayGrafico && modo === "resumen" && (
+              {hayGrafico && modo === "resumen" && !celular && (
                 <span className="kfc-sw" data-tour="fc-vista">
                   {[["datos", "▦"], ["grafico", "∿"]].map(([v, ic]) => (
                     <span key={v} className={vista === v ? "on" : ""} onClick={() => setVista(v)}>{ic}</span>
                   ))}
                 </span>
               )}
+              {celular ? (haySubs && (
+                <span className="kfc-cfg" style={{ cursor: "default" }}>
+                  <span className={cuadra ? "ok" : "bad"}>{cuadra ? "✓ cuadra" : "⚠ no cuadra"}</span>
+                </span>
+              )) : (
               <span className="kfc-cfg" data-tour="fc-config" onClick={() => setModo((m) => (m === "config" ? "resumen" : "config"))}>
                 {haySubs && (
                   <span className={cuadra ? "ok" : "bad"}>{cuadra ? "✓ cuadra" : "⚠ no cuadra"}</span>
                 )}
                 ⚙ Configurar
               </span>
+              )}
             </span>
           </div>
 
           {modo === "resumen" ? (
             <>
-              {!(hayGrafico && vista === "grafico") && (
+              {(celular || !(hayGrafico && vista === "grafico")) && (
               <div className="kfc-calc" data-tour="fc-calc">
                 <div className="kfc-origen">
                   <div className="kfc-fila">
@@ -1399,9 +1411,9 @@ export default function KpiFoodCost({
                 </div>
               </div>
               )}
-              {hayGrafico && vista === "grafico" && (
-                <div className="kfc-graf">
-                  {mesActual && (
+              {hayGrafico && (celular || vista === "grafico") && (
+                <div className={`kfc-graf${celular ? " kfc-graf-cel" : ""}`}>
+                  {mesActual && !celular && (
                     <div className="kfc-gnav">
                       <span className={`kfc-fl${idxMes <= 0 ? " off" : ""}`}
                         onClick={() => idxMes > 0 && setMesIdx(idxMes - 1)}>‹</span>
@@ -1690,6 +1702,9 @@ const CSS = `
   color:#7D8A88;cursor:pointer;background:#fff;white-space:nowrap;text-align:center;}
 .kfc-gtabs span.on{border-color:#2E5248;background:rgba(46,82,72,.1);color:#2E5248;font-weight:700;}
 .kfc-gcanvas{flex:1;min-width:0;}
+.kfc-graf-cel{border-top:1px solid #E8EDEB;}
+.kfc-graf-cel .kfc-gcuerpo{flex-direction:column;gap:8px;}
+.kfc-graf-cel .kfc-gtabs{flex-direction:row;justify-content:center;}
 .kfc-cvw{position:relative;}
 .kfc-cv{width:100%;height:116px;display:block;cursor:crosshair;}
 .kfc-tip{position:absolute;transform:translate(-50%,-100%);background:#1F2933;color:#fff;
