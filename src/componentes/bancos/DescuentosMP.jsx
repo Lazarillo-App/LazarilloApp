@@ -23,6 +23,7 @@ const mover = (m, n) => { const t = Number(m.slice(0, 4)) * 12 + Number(m.slice(
 const nombreMes = (m) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 const ddmm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
 const etiquetaConcepto = (c) => `${c.codigo} · ${c.nombre}`;
+const etiquetaRubro = (x) => `${x.codigo} · ${x.nombre}`;
 
 function useAncho() {
   const [w, setW] = useState(typeof window === 'undefined' ? 1366 : window.innerWidth);
@@ -63,6 +64,21 @@ export default function DescuentosMP({ bid, avisar }) {
 
   const opcProv = useMemo(() => provs.map((p) => ({ id: p.codigo, nombre: p.nombre })), [provs]);
   const opcConc = useMemo(() => conceptos.map((c) => ({ id: String(c.codigo), nombre: etiquetaConcepto(c) })), [conceptos]);
+  // Sugeridos de cada tipo (Diego 20/11/2026: «¿por qué no me sugiere conceptos relacionados a este proveedor?»):
+  // primero los que comparten palabras con la leyenda (ej. «Retención IIBB CABA» → «Ret.iibb Caba»), después los
+  // que ya se usaron en compras de su proveedor (los más usados primero). Hasta 6.
+  const sugeridosDe = (g) => {
+    // «Buenos Aires» es «Provincia» en los conceptos (y no «Mantenimiento Aires»); «Ib» es IIBB.
+    const pal = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/buenos aires|bs\.? ?as\.?/g, 'provincia').replace(/\bib\b/g, 'iibb').split(/[^a-z0-9]+/)
+      .filter((w) => w.length >= 3 && !['con', 'por', 'del', 'los', 'las', 'que', 'cobro', 'pago'].includes(w));
+    const deLeyenda = pal(g.nombre);
+    const parecido = (c) => pal(c.nombre).filter((w) => deLeyenda.some((x) => x === w || (w.length >= 3 && x.startsWith(w)) || (x.length >= 3 && w.startsWith(x)))).length;
+    const usados = (r?.sugeridos?.[g.proveedor?.codigo] || []).map(String);
+    const puntaje = (c) => parecido(c) * 10 + (usados.includes(String(c.codigo)) ? 5 + (8 - usados.indexOf(String(c.codigo))) / 10 : 0);
+    return conceptos.map((c) => ({ c, p: puntaje(c) })).filter((x) => x.p >= 5 || parecido(x.c) >= 2)
+      .sort((a, b) => b.p - a.p).slice(0, 6).map((x) => etiquetaConcepto(x.c));
+  };
 
   const configurar = async (g, cambio) => {
     setGuardando(g.grupo);
@@ -187,6 +203,7 @@ export default function DescuentosMP({ bid, avisar }) {
         <div style={{ flex: 1, minWidth: 0, borderRadius: 6, ...(g.concepto || !g.total ? {} : { boxShadow: `0 0 0 2px ${T.ambar}` }) }}>
           <SelectorBuscable label="Concepto de caja" placeholder="Elegí el concepto de caja…" value={g.concepto ? etiquetaConcepto(g.concepto) : null} opciones={opcConc}
             deshabilitado={guardando === g.grupo} textoCrear={`Crear «${g.nombre}»…`} nombreCrear={g.nombre}
+            destacadas={sugeridosDe(g)} rotuloDestacadas={`Sugeridos para ${g.proveedor?.nombre || 'este cargo'}`}
             onCrear={(nombre) => abrirNuevo(g, nombre)}
             onChange={(nombre) => { const c = conceptos.find((x) => etiquetaConcepto(x) === nombre); if (c) configurar(g, { concepto: String(c.codigo) }); }} />
         </div>
@@ -210,17 +227,16 @@ export default function DescuentosMP({ bid, avisar }) {
       <div style={{ marginTop: 6, padding: 10, border: `1px solid ${T.celeste}`, borderRadius: 10, background: '#F7FBFD', display: 'grid', gap: 6 }}>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.3px' }}>Concepto nuevo</div>
         <input value={nuevo.nombre} maxLength={60} onChange={(e) => setNuevo((x) => ({ ...x, nombre: e.target.value }))} style={campo} aria-label="Nombre del concepto" />
-        <span style={{ fontSize: 11.5, color: T.txt3 }}>Igual que (copia su rubro)</span>
-        <select value={nuevo.padrino} aria-label="Igual que"
-          onChange={(e) => { const v = e.target.value; setNuevo((x) => ({ ...x, padrino: v, rubro: v ? String(rubroDePadrino(v) ?? x.rubro) : x.rubro })); }} style={campo}>
-          <option value="">Ninguno</option>
-          {conceptos.map((c) => <option key={c.codigo} value={String(c.codigo)}>{etiquetaConcepto(c)}</option>)}
-        </select>
-        <span style={{ fontSize: 11.5, color: T.txt3 }}>Rubro</span>
-        <select value={nuevo.rubro || ''} aria-label="Rubro" onChange={(e) => setNuevo((x) => ({ ...x, rubro: e.target.value }))} style={campo}>
-          <option value="">Elegí el rubro…</option>
-          {rubros.map((x) => <option key={x.codigo} value={String(x.codigo)}>{x.codigo} · {x.nombre}</option>)}
-        </select>
+        {/* Rubro primero y, debajo, los conceptos de ese rubro para copiar (Diego 20/11/2026: «elegir rubro no me
+            filtra los conceptos de ese rubro»). Los dos con buscador. */}
+        <SelectorBuscable label="Rubro" placeholder="Elegí el rubro…" opciones={rubros.map(etiquetaRubro)}
+          value={rubros.find((x) => String(x.codigo) === String(nuevo.rubro)) ? etiquetaRubro(rubros.find((x) => String(x.codigo) === String(nuevo.rubro))) : null}
+          onChange={(t) => { const x = rubros.find((y) => etiquetaRubro(y) === t); if (x) setNuevo((n) => ({ ...n, rubro: String(x.codigo), padrino: n.padrino && String(rubroDePadrino(n.padrino)) === String(x.codigo) ? n.padrino : '' })); }} />
+        <SelectorBuscable label="Igual que (opcional)" placeholder="Ninguno"
+          opciones={conceptos.filter((c) => !nuevo.rubro || String(c.codRubro) === String(nuevo.rubro)).map(etiquetaConcepto)}
+          destacadas={sugeridosDe(g)} rotuloDestacadas={`Sugeridos para ${g.proveedor?.nombre || 'este cargo'}`}
+          value={nuevo.padrino ? etiquetaConcepto(conceptos.find((c) => String(c.codigo) === String(nuevo.padrino)) || { codigo: nuevo.padrino, nombre: '' }) : null}
+          onChange={(t) => { const c = conceptos.find((x) => etiquetaConcepto(x) === t); if (c) setNuevo((n) => ({ ...n, padrino: String(c.codigo), rubro: c.codRubro != null ? String(c.codRubro) : n.rubro })); }} />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" onClick={() => setNuevo(null)}
             style={{ height: celu ? 44 : 32, padding: '0 12px', borderRadius: 8, border: '1px solid rgba(21,33,62,.18)', background: '#fff', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }}>Cancelar</button>

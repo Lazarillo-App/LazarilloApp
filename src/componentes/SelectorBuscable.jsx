@@ -13,6 +13,8 @@ import {
    Se usa para Rubro, Subrubro y Unidad en los modales de edición.
    ────────────────────────────────────────────────────────────── */
 
+const SEPARADOR = '\u0000sep';
+
 export default function SelectorBuscable({
   label,
   value,                    // string | null — el nombre elegido
@@ -25,6 +27,8 @@ export default function SelectorBuscable({
   deshabilitado = false,
   placeholder = '',
   ancho,                    // opcional, por defecto ocupa todo
+  destacadas = [],          // opcional: nombres que van primero, bajo «rotuloDestacadas» (ej. sugeridos)
+  rotuloDestacadas = 'Sugeridos',
 }) {
   const [abierto, setAbierto] = useState(false);
   const [q, setQ] = useState('');
@@ -39,6 +43,14 @@ export default function SelectorBuscable({
     if (!t) return lista;
     return lista.filter((o) => o.toLowerCase().includes(t));
   }, [lista, q]);
+
+  // Destacadas primero (con su rótulo) y después el resto, bajo «Todos»; el buscador filtra las dos partes.
+  const ordenadas = useMemo(() => {
+    const dest = destacadas.filter((d) => filtradas.includes(d));
+    if (!dest.length) return filtradas;
+    const resto = filtradas.filter((o) => !dest.includes(o));
+    return [SEPARADOR, ...dest, ...(resto.length ? [SEPARADOR, ...resto] : [])];
+  }, [filtradas, destacadas]);
 
   // ¿lo que escribió existe tal cual? si no, crear ofrece ese texto
   const exacta = useMemo(
@@ -160,7 +172,11 @@ export default function SelectorBuscable({
                 <Typography sx={{ px: 1.6, py: 1.4, fontSize: '0.8rem', color: 'text.secondary' }}>
                   Sin resultados
                 </Typography>
-              ) : filtradas.map((o) => (
+              ) : ordenadas.map((o, i) => (o === SEPARADOR ? (
+                <Box key={`sep${i}`} sx={{ px: 1.6, pt: i ? 1 : 0.8, pb: 0.4, fontSize: 11, fontWeight: 700, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: '.3px', ...(i ? { borderTop: '1px solid', borderColor: 'divider' } : {}) }}>
+                  {i ? 'Todos' : rotuloDestacadas}
+                </Box>
+              ) : (
                 <Box key={o} onClick={() => elegir(o)}
                   sx={{
                     px: 1.6, py: 0.9, cursor: 'pointer', fontSize: '0.84rem',
@@ -170,7 +186,7 @@ export default function SelectorBuscable({
                   }}>
                   {o}
                 </Box>
-              ))}
+              )))}
             </Box>
           </Paper>
         </ClickAwayListener>
