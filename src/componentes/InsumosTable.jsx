@@ -20,6 +20,8 @@ import { useConfig } from '@/context/ConfigContext';
 import UsoInsumoCell from './UsoInsumoCell';
 import { esTodoGroup, esDiscontinuadosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 import { useAccess } from '@/context/AccessContext';
+import ListaCelular from '@/componentes/base/ListaCelular';
+const fmtCelular = (v, d) => `$ ${Number(v).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d })}`;
 
 const num = (v) => (v == null || v === "" ? null : Number(v));
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -252,6 +254,9 @@ const InsumosTable = forwardRef(function InsumosTable({
   onAfterToggleElaborado,
   onAfterToggleElaboradoBulk,
   onOpenRecetaElaborado,
+  // Celular (Diego 20/11/2026): lista de 3 columnas en vez de la tabla. arribaCelular = los filtros.
+  celular = false,
+  arribaCelular = null,
   recetasElaborados = {},
   soloConCompras = false,
   onToggleSoloConCompras,
@@ -986,8 +991,43 @@ const InsumosTable = forwardRef(function InsumosTable({
     }
   }, [resumenSinAgrupacion, originalBusinessId, businessId, notify, handleAfterAction]);
 
+  // Celular: qué muestra la columna del medio (recordado en este navegador).
+  const [modoCel, setModoCel] = useState(() => { try { return localStorage.getItem('lz-cel-ins-modo') || 'costo'; } catch { return 'costo'; } });
+  const cambiarModoCel = (m) => { setModoCel(m); try { localStorage.setItem('lz-cel-ins-modo', m); } catch { /* sin storage */ } };
+
   if (loading) {
     return <p style={{ padding: 16 }}>Cargando insumos...</p>;
+  }
+
+  if (celular) {
+    const compraDe = (r) => { const c = comprasMap.get(Number(r.id)); return c ? (Number(c.neto ?? 0) + Number(c.iva ?? 0)) : 0; };
+    // En el celular, de lo que más se compra a lo que menos: rubros y, adentro, insumos.
+    const gruposCel = [...groupedRows].sort((x, y) => (y.__ventasMonto || 0) - (x.__ventasMonto || 0));
+    const filas = gruposCel.flatMap((g) => [...g.rows].sort((x, y) => compraDe(y) - compraDe(x)).map((r) => {
+      const compra = compraDe(r);
+      const pct = g.__ventasMonto > 0 && compra > 0 ? (compra / g.__ventasMonto) * 100 : 0;
+      const precio = getDisplayedPrice(r);
+      return {
+        key: String(r.id),
+        nombre: r.nombre,
+        sub: [r.unidad_med ? `por ${String(r.unidad_med).toLowerCase()}` : null, g.label].filter(Boolean).join(' · '),
+        medio: modoCel === 'compras' ? (compra > 0 ? fmtCelular(compra, 0) : '—') : (precio > 0 ? fmtCelular(precio, 2) : '—'),
+        pct: pct > 0 ? `${pct.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %` : '—',
+        onClick: () => onOpenRecetaElaborado?.(r),
+      };
+    }));
+    const modosCel = [{ id: 'costo', label: 'Costo' }, { id: 'compras', label: 'Compras' }];
+    return (
+      <div style={{ height: '100%', overflowY: 'auto' }}>
+        <ListaCelular
+          arriba={arribaCelular}
+          modos={modosCel} modo={modoCel} onModo={cambiarModoCel}
+          columnas={{ medio: modoCel === 'compras' ? 'COMPRAS' : 'COSTO', pct: '% RUBRO' }}
+          filas={filas}
+          vacio="No hay insumos en esta vista."
+        />
+      </div>
+    );
   }
 
   const ITEM_HEIGHT = 48;

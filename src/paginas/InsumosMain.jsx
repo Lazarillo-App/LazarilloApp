@@ -2,6 +2,7 @@
 /* eslint-disable no-unused-vars */
 // src/paginas/InsumosMain.jsx
 
+import useCelular from '@/componentes/base/useCelular';
 import { showAlert } from '../servicios/appAlert';
 import { showPrompt } from '../servicios/appPrompt';
 import { showConfirm } from '../servicios/appConfirm';
@@ -1673,6 +1674,8 @@ export default function InsumosMain() {
   }, []);
 
   // ── Barra única (BarraGestion): buscador y acciones de esta página ──
+  const celular = useCelular();
+
   useRegistrarBarra('insumos', {
     placeholder: 'Buscar insumos, artículos…',
     opciones: opcionesGlobales,
@@ -1742,54 +1745,10 @@ export default function InsumosMain() {
   const pasoIns = pasosIns[recInsumos.paso - 1];
 
   /* ── Render ── */
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 16,
-      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-      overflow: 'hidden',
-    }}>
-      {/* La barra (período, sucursal, buscador, food cost, Ventas/Compras,
-          + Agregar) vive en GestionLayout y no se desmonta al cambiar de
-          página; acá solo van los botones propios de Insumos. */}
-      {barraGestion.slotEl && barraGestion.paginaActiva === 'insumos' && ReactDOM.createPortal(
-        <>
-          {!isStaff && insumoSelectionMode && (
-            <Button size="small" variant="outlined" color="warning" onClick={() => setRevisionMasivaOpen(true)} sx={{ ml: 1 }}>
-              Marcar a revisión
-            </Button>
-          )}
-          {!isStaff && (
-            <InsumoListToolbar
-              selectionMode={insumoSelectionMode}
-              selectedIds={selectedInsumoIds}
-              onToggleMode={toggleInsumoMode}
-              onClearSelection={clearInsumoSelection}
-              saving={insumoListSaving}
-              existingLists={insumoLists}
-              onCreateList={handleCreateInsumoList}
-              onAddToList={handleAddToInsumoList}
-              onDeleteList={deleteInsumoList}
-              onDownloadList={handleDownloadList}
-              insumoLists={insumoLists}
-              activeInsumoListId={activeInsumoListId}
-              onSelectInsumoList={selectInsumoList}
-            />
-          )}
-        </>,
-        barraGestion.slotEl,
-      )}
-
-      {/* "Insumos" ya está marcado en el menú de arriba: el título solo
-          aparece si hay una división activa (para saber en cuál estás). */}
-      {!isMainDivision && activeDivisionName && (
-        <h2 style={{ margin: 0, padding: '0 8px', flexShrink: 0 }}>
-          {titulo}
-        </h2>
-      )}
-
-      <div className="lz-sectores" style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
-        <div ref={tourSidebarRef} className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+  // La misma barra de agrupaciones/rubros: al costado en la compu, compacta arriba de la lista en el celular.
+  const renderSidebar = (compacto) => (
           <InsumosSidebar
+            compacto={compacto}
             staff={!!isStaff}
             rubros={rubrosTree}
             rubroSeleccionado={rubroSeleccionado}
@@ -1835,10 +1794,64 @@ export default function InsumosMain() {
             idsTop20Set={idsTop20Insumos}
             comprasMap={comprasMap}
           />
+  );
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 16,
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      overflow: 'hidden',
+    }}>
+      {/* La barra (período, sucursal, buscador, food cost, Ventas/Compras,
+          + Agregar) vive en GestionLayout y no se desmonta al cambiar de
+          página; acá solo van los botones propios de Insumos. */}
+      {barraGestion.slotEl && barraGestion.paginaActiva === 'insumos' && ReactDOM.createPortal(
+        <>
+          {!isStaff && insumoSelectionMode && (
+            <Button size="small" variant="outlined" color="warning" onClick={() => setRevisionMasivaOpen(true)} sx={{ ml: 1 }}>
+              Marcar a revisión
+            </Button>
+          )}
+          {!isStaff && (
+            <InsumoListToolbar
+              selectionMode={insumoSelectionMode}
+              selectedIds={selectedInsumoIds}
+              onToggleMode={toggleInsumoMode}
+              onClearSelection={clearInsumoSelection}
+              saving={insumoListSaving}
+              existingLists={insumoLists}
+              onCreateList={handleCreateInsumoList}
+              onAddToList={handleAddToInsumoList}
+              onDeleteList={deleteInsumoList}
+              onDownloadList={handleDownloadList}
+              insumoLists={insumoLists}
+              activeInsumoListId={activeInsumoListId}
+              onSelectInsumoList={selectInsumoList}
+            />
+          )}
+        </>,
+        barraGestion.slotEl,
+      )}
+
+      {/* "Insumos" ya está marcado en el menú de arriba: el título solo
+          aparece si hay una división activa (para saber en cuál estás). */}
+      {!isMainDivision && activeDivisionName && (
+        <h2 style={{ margin: 0, padding: '0 8px', flexShrink: 0 }}>
+          {titulo}
+        </h2>
+      )}
+
+      <div className="lz-sectores" style={{ display: 'grid', gridTemplateColumns: celular ? '1fr' : '280px 1fr', gap: 0, alignItems: 'start', borderRadius: 12, overflow: 'hidden', flex: 1, minHeight: 0, boxShadow: '0 1px 4px rgba(0,0,0,.08)' }}>
+        {!celular && (
+        <div ref={tourSidebarRef} className="hide-scrollbar" style={{ borderRight: '1px solid #eee', background: '#fafafa', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+          {renderSidebar(false)}
         </div>
+        )}
 
         <div id="insumos-scroll" ref={tourTablaRef} style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <InsumosTable
+            celular={celular}
+            arribaCelular={celular ? renderSidebar(true) : null}
             puestosTop20={puestosTop20Insumos}
             branches={veMontos && activeBranchFilter?.mode === 'all' ? (rawBranches || []) : []}
             comprasMapByBranch={comprasMapByBranch}

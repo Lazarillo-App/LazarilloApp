@@ -41,6 +41,7 @@ import "../css/TablaArticulos.css";
 import { useAbrirGuia, useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
 import { useRecorrido } from '@/hooks/useRecorrido';
 import SpotlightTour from './SpotlightTour';
+import ListaCelular from '@/componentes/base/ListaCelular';
 import { usePasosHeader, refTour, seVe } from '@/componentes/asistente/pasosHeader';
 
 /* ---------------- utils ---------------- */
@@ -388,6 +389,9 @@ export default function TablaArticulos({
   onUnidadesModo,
   onAddMembersToLink,
   editingGroup = null,
+  // Celular (Diego 20/11/2026): lista de 3 columnas en vez de la tabla. arribaCelular = los filtros.
+  celular = false,
+  arribaCelular = null,
 }) {
   const fechaDesde = fechaDesdeProp;
   const fechaHasta = fechaHastaProp;
@@ -468,6 +472,9 @@ export default function TablaArticulos({
   const [ventaSinPromoMap, setVentaSinPromoMap] = useState({});
   const { staffPuede = () => true } = useAccess() || {};
   const staffVeObjetivo = !isStaff || staffPuede('ver_objetivo');
+  // Celular: qué muestra la columna del medio (recordado en este navegador).
+  const [modoCel, setModoCel] = useState(() => { try { return localStorage.getItem('lz-cel-art-modo') || 'costo'; } catch { return 'costo'; } });
+  const cambiarModoCel = (m) => { setModoCel(m); try { localStorage.setItem('lz-cel-art-modo', m); } catch { /* sin storage */ } };
 
   // ── Definición canónica de columnas reordenables ──
   // "Últ. modificación" NO va acá a propósito: es una columna exclusiva de
@@ -2098,6 +2105,43 @@ export default function TablaArticulos({
     );
   };
 
+  // Costo, objetivo y costo % de un artículo: una sola cuenta para la tabla y la vista celular.
+  const calcCostoArt = (a, agrupId) => {
+    const costoArticulo = getCostoArticulo(a);
+    const objetivoArticulo = getObjetivoArticulo(a, agrupId);
+    const precioManual = getPrecioManualArticulo(a);
+    const precioBase = num(a.precio);
+    const precioRef = precioManual ?? precioBase;
+    // Fuente de verdad: el config del negocio (server-side, ConfigContext) — antes se
+    // leía de redondeoConfig (localStorage por navegador/dispositivo, sincronizado solo
+    // "hacia adelante" vía eventos), así que un negocio nunca abierto desde Configuración
+    // en ESTE navegador quedaba con redondeo desactivado acá aunque el servidor tuviera
+    // un valor real, mostrando sugerido/ganancia sin redondear de forma inconsistente
+    // entre dispositivos. Mientras el config todavía está cargando, se usa el valor local
+    // como mejor estimación provisoria.
+    const pasoRedondeo = appConfig.loading
+      ? (Number(redondeoConfig?.valor) || 0)
+      : (Number(appConfig?.redondeoPrecios) || 0);
+    // % de costo: si hay una lista de precios no-favorita activa (y el artículo no está
+    // excluido de ella), se calcula con el precio de ESA lista — antes siempre usaba el
+    // precio de la favorita, por eso Costo %/Rentabilidad no cambiaban al cambiar de lista.
+    const precioListaParaCosto = getPrecioListaActiva(a, agrupId);
+    const precioParaCosto = (precioListaParaCosto && !precioListaParaCosto.excluido)
+      ? (pasoRedondeo > 0
+          ? Math.round(precioListaParaCosto.precio / pasoRedondeo) * pasoRedondeo
+          : Math.round(precioListaParaCosto.precio))
+      : (precioManual != null && precioManual > 0 ? precioManual : precioBase);
+    const costoPct = precioParaCosto > 0 ? (costoArticulo / precioParaCosto) * 100 : 0;
+    const sugeridoCrudo = objetivoArticulo > 0 && objetivoArticulo < 100 ? costoArticulo / (objetivoArticulo / 100) : 0;
+    // Sugerido: SIEMPRE hacia arriba (hacia abajo no alcanzaría el objetivo). Spec F1/§5.2
+    const sugerido = sugeridoCrudo > 0
+      ? (pasoRedondeo > 0 ? Math.ceil(sugeridoCrudo / pasoRedondeo) * pasoRedondeo : Math.ceil(sugeridoCrudo))
+      : 0;
+    // Staff (y el jefe de cocina) no marca precios: el objetivo no le dice nada (Diego 11/11/2026).
+    const superaObjetivo = staffVeObjetivo && costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
+    return { costoArticulo, objetivoArticulo, precioManual, precioBase, precioRef, pasoRedondeo, precioParaCosto, costoPct, sugerido, superaObjetivo };
+  };
+
   const renderRow = ({ row, index, style, enTitulo = false }) => {
 
     if (row.kind === "agrupacion-header") {
@@ -2478,41 +2522,10 @@ export default function TablaArticulos({
 
     const overrideQty = getVentasQty(id);
     const overrideAmount = getVentasAmount(id);
-    const costoArticulo = getCostoArticulo(a);
     const hayReceta = tieneReceta(a);
     const recetaData = recetasCostos[String(id)] || recetasCostos[Number(id)];
     const hayAlertaInsumo = hayReceta && recetaData?.tieneAlerta === true;
-    const objetivoArticulo = getObjetivoArticulo(a, agrupId);
-    const precioManual = getPrecioManualArticulo(a);
-    const precioBase = num(a.precio);
-    const precioRef = precioManual ?? precioBase;
-    // Fuente de verdad: el config del negocio (server-side, ConfigContext) — antes se
-    // leía de redondeoConfig (localStorage por navegador/dispositivo, sincronizado solo
-    // "hacia adelante" vía eventos), así que un negocio nunca abierto desde Configuración
-    // en ESTE navegador quedaba con redondeo desactivado acá aunque el servidor tuviera
-    // un valor real, mostrando sugerido/ganancia sin redondear de forma inconsistente
-    // entre dispositivos. Mientras el config todavía está cargando, se usa el valor local
-    // como mejor estimación provisoria.
-    const pasoRedondeo = appConfig.loading
-      ? (Number(redondeoConfig?.valor) || 0)
-      : (Number(appConfig?.redondeoPrecios) || 0);
-    // % de costo: si hay una lista de precios no-favorita activa (y el artículo no está
-    // excluido de ella), se calcula con el precio de ESA lista — antes siempre usaba el
-    // precio de la favorita, por eso Costo %/Rentabilidad no cambiaban al cambiar de lista.
-    const precioListaParaCosto = getPrecioListaActiva(a, agrupId);
-    const precioParaCosto = (precioListaParaCosto && !precioListaParaCosto.excluido)
-      ? (pasoRedondeo > 0
-          ? Math.round(precioListaParaCosto.precio / pasoRedondeo) * pasoRedondeo
-          : Math.round(precioListaParaCosto.precio))
-      : (precioManual != null && precioManual > 0 ? precioManual : precioBase);
-    const costoPct = precioParaCosto > 0 ? (costoArticulo / precioParaCosto) * 100 : 0;
-    const sugeridoCrudo = objetivoArticulo > 0 && objetivoArticulo < 100 ? costoArticulo / (objetivoArticulo / 100) : 0;
-    // Sugerido: SIEMPRE hacia arriba (hacia abajo no alcanzaría el objetivo). Spec F1/§5.2
-    const sugerido = sugeridoCrudo > 0
-      ? (pasoRedondeo > 0 ? Math.ceil(sugeridoCrudo / pasoRedondeo) * pasoRedondeo : Math.ceil(sugeridoCrudo))
-      : 0;
-    // Staff (y el jefe de cocina) no marca precios: el objetivo no le dice nada (Diego 11/11/2026).
-    const superaObjetivo = staffVeObjetivo && costoPct > 0 && objetivoArticulo > 0 && costoPct > objetivoArticulo;
+    const { costoArticulo, objetivoArticulo, precioManual, precioBase, precioRef, pasoRedondeo, precioParaCosto, costoPct, sugerido, superaObjetivo } = calcCostoArt(a, agrupId);
     const isChecked = selectionMode ? selectedIds.has(Number(id)) : false;
     const rowBg = isChecked ? "rgba(3,105,161,0.07)" : hayAlertaInsumo ? "rgba(245,158,11,0.08)" : superaObjetivo ? "rgba(239,68,68,0.06)" : undefined;
     const selectedStyle = isSelected ? { background: "color-mix(in srgb, var(--color-primary) 10%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent)", position: "relative" } : null;
@@ -3202,6 +3215,40 @@ export default function TablaArticulos({
         />
       )}
 
+      {celular ? (() => {
+        const agrupId = String(agrupacionSeleccionada?.id || '');
+        const items = flatRows.filter((r) => r.kind === 'item').map((r) => r.art);
+        const modosCel = [{ id: 'costo', label: 'Costo' }, { id: 'precio', label: 'Precio' }, { id: 'unidades', label: 'Unidades' }];
+        const filas = items.map((a) => {
+          const { costoArticulo, objetivoArticulo, precioParaCosto, costoPct, superaObjetivo } = calcCostoArt(a, agrupId);
+          const medio = modoCel === 'precio' ? (precioParaCosto > 0 ? fmtCurrency(precioParaCosto) : '—')
+            : modoCel === 'unidades' ? fmt(getVentasQty(a.id) || 0, 0)
+              : (costoArticulo > 0 ? fmtCurrency(costoArticulo) : '—');
+          return {
+            key: String(a.id),
+            nombre: a.nombre,
+            medio,
+            pct: costoPct > 0 ? `${fmt(costoPct, 1)} %` : '—',
+            pctSub: staffVeObjetivo && objetivoArticulo > 0 ? `obj ${fmt(objetivoArticulo, 0)} %` : null,
+            pctColor: superaObjetivo ? '#d64545' : undefined,
+            onClick: () => {
+              const esPromo = a.origen === 'promo' || promoIds.has(Number(getId(a))) || promoGroupIds.has(Number(getId(a)));
+              setRecetaArticulo({ ...a, objetivoResuelto: getObjetivoArticulo(a, agrupId), esPromo, __tab: 'receta' });
+            },
+          };
+        });
+        return (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <ListaCelular
+              arriba={arribaCelular}
+              modos={modosCel} modo={modoCel} onModo={cambiarModoCel}
+              columnas={{ medio: modosCel.find((m) => m.id === modoCel)?.label.toUpperCase(), pct: 'COSTO %' }}
+              filas={filas}
+              vacio="No hay artículos en esta vista."
+            />
+          </div>
+        );
+      })() : (
       <div className="tabla-articulos-container" style={{ height: "100%" }}>
         <div ref={tablaWrapRef} style={{ height: "100%", width: "100%" }}>
           <div ref={tablaHeaderRef} className="table-col-header">
@@ -3479,6 +3526,7 @@ export default function TablaArticulos({
           <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.type} sx={{ width: "100%" }}>{snack.msg}</Alert>
         </Snackbar>
       </div>
+      )}
 
       {bulkPctDlg && (
         <Dialog open onClose={() => setBulkPctDlg(null)} maxWidth="xs" fullWidth>

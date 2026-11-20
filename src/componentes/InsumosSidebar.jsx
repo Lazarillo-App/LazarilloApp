@@ -80,6 +80,8 @@ const resolveInsumoMonto = (insumo, metaById) => {
 };
 
 function InsumosSidebar({
+  // Celular (Diego 20/11/2026): solo dos desplegables — Agrupación y Rubro — arriba de la lista.
+  compacto = false,
   staff = false,
   rubros = [],
   rubroSeleccionado,
@@ -494,6 +496,42 @@ function InsumosSidebar({
   const [activeTab, setActiveTab] = useState('agrupaciones');
   const pendientesN = usePendientesCount(businessId);
   useEffect(() => { if (activeTab === 'pendientes' && businessId) marcarPendientesVistos(businessId); }, [activeTab, businessId]);
+
+  if (compacto) {
+    const campo = { height: 44, borderRadius: '12px', bgcolor: '#fff', fontSize: 13, fontWeight: 600 };
+    return (
+      <div style={{ display: 'flex', gap: 8, minWidth: 0 }}>
+        {!staff && (
+          <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
+            <InputLabel sx={{ fontSize: 11 }}>Agrupación</InputLabel>
+            <Select label="Agrupación" value={selectedGroupValue} onChange={handleGroupChange} sx={campo}
+              renderValue={(value) => { const g = opcionesSelect.find((x) => Number(x.id) === Number(value)); return g ? nombreAgrupacionVisible(g) : 'Sin agrupación'; }}
+              MenuProps={downwardMenuProps()}>
+              {opcionesSelect.map((g) => (
+                <MenuItem key={g.id} value={Number(g.id)} sx={{ minHeight: 44 }}>{nombreAgrupacionVisible(g)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+        <FormControl size="small" sx={{ flex: staff ? 1 : '0 0 42%', minWidth: 0 }}>
+          <InputLabel shrink sx={{ fontSize: 11 }}>Rubro</InputLabel>
+          <Select label="Rubro" notched displayEmpty sx={campo}
+            value={rubroSeleccionado ? String(rubroSeleccionado.codigo ?? rubroSeleccionado.nombre ?? '') : ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              setRubroSeleccionado?.(v === '' ? null : (treeByRubro.find((r) => String(r.codigo ?? r.nombre ?? '') === v) || null));
+            }}
+            renderValue={(v) => (v === '' ? 'Todos' : (treeByRubro.find((r) => String(r.codigo ?? r.nombre ?? '') === v)?.nombre || rubroSeleccionado?.nombre || v))}
+            MenuProps={downwardMenuProps()}>
+            <MenuItem value="" sx={{ minHeight: 44 }}>Todos</MenuItem>
+            {treeByRubro.map((r) => (
+              <MenuItem key={String(r.codigo ?? r.nombre)} value={String(r.codigo ?? r.nombre ?? '')} sx={{ minHeight: 44 }}>{r.nombre || 'Sin rubro'}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </div>
+    );
+  }
 
   return (
     <div className="sidebar">
