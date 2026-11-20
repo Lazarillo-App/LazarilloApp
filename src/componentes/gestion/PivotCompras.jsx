@@ -257,7 +257,7 @@ export default function PivotCompras({
     if (!cargaEnCelda) return { props: {}, sx: {} };
     return {
       props: {
-        title: `Cargar ${c.nombre} en este mes como gasto vario`,
+        title: `Cargar ${c.nombre} en este mes ${agrupacion === 'proveedor' && filtro?.proveedorId != null ? 'como factura de este proveedor' : 'como gasto vario'}`,
         onClick: () => pedirCarga({ anio: year, mes, conceptoCodigo: c.conceptoCodigo, conceptoNombre: c.nombre, prev: mesAnteriorConValor(c.values, mes),
           ...(agrupacion === 'proveedor' && filtro?.proveedorId != null ? { proveedorId: filtro.proveedorId } : {}) }),
       },

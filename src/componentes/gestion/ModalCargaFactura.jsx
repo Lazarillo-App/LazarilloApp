@@ -615,6 +615,9 @@ function ModalNuevaCarga(props) {
   const [envPanel, setEnvPanel] = useState(null); // { i, modo: "nuevo" | "editar" }
   const qcMaestros = useQueryClient();
   const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
+  // Concepto que viene armado (celda del Panel, Sin carga): por nombre o por código. También arma la
+  // factura si se pasa a esa pestaña (Diego 20/11/2026).
+  const conceptoCtx = ctx.concepto || (ctx.conceptoCodigo && (MAESTRO_CONCEPTOS.find((c) => c.codigo === ctx.conceptoCodigo) || {}).concepto) || "";
   const codConcepto = (nombre) => (MAESTRO_CONCEPTOS.find((c) => c.concepto === nombre) || {}).codigo;
   const nomConcepto = (cod) => (MAESTRO_CONCEPTOS.find((c) => c.codigo === cod) || {}).concepto || "";
   // IVA e II guardados en la última carga de Lazarillo mandan sobre los de MaxiRest (Diego 06/11/2026).
@@ -743,14 +746,15 @@ function ModalNuevaCarga(props) {
   const fechaRef = useRef(null);
   useEffect(() => { if (rde && tipoRef.current) tipoRef.current.focus(); }, []);
   const [origenPre, setOrigenPre] = useState(rde ? rde.comp : null);
-  const [prov, setProv] = useState(ctx.prov || (ctx.proveedorId && (proveedores.find((p) => p.id === ctx.proveedorId) || {}).nombre) || (rde && rde.prov) || (ede && ede.prov) || "");
+  const [prov, setProv] = useState(ctx.prov || (ctx.proveedorId && (proveedores.find((p) => p.id === ctx.proveedorId) || {}).nombre) || (ctx.proveedorVario && (proveedores.find((p) => p.id === ctx.proveedorVario) || {}).nombre) || (rde && rde.prov) || (ede && ede.prov) || "");
   const [altaProv, setAltaProv] = useState(null); // {nombre, razon, cuit, tel, dir}
   // ctx.tipoCpb / prefijo / numero / fecha: precarga desde "Sin carga ARCA" (Diego 28/10/2026).
   const [tipoCpb, setTipoCpb] = useState(normTipo((rde && (rde.tipoCpb || (rde.comp || "").split(" ")[0])) || (ede && (ede.tipoCpb || partesComp(ede.comp)[0])) || ctx.tipoCpb || ""));
   const [compPref, setCompPref] = useState(ede ? partesComp(ede.comp)[1] : ctx.prefijo || "");
   const [compNum, setCompNum] = useState(ede ? partesComp(ede.comp)[2] : ctx.numero || "");
   const pad = (v, n) => (v.trim() === "" ? "" : v.replace(/\D/g, "").slice(-n).padStart(n, "0"));
-  const [fecha, setFecha] = useState(ede ? ede.fecha : ctx.fecha || fechaDefault);
+  // Desde una celda del Panel la factura arranca en ese mes, igual que el gasto vario (Diego 20/11/2026).
+  const [fecha, setFecha] = useState(ede ? ede.fecha : ctx.fecha || (ctx.periodo ? fechaDelPeriodo(ctx.periodo) : fechaDefault));
   // Período de la factura (Diego 06/11/2026): sigue el mes de la fecha hasta que se lo cambia a mano.
   const [periodoF, setPeriodoF] = useState(ede && ede.periodo ? ede.periodo : null);
   const perF = periodoF || (fechaValida(fecha) ? periodoDe(fecha) : periodoDe(HOY));
@@ -776,7 +780,7 @@ function ModalNuevaCarga(props) {
     return r.alic != null ? r.alic : 21;
   };
   const abrirPrecarga = (ls, comp) => ls.map((l, ix) => ({ ...l, alic: ivaPrecarga(l, comp), editando: ix === 0, foco: ix === 0 ? "neto" : false, precargada: ix !== 0, desdePre: true }));
-  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas, rde.comp) : ctx.concepto ? [{ tipo: "concepto", item: ctx.concepto, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
+  const [lineas, setLineas] = useState(ede ? lineasDe(ede) : rde ? abrirPrecarga(rde.lineas, rde.comp) : conceptoCtx ? [{ tipo: "concepto", item: conceptoCtx, neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false }] : []);
   // Aviso de "un 0 de más" (Diego 05/11/2026). Se calla si la línea se aceptó con ese mismo
   // valor ("Está bien así").
   //  - Insumo: el unitario contra el último precio del maestro (por unidad base).
@@ -1077,7 +1081,7 @@ function ModalNuevaCarga(props) {
   useEffect(() => {
     if (provAnterior.current === prov) return;
     provAnterior.current = prov;
-    setLineas((ls) => (ls.length === 1 && !ls[0].item && !ctx.concepto ? [{ ...ls[0], tipo: tipoDefault(prov) }] : ls));
+    setLineas((ls) => (ls.length === 1 && !ls[0].item && !conceptoCtx ? [{ ...ls[0], tipo: tipoDefault(prov) }] : ls));
     if (origenPre && !existente) {
       setOrigenPre(null);
       setLineas([]);
@@ -1090,7 +1094,7 @@ function ModalNuevaCarga(props) {
     // foco:false — la línea aparece apenas hay proveedor, tipo, Nº y fecha: si se llevaba el foco,
     // cortaba el Nº de comprobante al primer dígito (FALLA de Diego 05/11/2026).
     if (modo === "factura" && cuerpoVisible && lineas.length === 0 && !existente)
-      setLineas([{ tipo: ctx.concepto ? "concepto" : tipoDefault(prov), item: ctx.concepto || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }]);
+      setLineas([{ tipo: conceptoCtx ? "concepto" : tipoDefault(prov), item: conceptoCtx || "", neto: "", cant: "", unit: "", alic: 21, conc: "", pdvDest: pdvActual || PDVS[0], editando: true, foco: false, autoNeto: true }]);
   }, [cuerpoVisible]);
   const precargarDe = (f) => {
     // La cabecera ya está completa (tipo, Nº, fecha y total): no se pisa; el foco va al primer registro.
