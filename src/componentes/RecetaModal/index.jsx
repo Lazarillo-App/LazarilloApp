@@ -87,6 +87,8 @@ import SelectorRevisor from '../SelectorRevisor';
 import { downwardMenuProps } from '@/utils/menuProps';
 import EditarItemModal from '@/componentes/EditarItemModal';
 import { showConfirm } from '@/servicios/appConfirm';
+import useCelular from '@/componentes/base/useCelular';
+import RecetaConsultaCelular from './RecetaConsultaCelular';
 
 /* ════════════════════════════════════════
    MODAL PRINCIPAL
@@ -149,6 +151,9 @@ export default function RecetaModal({
   useEffect(() => { if (articulo?.__tab) setTabArt(articulo.__tab); }, [articulo?.id, articulo?.__tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const conPestanasArt = !modoInsumo && !!fichaArticulo && !modoPromoNueva && articulo?.id != null;
   const verFicha = conPestanasArt && tabArt === 'ficha';
+  // Celular: la receta del artículo/promo es solo de consulta (Diego 20/11/2026). RecetaConsultaCelular.jsx
+  const celular = useCelular();
+  const consultaCel = celular && !modoInsumo && !verFicha;
   const fichaSucioRef = useRef(false);
   const onFichaSucio = useCallback((v) => { fichaSucioRef.current = v; }, []);
   // Estado y acciones de la ficha: sus botones van en el MISMO pie que la receta (Diego 19/11/2026).
@@ -2500,13 +2505,15 @@ export default function RecetaModal({
           minHeight: 'min(94vh, calc(60vh + 140px))',
           // Artículo con pestañas: alto fijo, así el encabezado y el pie no se mueven al pasar de FICHA a RECETA.
           ...(conPestanasArt ? { height: 'min(94vh, 860px)' } : {}),
+          // Celular (solo consulta): pantalla completa.
+          ...(consultaCel ? { top: 0, left: 0, transform: 'none', width: '100vw', maxWidth: '100vw', height: '100dvh', maxHeight: '100dvh', minHeight: 0, borderRadius: 0 } : {}),
           bgcolor: 'background.paper',
           borderRadius: 2, boxShadow: 24,
           display: 'flex', flexDirection: 'column', outline: 'none', overflow: 'hidden',
         }}>
 
           {/* ── HEADER ── */}
-          <Box sx={{
+          {!consultaCel && <Box sx={{
             px: 3, py: 1.5,
             // Foto en el header (propuesta 11/11): deja lugar a la izquierda para la foto que baja al cuerpo
             ...(fotoEnHeader ? { pl: '172px', minHeight: 72, boxSizing: 'border-box' } : {}),
@@ -2733,10 +2740,10 @@ export default function RecetaModal({
                 <CloseIcon />
               </IconButton>
             </Stack>
-          </Box>
+          </Box>}
 
           {/* Foto que arranca en el header (artículo/promo, y la receta del insumo); al bajar la lista se achica */}
-          {fotoEnHeader && entradaElegida && (<>
+          {!consultaCel && fotoEnHeader && entradaElegida && (<>
                     {/* Columna izquierda: FOTO — en artículo/promo sube y arranca en el header */}
                     <Box
                       ref={recFotoRef}
@@ -2778,6 +2785,22 @@ export default function RecetaModal({
                     </Box>
 
           </>)}
+          {consultaCel && (
+            <RecetaConsultaCelular
+              tipo={promoMode ? 'PROMOCIÓN' : 'ARTÍCULO'} id={articulo?.id} nombre={artNombre} loading={loading}
+              items={items.filter(it => it.supplyId || it.articleRefId).map((it, i) => ({
+                key: `${it.articleRefId ?? ''}-${it.supplyId ?? ''}-${i}`,
+                nombre: it.supplyNombre, cantidad: it.cantidad, unidad: it.unidad,
+                costo: itemsConUnidadRota.includes(it) ? 0 : calcCostoItem(it),
+                sinPromo: promoMode && it.articleRefId ? (Number(getPrecioSinPromo(it.articleRefId)) || 0) * (Number(it.cantidad) || 0) : 0,
+              }))}
+              costoTotal={costoTotal} costoPorcion={costoXRendimiento}
+              precioActual={precioActual} pctCostoActual={pctCostoActual} pctObjetivo={Number(pctCostoIdeal) || 0}
+              precioObjetivo={precioSugerido} promo={promoMode} ventaSinPromo={ventaSinPromo}
+              canNavigate={canNavigate} onNavigate={onNavigate} onClose={handleClose}
+              conFicha={conPestanasArt} onFicha={() => setTabArt('ficha')}
+            />
+          )}
           {/* ── BODY ── */}
           {/* minHeight 0: el cuerpo es lo que cede si no entra todo, así el pie y los botones
               siempre quedan a la vista. El alto mínimo de antes (cuerpo 60vh, que incluía el pie)
@@ -2789,7 +2812,7 @@ export default function RecetaModal({
             </Box>
           )}
           {/* La receta queda montada (oculta) mientras se ve la ficha: al volver está igual. */}
-          <Box ref={bodyRef} onScroll={(e) => { const c = e.currentTarget.scrollTop > 24; if (c !== fotoChica) setFotoChica(c); }} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0, display: verFicha ? 'none' : undefined }}>
+          <Box ref={bodyRef} onScroll={(e) => { const c = e.currentTarget.scrollTop > 24; if (c !== fotoChica) setFotoChica(c); }} sx={{ flex: 1, overflowY: 'auto', p: 2.5, minHeight: 0, display: (verFicha || consultaCel) ? 'none' : undefined }}>
             {modoInsumo && !entradaElegida ? (
               <SelectorInsumo nombre={artNombre} insumoId={articulo?.id} onElegir={handleElegirEntrada} />
             ) : loading || (modoInsumo && saltarSelector && !tabResuelto) ? (
@@ -3422,7 +3445,7 @@ export default function RecetaModal({
 
           {/* Pie de costos fijo (no scrollea con los ingredientes): solo donde antes se veía, la receta;
               no en Merma/Compras/Equivalencias/Uso, ni cargando, ni en el selector o el cartel del insumo. */}
-          {pieVisible && (
+          {pieVisible && !consultaCel && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
             <PieCostos
               modoInsumo={modoInsumo}
@@ -3492,7 +3515,7 @@ export default function RecetaModal({
             </Box>
           )}
           {/* ── FOOTER ── (en artículos los botones van en el pie de costos) */}
-          {!accionesEnPie && !verFicha && <Box sx={{
+          {!accionesEnPie && !verFicha && !consultaCel && <Box sx={{
             px: 3, py: 1.5, borderTop: '1px solid', borderColor: 'divider',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             flexShrink: 0, bgcolor: 'background.paper',
