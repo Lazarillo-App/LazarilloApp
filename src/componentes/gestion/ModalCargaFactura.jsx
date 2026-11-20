@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksPanel";
 import { useAbmMediosPago } from "./MediosPagoAbm";
+import ReglaAperturaGasto from "./apertura/ReglaAperturaGasto";
 import { MEDIO_ADELANTOS, mediosParaElegir, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 import { gestionFetch } from "@/servicios/apiGestion";
@@ -2100,6 +2101,10 @@ function ModalNuevaCarga(props) {
                 </div>
               );
             })()}
+            {/* Regla de apertura del concepto: se ve SIEMPRE, aunque reparta a otro negocio (Diego 20/11/2026). */}
+            {!repartoV && <ReglaAperturaGasto codigo={codConcepto(conceptoV)} origenPdvId={idPdv(pdvV)} fecha={fechaV} importe={parseImp(importeV)} origenNombre={pdvV}
+              nombrePdv={(id) => (pdvsRef.find((p) => p.id === id) || {}).nombre}
+              onRepartir={variosPdv ? () => setRepartoV([{ pdv: pdvV, pct: 100 }, { pdv: PDVS.find((x) => x !== pdvV), pct: 0 }]) : null} />}
           </div>
 
           {/* ── Pago del gasto: tildado de entrada; sin pago queda IMPAGO (Impagas y cta cte de Gastos Varios) ── */}
