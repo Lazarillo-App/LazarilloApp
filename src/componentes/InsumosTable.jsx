@@ -490,7 +490,7 @@ const InsumosTable = forwardRef(function InsumosTable({
   const colPrecio = sinPrecio ? '0px' : 'minmax(104px, .7fr)';
   const fixedStartElab = `${checkCol}minmax(72px, .4fr) minmax(120px, 2fr) minmax(64px, .45fr) ${colPrecio}`;
   const fixedStartNoElab = `${checkCol}minmax(72px, .4fr) minmax(120px, 2fr) minmax(64px, .35fr) ${colPrecio}`;
-  const MIN_COL = { desperdicio: 96, compras: 96, total: 88 };
+  const MIN_COL = { desperdicio: 96, compras: 112, total: 88 };
   const dynCols = visibleCols.map(c => (MIN_COL[c.id] ? `minmax(${MIN_COL[c.id]}px, ${c.width})` : c.width)).join(' ');
   const fixedEnd = branches && branches.length > 1 ? `${branchExtraCols} .4fr` : '.4fr';
 
