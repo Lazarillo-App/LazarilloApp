@@ -5,6 +5,15 @@ import { BusinessesAPI } from "@/servicios/apiBusinesses";
 import { BranchesAPI } from "@/servicios/apiBranches";
 import { useBizTheme } from "../tema/ThemeProviderNegocio";
 
+// Provincias para los feriados (mismas claves que services/feriadosService.js del back)
+const ZONAS_FERIADOS = [
+  ['AR-B', 'Provincia de Buenos Aires'], ['AR-C', 'Ciudad de Buenos Aires'], ['AR-X', 'Córdoba'], ['AR-S', 'Santa Fe'],
+  ['AR-M', 'Mendoza'], ['AR-T', 'Tucumán'], ['AR-A', 'Salta'], ['AR-Q', 'Neuquén'], ['AR-U', 'Chubut'], ['AR-E', 'Entre Ríos'],
+  ['AR-H', 'Chaco'], ['AR-N', 'Misiones'], ['AR-W', 'Corrientes'], ['AR-G', 'Santiago del Estero'], ['AR-J', 'San Juan'],
+  ['AR-D', 'San Luis'], ['AR-F', 'La Rioja'], ['AR-K', 'Catamarca'], ['AR-Y', 'Jujuy'], ['AR-P', 'Formosa'],
+  ['AR-L', 'La Pampa'], ['AR-R', 'Río Negro'], ['AR-Z', 'Santa Cruz'], ['AR-V', 'Tierra del Fuego'],
+];
+
 /* ───────────────── Color Field ───────────────── */
 const ColorField = ({ id, label, value, onChange }) => (
   <div className="gc-field">
@@ -54,6 +63,8 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
   const [addrLine1, setAddrLine1] = useState("");
   const [addrLine2, setAddrLine2] = useState("");
   const [city, setCity] = useState("");
+  // Provincia para heredar sus feriados (Diego 20/11/2026: se pide en el alta)
+  const [zonaFeriados, setZonaFeriados] = useState("");
 
   // Paso 1 — Estilos
   const [primary, setPrimary] = useState("#2492C8");
@@ -120,6 +131,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
     setAddrLine1("");
     setAddrLine2("");
     setCity("");
+    setZonaFeriados("");
     setPrimary("#2492C8");
     setSecondary("#15213E");
     setBackground("#F2F4F7");
@@ -213,6 +225,7 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
         tiktok: normalizeEmpty(tiktok),
         website: normalizeEmpty(website),
       },
+      zonaFeriados: zonaFeriados || null,
     };
 
     const resp = await BusinessesAPI.create(payload);
@@ -466,6 +479,16 @@ export default function BusinessCreateModal({ open, onClose, onCreateComplete })
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                     />
+                  </div>
+                </div>
+                <div className="gc-field">
+                  <label htmlFor="gc-zona" className="gc-label">Provincia</label>
+                  <select id="gc-zona" className="gc-input" value={zonaFeriados} onChange={(e) => setZonaFeriados(e.target.value)}>
+                    <option value="">Elegí la provincia…</option>
+                    {ZONAS_FERIADOS.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+                  </select>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+                    Con la provincia, Lazarillo carga solos los feriados nacionales y los de tu provincia: se usan en los cronogramas del equipo y para proyectar las ventas del mes (un feriado vende distinto). Sin provincia, solo los nacionales.
                   </div>
                 </div>
                 <div className="gc-grid-3">
