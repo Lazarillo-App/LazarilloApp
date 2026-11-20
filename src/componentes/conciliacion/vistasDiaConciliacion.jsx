@@ -94,12 +94,6 @@ export function SugerenciasPanel({ sugerencias, activa, dayCenter, onMoveDay, ca
         <span style={{ fontSize: 16 }}>💡</span>
         <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 14.5, color: C.tinta }}>Sugerencias</span>
         {sugerencias.length > 0 && <span style={{ fontSize: 12, color: C.txt3, fontWeight: 600 }}>{sugerencias.length} par{sugerencias.length === 1 ? "" : "es"}</span>}
-        {/* navegación de día: también acá para barrer día a día desde las sugerencias */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => canPrev && onMoveDay(-1)} disabled={!canPrev} title="Día anterior" style={{ width: 26, height: 26, borderRadius: 7, border: "1px solid " + C.line2, background: C.white, cursor: canPrev ? "pointer" : "not-allowed", opacity: canPrev ? 1 : 0.4, fontSize: 15, color: C.celesteDeep }}>‹</button>
-          <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13.5, color: C.tinta, minWidth: 96, textAlign: "center" }}>{fmtDay(dayCenter)}</span>
-          <button onClick={() => canNext && onMoveDay(1)} disabled={!canNext} title="Día siguiente" style={{ width: 26, height: 26, borderRadius: 7, border: "1px solid " + C.line2, background: C.white, cursor: canNext ? "pointer" : "not-allowed", opacity: canNext ? 1 : 0.4, fontSize: 15, color: C.celesteDeep }}>›</button>
-        </div>
       </div>
       {!sugerencias.length ? (
         <div style={{ padding: "12px 16px", fontSize: 14, color: C.txt2 }}>💡 No hay sugerencias en este día con el margen actual. Ampliá el margen o pasá al día siguiente con las flechas.</div>
@@ -430,8 +424,9 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
                   <span onClick={(e) => { e.stopPropagation(); onSelDia(g.ing.map((r) => r.id), "ing", all); }} title="Seleccionar todos los ingresos del día"
                     style={{ width: 15, height: 15, borderRadius: 4, border: "1.5px solid " + (all ? C.celeste : "rgba(255,255,255,.5)"), background: all ? C.celeste : "transparent", color: C.noche, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>{all ? "✓" : ""}</span>
                 ); })()}
-                <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: ".5px", color: C.paper }}>{fmtSep(g.d)}</span>
-                {g.isCenter && <span style={{ fontSize: 10, fontWeight: 700, background: C.celeste, color: C.noche, borderRadius: 7, padding: "1px 6px", textTransform: "uppercase", letterSpacing: ".3px" }}>Día</span>}
+                {/* 20/11 (Diego: «veo repetida la fecha por todos lados»): el día en foco ya está en la barra grande */}
+                {!g.isCenter && <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: ".5px", color: C.paper }}>{fmtSep(g.d)}</span>}
+                {g.isCenter && <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 12, textTransform: "uppercase", letterSpacing: ".5px", color: "#8fa0c0" }}>Ventas del día</span>}
                 <span style={{ marginLeft: "auto", fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 12.5, color: C.celeste }}>ing {fmt(totIng)}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px" }}>
