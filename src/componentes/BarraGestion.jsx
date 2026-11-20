@@ -7,7 +7,9 @@
 // usa el de ventas, Insumos el de compras — y el buscador).
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Button, Divider, Menu, MenuItem } from '@mui/material';
+import { Button, Divider, IconButton, Menu, MenuItem } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import useCelular from '@/componentes/base/useCelular';
 
 import SalesPickerIcon from './SalesPickerIcon';
 import Buscador from './Buscador.jsx';
@@ -66,9 +68,13 @@ export default function BarraGestion() {
   const [agAnchor, setAgAnchor] = useState(null);
   const agregar = (tipo) => { setAgAnchor(null); h('agregar')?.(tipo); };
 
-  return (
-    <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span data-tour="barra-periodo" style={{ display: 'inline-flex' }}>
+  // Celular (Diego 20/11/2026): el food cost arriba y grande (es lo único que no se puede ir);
+  // abajo período, lupa y «+». El buscador se abre con la lupa.
+  const celular = useCelular();
+  const [buscando, setBuscando] = useState(false);
+
+  const periodo = (
+      <span data-tour="barra-periodo" style={{ display: 'inline-flex', ...(celular ? { flex: 1, minWidth: 0 } : null) }}>
       <SalesPickerIcon
         value={rango}
         onChange={setRango}
@@ -77,15 +83,14 @@ export default function BarraGestion() {
         labelOverride={esMenu && activeBranchFilter?.mode === 'all' ? '' : null}
         buttonSx={{
           borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', borderColor: '#2492C8', color: '#2492C8',
-          minWidth: 160, '&:hover': { borderColor: '#2492C8', bgcolor: 'rgba(36,146,200,0.06)' },
+          minWidth: celular ? 0 : 160, ...(celular ? { width: '100%', height: 44 } : null),
+          '&:hover': { borderColor: '#2492C8', bgcolor: 'rgba(36,146,200,0.06)' },
         }}
       />
       </span>
-
-      {/* Botones propios de cada página (selección, listas, referencias). */}
-      <span ref={setSlotEl} style={{ display: 'contents' }} />
-
-      <div data-tour="barra-buscador" style={{ minWidth: 260, maxWidth: 360, flex: '0 1 360px' }}>
+  );
+  const buscador = (
+      <div data-tour="barra-buscador" style={celular ? { width: '100%' } : { minWidth: 260, maxWidth: 360, flex: '0 1 360px' }}>
         <Buscador
           placeholder={datos.placeholder || 'Buscar artículos, insumos…'}
           opciones={datos.opciones || []}
@@ -97,9 +102,9 @@ export default function BarraGestion() {
           onPick={(opt) => h('onPick')?.(opt)}
         />
       </div>
-
-      {!isStaff && (
-        <span data-tour="barra-foodcost" style={{ display: 'inline-flex' }}>
+  );
+  const foodCost = !isStaff && (
+        <span data-tour="barra-foodcost" style={{ display: 'inline-flex', ...(celular ? { width: '100%' } : null) }}>
         <KpiFoodCost
           ventas={fc.ventas}
           compras={fc.compras}
@@ -109,23 +114,8 @@ export default function BarraGestion() {
           porMes={fc.porMes}
         />
         </span>
-      )}
-
-      {/* "Ventas / Compras ▾" (importar/exportar CSV) pasó a ⚙ Configuración (Diego, 06/11/2026). */}
-
-      <div>
-        <Button
-          variant="contained"
-          size="small"
-          data-tour="barra-agregar"
-          onClick={(e) => setAgAnchor(e.currentTarget)}
-          sx={{
-            background: '#2492C8', '&:hover': { background: '#1a7aaa' }, borderRadius: '8px',
-            fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap', px: 2,
-          }}
-        >
-          + Agregar ▾
-        </Button>
+  );
+  const menuAgregar = (
         <Menu
           anchorEl={agAnchor}
           open={Boolean(agAnchor)}
@@ -152,7 +142,68 @@ export default function BarraGestion() {
             </MenuItem>
           )}
         </Menu>
+  );
+
+  if (celular) {
+    return (
+      <div className="lz-barra lz-barra-cel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8, width: '100%' }}>
+        <style>{CSS_CEL}</style>
+        {foodCost}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+          {periodo}
+          <IconButton aria-label="Buscar" onClick={() => setBuscando((b) => !b)}
+            sx={{ width: 44, height: 44, border: '1px solid', borderColor: buscando ? '#2492C8' : '#cfd8dc', borderRadius: '12px', color: buscando ? '#2492C8' : 'inherit' }}>
+            <SearchIcon fontSize="small" />
+          </IconButton>
+          <Button variant="contained" data-tour="barra-agregar" aria-label="Agregar" onClick={(e) => setAgAnchor(e.currentTarget)}
+            sx={{ minWidth: 44, width: 44, height: 44, borderRadius: '12px', background: '#2492C8', fontSize: 22, fontWeight: 700, p: 0, '&:hover': { background: '#1a7aaa' } }}>
+            +
+          </Button>
+          {menuAgregar}
+        </div>
+        {buscando && buscador}
+      </div>
+    );
+  }
+
+  return (
+    <div className="lz-barra" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      {periodo}
+
+      {/* Botones propios de cada página (selección, listas, referencias). */}
+      <span ref={setSlotEl} style={{ display: 'contents' }} />
+
+      {buscador}
+
+      {foodCost}
+
+      {/* "Ventas / Compras ▾" (importar/exportar CSV) pasó a ⚙ Configuración (Diego, 06/11/2026). */}
+
+      <div>
+        <Button
+          variant="contained"
+          size="small"
+          data-tour="barra-agregar"
+          onClick={(e) => setAgAnchor(e.currentTarget)}
+          sx={{
+            background: '#2492C8', '&:hover': { background: '#1a7aaa' }, borderRadius: '8px',
+            fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap', px: 2,
+          }}
+        >
+          + Agregar ▾
+        </Button>
+        {menuAgregar}
       </div>
     </div>
   );
 }
+
+// Food cost grande en el celular: el mismo KpiFoodCost, solo más grande y a lo ancho.
+const CSS_CEL = `
+.lz-barra-cel .kfc{width:100%;}
+.lz-barra-cel [data-tour="barra-periodo"] > *{width:100%;}
+.lz-barra-cel .kfc-chip{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:14px;background:#fff;min-height:56px;}
+.lz-barra-cel .kfc-ti{font-size:10px;}
+.lz-barra-cel .kfc-ti b{font-size:11px;}
+.lz-barra-cel .kfc-pill{font-size:26px;font-weight:800;margin-left:auto;}
+`;
