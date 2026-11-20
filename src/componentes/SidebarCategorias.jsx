@@ -115,6 +115,8 @@ const resolveArticuloMonto = (art, getAmountForId, metaById) => {
 const SIDEBAR_MODE_KEY = 'lazarillo:sidebarMode';
 
 function SidebarCategorias({
+  // Celular (Diego 20/11/2026): solo dos desplegables — Agrupación y Rubro — arriba de la lista.
+  compacto = false,
   resumenTop20 = null,
   resumenVendenPoco = null,
   categorias = [],
@@ -541,6 +543,53 @@ function SidebarCategorias({
       notify?.(err?.message || 'Error al asignar agrupación', 'error');
     }
   }, [groupToMove, businessId, notify, refetchAssignedAgrupaciones, onRefetch]);
+
+  if (compacto) {
+    const campo = { height: 44, borderRadius: '12px', bgcolor: '#fff', fontSize: 13, fontWeight: 600 };
+    const etiqueta = { fontSize: 11 };
+    const verRubros = !esVistaVentas(agrupacionSeleccionada);
+    const rubros = (listaParaMostrar || []).filter((sub) => (sub?.categorias || []).some((c) => (c?.articulos?.length || 0) > 0));
+    const nombreRubro = (sub) => {
+      const vacio = !String(sub?.subrubro || '').trim() || /^sin (subrubro|rubro|categor[ií]a)$/i.test(String(sub?.subrubro).trim());
+      return vacio ? (localListMode === 'by-categoria' ? 'Sin subrubro' : 'Sin rubro') : String(sub.subrubro);
+    };
+    return (
+      <div style={{ display: 'flex', gap: 8, minWidth: 0 }}>
+        {!staff && (
+          <FormControl size="small" sx={{ flex: 1, minWidth: 0 }} data-tour="art-agrupacion">
+            <InputLabel sx={etiqueta}>Agrupación</InputLabel>
+            <Select label="Agrupación" value={selectedAgrupValue} onChange={handleAgrupacionChange} sx={campo}
+              renderValue={(value) => { const g = opcionesSelect.find((x) => String(x.id) === String(value)); return g ? labelVisible(g) : 'Sin agrupación'; }}
+              MenuProps={downwardMenuProps()}>
+              {opcionesSelect.map((g) => (
+                <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)} sx={{ minHeight: 44 }}>{labelVisible(g)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+        {verRubros && (
+          <FormControl size="small" sx={{ flex: staff ? 1 : '0 0 42%', minWidth: 0 }} data-tour="art-rubro">
+            <InputLabel shrink sx={etiqueta}>{localListMode === 'by-categoria' ? 'Subrubro' : 'Rubro'}</InputLabel>
+            <Select label={localListMode === 'by-categoria' ? 'Subrubro' : 'Rubro'} notched displayEmpty sx={campo}
+              value={categoriaSeleccionada ? String(categoriaSeleccionada.subrubro ?? '') : ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                const sub = rubros.find((x) => String(x.subrubro ?? '') === v) || null;
+                setCategoriaSeleccionada?.(v === '' ? null : sub);
+                setFiltroBusqueda?.(''); setBusqueda?.('');
+              }}
+              renderValue={(v) => (v === '' ? 'Todos' : nombreRubro(rubros.find((x) => String(x.subrubro ?? '') === v) || { subrubro: v }))}
+              MenuProps={downwardMenuProps()}>
+              <MenuItem value="" sx={{ minHeight: 44 }}>Todos</MenuItem>
+              {rubros.map((sub) => (
+                <MenuItem key={String(sub.subrubro ?? '')} value={String(sub.subrubro ?? '')} sx={{ minHeight: 44 }}>{nombreRubro(sub)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="sidebar">
