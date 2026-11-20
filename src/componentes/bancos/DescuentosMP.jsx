@@ -67,7 +67,7 @@ export default function DescuentosMP({ bid, avisar }) {
   // Sugeridos de cada tipo (Diego 20/11/2026: «¿por qué no me sugiere conceptos relacionados a este proveedor?»):
   // primero los que comparten palabras con la leyenda (ej. «Retención IIBB CABA» → «Ret.iibb Caba»), después los
   // que ya se usaron en compras de su proveedor (los más usados primero). Hasta 6.
-  const sugeridosDe = (g) => {
+  const sugeridosObj = (g) => {
     // «Buenos Aires» es «Provincia» en los conceptos (y no «Mantenimiento Aires»); «Ib» es IIBB.
     const pal = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/buenos aires|bs\.? ?as\.?/g, 'provincia').replace(/\bib\b/g, 'iibb').split(/[^a-z0-9]+/)
@@ -77,8 +77,9 @@ export default function DescuentosMP({ bid, avisar }) {
     const usados = (r?.sugeridos?.[g.proveedor?.codigo] || []).map(String);
     const puntaje = (c) => parecido(c) * 10 + (usados.includes(String(c.codigo)) ? 5 + (8 - usados.indexOf(String(c.codigo))) / 10 : 0);
     return conceptos.map((c) => ({ c, p: puntaje(c) })).filter((x) => x.p >= 5 || parecido(x.c) >= 2)
-      .sort((a, b) => b.p - a.p).slice(0, 6).map((x) => etiquetaConcepto(x.c));
+      .sort((a, b) => b.p - a.p).slice(0, 6).map((x) => x.c);
   };
+  const sugeridosDe = (g) => sugeridosObj(g).map(etiquetaConcepto);
 
   const configurar = async (g, cambio) => {
     setGuardando(g.grupo);
@@ -103,8 +104,12 @@ export default function DescuentosMP({ bid, avisar }) {
   // Crear conceptos con la leyenda del cargo (uno o todos los que faltan), con el rubro elegido arriba.
   const rubroPorDefecto = () => rubroNuevo || r?.grupos.find((g) => g.concepto?.rubro)?.concepto.rubro || '';
   const abrirNuevo = (g, nombre) => {
-    const padrino = g.concepto ? String(g.concepto.codigo) : '';
-    setNuevo({ grupo: g.grupo, nombre: nombre || g.nombre, padrino, rubro: g.concepto?.rubro || rubroPorDefecto() });
+    // Padrino ya puesto (Diego 20/11/2026: los sugeridos son «más que nada para usarlos como padrino»): el concepto
+    // del tipo si tiene, si no el primer sugerido; su rubro queda elegido. Se cambia con un toque en los chips.
+    const sug = sugeridosObj(g)[0];
+    const padrino = g.concepto ? String(g.concepto.codigo) : sug ? String(sug.codigo) : '';
+    const rubro = g.concepto?.rubro || (sug?.codRubro != null ? String(sug.codRubro) : rubroPorDefecto());
+    setNuevo({ grupo: g.grupo, nombre: nombre || g.nombre, padrino, rubro });
   };
   const crearConceptos = async (grupos, nombres = {}, rubroElegido = null) => {
     const codRubro = rubroElegido || rubroPorDefecto();
@@ -227,6 +232,22 @@ export default function DescuentosMP({ bid, avisar }) {
       <div style={{ marginTop: 6, padding: 10, border: `1px solid ${T.celeste}`, borderRadius: 10, background: '#F7FBFD', display: 'grid', gap: 6 }}>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: T.txt3, textTransform: 'uppercase', letterSpacing: '.3px' }}>Concepto nuevo</div>
         <input value={nuevo.nombre} maxLength={60} onChange={(e) => setNuevo((x) => ({ ...x, nombre: e.target.value }))} style={campo} aria-label="Nombre del concepto" />
+        {sugeridosObj(g).length > 0 && (<>
+          <span style={{ fontSize: 11.5, color: T.txt3 }}>Igual que (copia su rubro) · sugeridos para {g.proveedor?.nombre || 'este cargo'}</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {sugeridosObj(g).slice(0, 4).map((c) => {
+              const sel = String(nuevo.padrino) === String(c.codigo);
+              return (
+                <button key={c.codigo} type="button" title={`Copiar el rubro de ${etiquetaConcepto(c)}`}
+                  onClick={() => setNuevo((n) => (sel ? { ...n, padrino: '' } : { ...n, padrino: String(c.codigo), rubro: c.codRubro != null ? String(c.codRubro) : n.rubro }))}
+                  style={{ minHeight: celu ? 44 : 30, padding: '0 10px', borderRadius: 16, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, textAlign: 'left',
+                    border: `1px solid ${sel ? T.celeste : 'rgba(21,33,62,.18)'}`, background: sel ? '#E3F4FB' : '#fff', fontWeight: sel ? 700 : 400, color: T.txt }}>
+                  {sel ? '✓ ' : ''}{c.nombre}
+                </button>
+              );
+            })}
+          </div>
+        </>)}
         {/* Rubro primero y, debajo, los conceptos de ese rubro para copiar (Diego 20/11/2026: «elegir rubro no me
             filtra los conceptos de ese rubro»). Los dos con buscador. */}
         <SelectorBuscable label="Rubro" placeholder="Elegí el rubro…" opciones={rubros.map(etiquetaRubro)}
