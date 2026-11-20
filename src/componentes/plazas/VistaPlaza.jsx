@@ -219,7 +219,7 @@ const NUEVO_FONDO = '#FFF6D6';
 const NUEVO_BORDE = '#F2B705';
 const fechaCorta = (f) => { const d = new Date(f); return Number.isNaN(d.getTime()) ? '' : `${d.getDate()}/${d.getMonth() + 1}`; };
 
-function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false, arrastreTarjetas = false, onAgarrarTarjeta, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false, arrastreTarjetas = false, onAgarrarTarjeta, onMarcarNuevo, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   const esNuevo = !!p.nuevoDesde;
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
@@ -315,11 +315,22 @@ function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false
       {/* Título (y la observación del producto, si tiene). En «Armar»: ⋮⋮ a la izquierda para mover la tarjeta
           (Diego 17/11/2026) y ✕ a la derecha para sacarla (14/11). Padding a los dos lados: el título sigue centrado. */}
       <Box sx={{ alignSelf: 'start', mb: 1 }}>
-      {esNuevo && (
+      {/* ★ NUEVO: lo pone el servidor una semana desde que el producto entró a la plaza; en «Armar» también se
+          marca o desmarca a mano tocándolo (Diego 20/11/2026). */}
+      {(esNuevo || (armando && onMarcarNuevo)) && (
         <Box sx={{ textAlign: 'center', mb: 0.5 }}>
-          <Tooltip title={`En la plaza desde el ${fechaCorta(p.nuevoDesde)} · se destaca una semana`}>
-            <Box component="span" sx={{ display: 'inline-block', bgcolor: NUEVO_BORDE, color: '#3A2A00', fontWeight: 800, fontSize: '0.7rem',
-              letterSpacing: '.08em', lineHeight: 1, px: 1, py: 0.5, borderRadius: '10px' }}>★ NUEVO</Box>
+          <Tooltip title={armando && onMarcarNuevo
+            ? (esNuevo ? 'Tocá para quitar la marca de nuevo' : 'Tocá para destacarlo como nuevo durante una semana')
+            : `En la plaza desde el ${fechaCorta(p.nuevoDesde)} · se destaca una semana`}>
+            <Box component={armando && onMarcarNuevo ? 'button' : 'span'} type={armando && onMarcarNuevo ? 'button' : undefined}
+              onClick={armando && onMarcarNuevo ? () => onMarcarNuevo(p, !esNuevo) : undefined}
+              sx={{ display: 'inline-block', fontFamily: 'inherit', fontWeight: 800, fontSize: '0.7rem', letterSpacing: '.08em', lineHeight: 1,
+                px: 1, py: 0.5, borderRadius: '10px', cursor: armando && onMarcarNuevo ? 'pointer' : 'default',
+                ...(esNuevo
+                  ? { bgcolor: NUEVO_BORDE, color: '#3A2A00', border: `1px solid ${NUEVO_BORDE}` }
+                  : { bgcolor: 'transparent', color: 'text.disabled', border: '1px dashed #cfd6dd', '&:hover': { color: '#9a7400', borderColor: NUEVO_BORDE } }) }}>
+              {esNuevo ? '★ NUEVO' : '☆ MARCAR NUEVO'}
+            </Box>
           </Tooltip>
         </Box>
       )}
@@ -501,7 +512,7 @@ function Hueco({ armando }) {
   );
 }
 
-export default function VistaPlaza({ productos, armando = false, mostrarPlaza, onOrdenar, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+export default function VistaPlaza({ productos, armando = false, mostrarPlaza, onOrdenar, onMarcarNuevo, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
   // Casillas con sus lugares libres; en «Armar» suma uno al final para poder correr un producto ahí.
   const base = React.useMemo(() => {
     const c = casillasDe(productos);
@@ -517,7 +528,7 @@ export default function VistaPlaza({ productos, armando = false, mostrarPlaza, o
           cardRef={(el) => { if (el) nodos.current.set(p.articleId, el); else nodos.current.delete(p.articleId); }}
           levantada={arr?.key === p.articleId} arrastreTarjetas={!!arr}
           onAgarrarTarjeta={armando && onOrdenar ? (e) => agarrar(e, base.findIndex((x) => x?.articleId === p.articleId)) : null}
-          onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
+          onMarcarNuevo={onMarcarNuevo} onQuitar={onQuitar} onCambiar={onCambiar} onColorIngrediente={onColorIngrediente} onMostrarIngrediente={onMostrarIngrediente}
           onAliasIngrediente={onAliasIngrediente} onOcultarIngrediente={onOcultarIngrediente} onEditarItem={onEditarItem} onCrearEquivalencia={onCrearEquivalencia} onAbrir={onAbrir} />
       )))}
     </Box>
