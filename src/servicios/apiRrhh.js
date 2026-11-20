@@ -21,6 +21,8 @@ export const RrhhAPI = {
   getConfig: (branchId = null) => api(`${base()}/config${qs({ branchId: branchId ?? undefined })}`),
   putConfig: (body, branchId = null) =>
     api(`${base()}/config${qs({ branchId: branchId ?? undefined })}`, { method: 'PUT', body }),
+  // Calendario de feriados único (20/11/2026): provincia del negocio (null = solo nacionales)
+  putZonaFeriados: (zona) => api(`${base()}/zona-feriados`, { method: 'PUT', body: { zona } }),
 
   // Nómina: la réplica de MaxiRest se lista para TILDAR (mezcla empleados
   // reales con usuarios técnicos del POS) y se importan solo los elegidos.

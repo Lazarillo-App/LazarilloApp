@@ -353,7 +353,51 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
 }
 
 /* ───────── modal: fecha especial (clic en la cabecera del día) ───────── */
-function ModalFecha({ iso, actual, sucursalNombre, onGuardar, onQuitar, onCerrar }) {
+function ModalFecha({ iso, actual, sucursalNombre, onGuardar, onQuitar, onAbrimos, onCerrar }) {
+  // Feriado heredado del calendario de Lazarillo: no se edita acá (lo mantiene Lazarillo por zona);
+  // se puede marcar «ese día abrimos igual» o cargar un evento propio encima (20/11/2026).
+  const [editarPropio, setEditarPropio] = useState(false);
+  if (actual?.heredado && !editarPropio) return (
+    <ModalFeriadoHeredado iso={iso} actual={actual} onAbrimos={onAbrimos} onPropio={() => setEditarPropio(true)} onCerrar={onCerrar} />
+  );
+  return <ModalFechaPropia iso={iso} actual={actual?.heredado ? null : actual} sucursalNombre={sucursalNombre} onGuardar={onGuardar} onQuitar={onQuitar} onCerrar={onCerrar} />;
+}
+
+function ModalFeriadoHeredado({ iso, actual, onAbrimos, onPropio, onCerrar }) {
+  const [guardando, setGuardando] = useState(false);
+  const d = new Date(iso + 'T12:00:00');
+  const correr = async (fn) => { setGuardando(true); try { await fn(); } finally { setGuardando(false); } };
+  const alcance = String(actual.zona || 'AR').split(',').some((z) => z !== 'AR') ? 'feriado de tu provincia' : 'feriado nacional';
+  return (
+    <div data-rrhh-modal onClick={onCerrar} style={{ position: 'fixed', inset: 0, background: '#15213E66', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '94vw', background: T.band, borderRadius: 16, boxShadow: T.sombra, padding: 18, border: `1px solid ${T.border}`, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>{DIAS[d.getDay()]} {dd2(d.getDate())}/{dd2(d.getMonth() + 1)}</div>
+          <span onClick={onCerrar} style={{ cursor: 'pointer', color: T.text3, fontSize: 18 }}>✕</span>
+        </div>
+        <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: T.head, border: `1px solid ${T.border}` }}>
+          <div style={{ fontFamily: FB, fontWeight: 700, fontSize: 14, color: actual.abrimos ? T.text3 : colorCat('feriado'), textDecoration: actual.abrimos ? 'line-through' : 'none' }}>🔒 {actual.nombre}</div>
+          <div style={{ fontFamily: FB, fontSize: 12, color: T.text3, marginTop: 3 }}>
+            {actual.abrimos
+              ? 'Este negocio marcó que ese día abre: no cuenta como feriado (proyección de ventas incluida).'
+              : `Es ${alcance}: lo carga Lazarillo para todos los negocios, no hace falta tocarlo.`}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
+          <Boton deshabilitado={guardando} onClick={onPropio}>+ Evento propio</Boton>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Boton onClick={onCerrar}>Cerrar</Boton>
+            <Boton activo deshabilitado={guardando} onClick={() => correr(() => onAbrimos(!actual.abrimos))}>
+              {guardando ? 'Guardando…' : actual.abrimos ? 'Volver a feriado' : 'Este día abrimos'}
+            </Boton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalFechaPropia({ iso, actual, sucursalNombre, onGuardar, onQuitar, onCerrar }) {
   const [tipo, setTipo] = useState(tipoNorm(actual?.tipo) || 'feriado');
   const [nombre, setNombre] = useState(actual?.nombre || '');
   const [suma, setSuma] = useState(!!actual?.sumaPromedio);
@@ -465,7 +509,7 @@ function ModalVaciar({ semanaId, espacioNombre, onElegir, onCerrar }) {
 }
 
 /* ───────── modal: calendario de semanas ───────── */
-function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onFecha, onCerrar }) {
+function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onFecha, zona = null, zonas = [], onZona, onCerrar }) {
   const [mes, setMes] = useState(() => mesDeSemana(startDeId(semanaId)));
   const [vista, setVista] = useState('semanas'); // 'semanas' | 'fechas' (Diego 15/11/2026: todas las fechas del año)
   const [anio, setAnio] = useState(() => mesDeSemana(startDeId(semanaId)).y);
@@ -486,6 +530,15 @@ function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onFecha, onCe
           .sort((x, y) => String(x.fecha).localeCompare(String(y.fecha)));
         return (
           <>
+            {onZona && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontFamily: FB, fontSize: 12.5, color: T.text2 }}>
+                <span style={{ whiteSpace: 'nowrap' }}>Feriados de</span>
+                <select value={zona || 'AR'} onChange={(e) => onZona(e.target.value === 'AR' ? null : e.target.value)}
+                  style={{ flex: 1, height: 34, boxSizing: 'border-box', fontFamily: FB, fontSize: 13, padding: '0 8px', borderRadius: 10, border: `1px solid ${T.border2}`, color: T.text, background: T.head }}>
+                  {zonas.map((z) => <option key={z.zona} value={z.zona}>{z.zona === 'AR' ? 'Solo nacionales' : `Nacionales + ${z.nombre}`}</option>)}
+                </select>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <Boton onClick={() => setAnio((y) => y - 1)} title="Año anterior">‹</Boton>
               <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>{anio}</div>
@@ -500,9 +553,9 @@ function ModalCalendario({ semanaId, creadas, fechasMap, onElegir, onFecha, onCe
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', fontFamily: FB, fontSize: 12.5, color: T.text }}>
                     <span style={{ width: 40, fontWeight: 700 }}>{dd2(d.getDate())}/{dd2(d.getMonth() + 1)}</span>
                     <span style={{ width: 70, color: T.text2 }}>{DIAS[d.getDay()]}</span>
-                    <span style={{ width: 82, flexShrink: 0 }}><Chip color={colorCat(f.tipo)}>{etiquetaTipo(f.tipo)}</Chip></span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre || ''}</span>
-                    {f.fijo && <span title="Inamovible: se repite todos los años">📌</span>}
+                    <span style={{ width: 82, flexShrink: 0 }}><Chip color={f.abrimos ? T.text3 : colorCat(f.tipo)}>{etiquetaTipo(f.tipo)}</Chip></span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: f.abrimos ? 'line-through' : 'none', color: f.heredado ? T.text2 : T.text }}>{f.nombre || ''}</span>
+                    {f.heredado ? <span title="Calendario de Lazarillo (no se edita acá)">🔒</span> : f.fijo && <span title="Inamovible: se repite todos los años">📌</span>}
                   </div>
                 );
               })}

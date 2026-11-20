@@ -47,6 +47,7 @@ import {
   domingoDeHoy,
   rangoLargo,
   etiquetaTipo,
+  tipoNorm,
   mesDeSemana,
   enMes,
   semanasDelMes,
@@ -196,9 +197,15 @@ export default function RrhhCronogramas() {
   }, [config]);
   const fechasMap = useMemo(() => {
     const m = new Map();
-    // primero las compartidas (feriados) y después las de la sucursal: si un día
-    // tiene las dos, se ve el evento de la sucursal
-    (config?.fechas || []).filter((f) => f.compartida !== false).forEach((f) => m.set(f.fecha, f));
+    // 1) feriados heredados del calendario único de Lazarillo (por zona, 20/11/2026): gris + 🔒;
+    //    un propio «no_aplica» = «ese día abrimos igual» (se sigue viendo, tachado)
+    // 2) las compartidas propias (feriados, vísperas) y 3) las de la sucursal: si un día tiene
+    //    varias, se ve la más propia
+    const abrimos = new Set((config?.fechas || []).filter((f) => f.tipo === 'no_aplica').map((f) => f.fecha));
+    (config?.feriados || []).forEach((h) => m.set(h.fecha, { ...h, heredado: true, abrimos: abrimos.has(h.fecha) }));
+    // un feriado propio en un día que ya trae el calendario (los sembrados antes) no tapa al heredado
+    (config?.fechas || []).filter((f) => f.compartida !== false && f.tipo !== 'no_aplica'
+      && !(tipoNorm(f.tipo) === 'feriado' && m.get(f.fecha)?.heredado)).forEach((f) => m.set(f.fecha, f));
     (config?.fechas || []).filter((f) => f.compartida === false).forEach((f) => m.set(f.fecha, f));
     return m;
   }, [config]);
@@ -778,6 +785,17 @@ export default function RrhhCronogramas() {
     (config?.fechas || []).filter((x) => !esLaVista(x)),
     'Fecha quitada ✓'
   );
+  // Feriado heredado: «este día abrimos igual» (no cuenta como feriado en este negocio) o volver atrás
+  const abrimosFecha = (si) => guardarFechas(
+    [...(config?.fechas || []).filter((x) => !(x.fecha === fechaSel && x.tipo === 'no_aplica')),
+      ...(si ? [{ fecha: fechaSel, tipo: 'no_aplica', nombre: null, sumaPromedio: false, fijo: false }] : [])],
+    si ? 'Listo: ese día abren, no cuenta como feriado ✓' : 'Vuelve a contar como feriado ✓'
+  );
+  // Provincia del negocio para heredar sus feriados (null = solo los nacionales)
+  const cambiarZona = async (zona) => {
+    try { await RrhhAPI.putZonaFeriados(zona || null); avisar('Feriados de la provincia actualizados ✓'); cargarTodo(); }
+    catch (e) { avisar(e?.data?.message || e.message || 'No se pudo cambiar la provincia.', 'error'); }
+  };
 
   /* ── totales por empleado (semana del espacio) ── */
   const totales = useMemo(() => {
@@ -884,7 +902,7 @@ export default function RrhhCronogramas() {
   ] : null;
   const pasosTour = pasosVacio ? pasosVacio.map((p) => ({ ...p, s: 'cronograma' })).concat(cel ? [] : pasosHeaderCrono).filter((p) => !sectorCrono || p.s === sectorCrono) : [
     { k: 'semana', t: <>Elegí la <b>semana</b> que querés armar o mirar.</> },
-    { k: 'dias', t: <>Tocá un día para marcar un <b>feriado</b>, un <b>cierre</b> o un <b>evento</b>. Cargalos con anticipación: con ellos Lazarillo entiende por qué un día se vende distinto y <b>proyecta mejor las ventas del mes</b>.</> },
+    { k: 'dias', t: <>Los <b>feriados</b> (🔒) ya vienen del calendario de Lazarillo, nacionales y de tu provincia. Tocá un día para cargar un <b>cierre</b>, un <b>evento</b> o marcar que un feriado <b>abren igual</b>: con eso Lazarillo <b>proyecta mejor las ventas del mes</b>.</> },
     { k: 'fila', t: <>Cada fila es una persona. <b>Clic</b> en un día le carga el turno, <b>clic derecho</b> lo saca y con <b style={{ whiteSpace: 'nowrap' }}>⋮⋮</b> la arrastrás a otro lugar o turno. Tocando el nombre cambiás toda la fila.</> },
     { k: 'agregar', t: <>¿Falta alguien? Sumalo acá. Si no está en la nómina, lo <b>das de alta</b> en el momento.</>, abajo: true },
     { k: 'puestos', t: <>Tus <b>puestos</b>: tocá uno para editarlo o borrarlo, y con <b>+ Puesto</b> agregás otro.</>, abajo: true },
@@ -1083,16 +1101,16 @@ export default function RrhhCronogramas() {
                     const d = new Date(iso + 'T12:00:00');
                     return (
                       <th key={iso} ref={i === 0 ? refsTour.dias : undefined} rowSpan={cel ? 1 : 2} onClick={() => setFechaSel(iso)}
-                        title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''} — clic para editar` : 'Clic para cargar un feriado o evento'}
-                        style={{ ...thDia, ...(cel ? { padding: '4px 2px', fontSize: 11.5 } : {}), position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp ? colorCat(esp.tipo) + '22' : T.head }}>
+                        title={esp ? `${etiquetaTipo(esp.tipo)}${esp.nombre ? ` · ${esp.nombre}` : ''}${esp.heredado ? (esp.abrimos ? ' — ese día abren' : ' — calendario de Lazarillo') : ''} — clic para ${esp.heredado ? 'ver' : 'editar'}` : 'Clic para cargar un feriado o evento'}
+                        style={{ ...thDia, ...(cel ? { padding: '4px 2px', fontSize: 11.5 } : {}), position: 'sticky', top: 0, zIndex: 3, cursor: 'pointer', background: esp && !esp.abrimos ? colorCat(esp.tipo) + '22' : T.head }}>
                         <div style={{ color: TH_TXT, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                           {DC[i]} {d.getDate()}
                           {iso === hoyIso && <span style={{ fontFamily: FB, fontSize: 9.5, fontWeight: 800, lineHeight: '15px', padding: '0 6px', borderRadius: 8, background: '#fff', color: T.accentTxt }}>HOY</span>}
                         </div>
                         {/* la fecha especial va en una pastilla blanca: se lee sobre cualquier color de negocio */}
                         {(!cel || esp) && <div style={{ height: 16, fontFamily: FB, fontWeight: 700, fontSize: 10, lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110, margin: '2px auto 0',
-                          ...(esp ? { display: 'inline-block', padding: '0 7px', borderRadius: 8, background: '#fff', color: colorCat(esp.tipo) } : { color: TH_TXT, opacity: 0.7 }) }}>
-                          {esp ? (esp.nombre || etiquetaTipo(esp.tipo)) : '+ especial'}
+                          ...(esp ? { display: 'inline-block', padding: '0 7px', borderRadius: 8, background: '#fff', color: esp.abrimos ? T.text3 : colorCat(esp.tipo), textDecoration: esp.abrimos ? 'line-through' : 'none' } : { color: TH_TXT, opacity: 0.7 }) }}>
+                          {esp ? <>{esp.heredado && <span style={{ fontSize: 8.5, marginRight: 3 }}>🔒</span>}{esp.nombre || etiquetaTipo(esp.tipo)}</> : '+ especial'}
                         </div>}
                       </th>
                     );
@@ -1297,6 +1315,9 @@ export default function RrhhCronogramas() {
           fechasMap={fechasMap}
           onElegir={(id) => { setCalOpen(false); setSemanaId(id); }}
           onFecha={(iso) => { setCalOpen(false); setFechaSel(iso); }}
+          zona={config?.zonaFeriados || null}
+          zonas={config?.zonas || []}
+          onZona={cambiarZona}
           onCerrar={() => setCalOpen(false)}
         />
       )}
@@ -1327,6 +1348,7 @@ export default function RrhhCronogramas() {
           sucursalNombre={sucursalNombre}
           onGuardar={guardarFecha}
           onQuitar={quitarFecha}
+          onAbrimos={abrimosFecha}
           onCerrar={() => setFechaSel(null)}
         />
       )}
