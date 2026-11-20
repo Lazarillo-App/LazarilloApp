@@ -1142,6 +1142,12 @@ function ModalNuevaCarga(props) {
     return () => { vivo = false; };
   }, [prov]);
   const ultConLineas = () => ultFact;
+  // Ticket: no discrimina IVA (Diego 20/11/2026: «ya le definí Ticket y me sugiere IVA»). Los renglones
+  // van al 0 %; si alguno se cambia a mano, se respeta.
+  useEffect(() => {
+    if (normTipo(tipoCpb) !== "Ticket") return;
+    setLineas((ls) => (ls.some((l) => !l.alicManual && Number(l.alic) !== 0) ? ls.map((l) => (l.alicManual ? l : { ...l, alic: 0 })) : ls));
+  }, [tipoCpb, lineas.map((l) => `${l.item}|${l.alic}|${l.alicManual ? 1 : 0}`).join("~")]); // eslint-disable-line react-hooks/exhaustive-deps
   // Desde una celda del Panel (Diego 20/11/2026: «aprendé de la carga»): se abre como la última factura
   // de ese proveedor — mismo tipo (si es Ticket, ya con número generado), mismo total (o los mismos US$
   // con el dólar de hoy) y los mismos renglones. Todo editable.
@@ -1787,7 +1793,7 @@ function ModalNuevaCarga(props) {
                           const impint = fmtImp(e.target.value, e.nativeEvent); const t = parseImp(impint); const c = parseFloat(l.cant) || 0;
                           setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, impint, iiu: esIns && t > 0 && c > 0 ? fmtNum(Math.round(t / c * 100) / 100) : esIns ? "" : undefined } : x));
                         }} />
-                      <select style={{ ...sel, padding: "8px 18px 8px 4px", backgroundPosition: "right 5px center", textAlign: "center", textAlignLast: "center" }} value={l.alic} onChange={(e) => setLinea(i, "alic", parseFloat(e.target.value))}>
+                      <select style={{ ...sel, padding: "8px 18px 8px 4px", backgroundPosition: "right 5px center", textAlign: "center", textAlignLast: "center" }} value={l.alic} onChange={(e) => { const v = parseFloat(e.target.value); setLineas((ls) => ls.map((x, ix) => ix === i ? { ...x, alic: v, alicManual: true } : x)); }}>
                         {ALICUOTAS.map((a) => <option key={a} value={a}>{fmtNum(a)}%</option>)}
                       </select>
                       <span style={{ fontSize: 12.5, ...celda }}>{neto > 0 ? (esIns ? <Imp v={ivaUnit} sufijo={fEnv ? " /" + med : " /u"} max={15} /> : <Imp v={ivaLinea} max={15} />) : ""}</span>
