@@ -237,6 +237,7 @@ export function memOlvidar(mem, refs) {
   });
   return cambio ? n : mem;
 }
+
 // FIFO: reparte lo cobrado sobre las facturas (más viejas primero) → estado por factura
 export function estadosFIFO(fact, cobradoTotal) {
   let rest = cobradoTotal;
