@@ -41,8 +41,8 @@ import "../css/TablaArticulos.css";
 import { useAbrirGuia, useSectorGuia, pasosDelSector } from '@/componentes/asistente/guias';
 import { useRecorrido } from '@/hooks/useRecorrido';
 import SpotlightTour from './SpotlightTour';
-import { usePasosHeader, refTour, seVe } from '@/componentes/asistente/pasosHeader';
 import ListaCelular from '@/componentes/base/ListaCelular';
+import { usePasosHeader, refTour, seVe } from '@/componentes/asistente/pasosHeader';
 
 /* ---------------- utils ---------------- */
 // Misma paleta de respaldo que ArticleListSelector/PriceListConfigModal,
