@@ -66,6 +66,11 @@ export function correrFecha(iso, meses) {
   return `${y}-${p2(mo)}-${p2(Math.min(Number(m[3]), ult))}`;
 }
 export function ctxDesdeCelda(p, fechaPagoPrev) {
+  // Con proveedor (vista Proveedor del Panel) va directo a Factura con ese proveedor, concepto y período;
+  // Gastos Varios es para lo que no tiene proveedor (Diego 20/11/2026).
+  if (p.proveedorId != null) {
+    return { modo: 'factura', proveedorId: p.proveedorId, conceptoCodigo: p.conceptoCodigo, periodo: `${p.anio}-${p2(p.mes)}` };
+  }
   return {
     modo: 'vario',
     conceptoCodigo: p.conceptoCodigo,
@@ -73,8 +78,6 @@ export function ctxDesdeCelda(p, fechaPagoPrev) {
     importe: p.prev?.importe ?? 0,
     importeAnterior: p.prev ? `${p.anio}-${p2(p.prev.mes)}` : null,
     fechaPago: p.prev ? correrFecha(fechaPagoPrev, p.mes - p.prev.mes) : null,
-    // Desde la vista Proveedor: el gasto va a nombre de ese proveedor (no de «Gastos Varios»).
-    ...(p.proveedorId != null ? { proveedorVario: p.proveedorId } : {}),
   };
 }
 
