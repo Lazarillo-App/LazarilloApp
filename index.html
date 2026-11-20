@@ -13,7 +13,8 @@
   <!-- Ícono y nombre al guardar la app en el escritorio del celular (Diego 08/11/2026, opción A) -->
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-title" content="Lazarillo" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- maximum-scale=1: el iPhone no hace zoom solo al tocar un campo (quedaba agrandado al volver a abrir la app, Diego 20/11/2026). Se puede seguir pellizcando para agrandar. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <script>
     // Aplica variables del tema guardadas antes de que React monte (anti-flash)
     try {
