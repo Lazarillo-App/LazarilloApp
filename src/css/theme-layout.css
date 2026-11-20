@@ -933,7 +933,9 @@ input[type="number"]:focus {
   background: #eef2f6; border-radius: 8px;
 }
 .lz-tabs > button {
-  flex: 1; min-width: 0; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  /* ancho según el texto (20/11/2026): con «Pendientes» + contador la pestaña repartida en partes
+     iguales no entraba; ahora la que tiene más texto toma más lugar */
+  flex: 1 1 auto; min-width: 0; height: 26px; display: inline-flex; align-items: center; justify-content: center;
   gap: 2px; padding: 0 4px; line-height: 1; white-space: nowrap;
   border: none; border-radius: 6px; background: transparent; cursor: pointer;
   font-size: 0.72rem; font-weight: 600; color: #64748b; transition: background .15s, color .15s;
