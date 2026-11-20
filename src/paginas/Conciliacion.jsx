@@ -28,8 +28,8 @@ const PASOS_CONC = [
   { k: 'conc-fuentes', s: 'fuentes', t: <>Lo que no se trae solo lo subís con su <b>archivo</b>: ventas no efectivo, cobranzas de cuenta corriente y movimientos del banco. Cada tarjeta tiene su instructivo.</> },
   { k: 'conc-periodo', s: 'fuentes', t: <>Elegí el <b>mes</b> o las fechas. <b>Tolerancia</b>: si el cobro puede caer un día después. Debajo de <b>Auto-conciliar</b> se concilia solo; hasta <b>Margen sugerencias</b> te lo propone para que lo revises.</> },
   { k: 'conc-buscar', s: 'conciliar', t: <>Buscás un <b>comprobante o cliente</b> a la izquierda y un <b>pago por importe</b> o pagador a la derecha.</> },
-  { k: 'conc-barra', s: 'conciliar', t: <>La barra compara lo que <b>vendiste</b> con lo que <b>entró al banco</b>. Tildás filas de los dos lados y con <b>Conciliar</b> las cerrás a mano.</> },
-  { k: 'conc-paneles', s: 'conciliar', t: <>A la izquierda, tus <b>facturas y cobranzas</b>; a la derecha, el <b>banco</b>. Filtrás Todas, Conciliadas o Pendientes; en Pendientes vas día por día.</> },
+  { k: 'conc-barra', s: 'conciliar', t: <>La barra compara lo que <b>vendiste</b> con lo que <b>entró al banco</b>, con el día a la izquierda. Tildás filas de los dos lados y con <b>Conciliar</b> las cerrás a mano. Si algo es de <b>otro PDV</b>, tildalo y mandalo con los botones que aparecen abajo.</> },
+  { k: 'conc-paneles', s: 'conciliar', t: <>A la izquierda, tus <b>facturas y cobranzas</b>; a la derecha, el <b>banco</b>. Arriba del banco elegís <b>Pendientes</b>, <b>Conciliadas</b> o <b>Todas</b>.</> },
 ];
 
 // Ancho de la pantalla de Conciliación (19/11, Diego: «no podemos mejorar el diseño para que ocupe mejor el ancho?»):
@@ -93,12 +93,12 @@ export default function Conciliacion() {
         if (!vivo) return;
         const f = r?.fuentes || {};
         setInicial({
-          fuentes: {
+          fuentes: conTraslados({
             ventas: f.ventas?.filas || null,
             pagos: f.pagos?.filas || null,
             banco: f.banco?.filas || null,
             facturas_cc: f.facturas_cc?.filas || [],
-          },
+          }, r?.traslados),
           pagadores: r?.pagadores || {},
           egresos: f.egresos?.filas || [],   // lo que salió de Mercado Pago (no va al módulo de Diego)
         });
@@ -106,6 +106,27 @@ export default function Conciliacion() {
       .catch(() => { if (vivo) setError('No pude cargar la conciliación. Probá de nuevo en un rato.'); });
     return () => { vivo = false; clearTimeout(pagT.current); };
   }, [bid, suc, ver]);
+
+  // Mandar registros a otro PDV (Diego 20/11/2026: «lo tildo y aprieto el PDV donde lo quiero mandar»).
+  // Se sacan de esta sucursal en el momento y el módulo se rearma con lo que queda (sin volver a pedir todo).
+  const [rearme, setRearme] = useState(0);
+  const destinos = useMemo(() => branches
+    .map((b) => ({ suc: sucursalNum(b.id), nombre: b.id === 'main' ? (b.name || 'Principal') : b.name }))
+    .filter((d) => d.suc !== suc), [branches, suc]);
+  const trasladar = useCallback(async (items, hacia) => {
+    const dest = destinos.find((d) => d.suc === hacia);
+    avisar(`Mandando ${items.length} registro${items.length === 1 ? '' : 's'} a ${dest?.nombre || 'la otra sucursal'}…`, 0);
+    try {
+      await ConciliacionAPI.trasladar(bid, suc, hacia, items);
+      const sale = {}; items.forEach((it) => { (sale[it.tipo] = sale[it.tipo] || new Set()).add(it.clave); });
+      setInicial((ini) => ini && ({ ...ini, fuentes: { ...ini.fuentes,
+        ...Object.fromEntries(Object.keys(sale).map((t) => [t, (ini.fuentes[t] || []).filter((x) => !sale[t].has(x.id))])) } }));
+      setRearme((n) => n + 1);
+      avisar(`Listo: ${items.length === 1 ? 'el registro ya está' : items.length + ' registros ya están'} en ${dest?.nombre || 'la otra sucursal'}. Para traerlo de vuelta, tildalo allá y mandalo a esta.`, 7000);
+    } catch {
+      avisar('No se pudo mandar a la otra sucursal. Probá de nuevo.', 7000);
+    }
+  }, [bid, suc, destinos, avisar]);
 
   const persist = useMemo(() => (bid && suc !== null && inicial ? {
     fuentes: inicial.fuentes,
@@ -221,10 +242,27 @@ export default function Conciliacion() {
       {verEgresos && inicial.egresos.length > 0 && <ListaEgresos filas={inicial.egresos} />}
       {verBanco && inicial.fuentes.banco?.length > 0 && <ListaBanco filas={inicial.fuentes.banco} />}
       {/* key: al cambiar de negocio o sucursal (o al traer cobros nuevos) se arma de cero */}
-      <ModuloConciliacion key={`${bid}:${suc}:${ver}`} business={business} embedded persist={persist}
-        pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} abrirClientes={abrirClientes} />
+      <ModuloConciliacion key={`${bid}:${suc}:${ver}:${rearme}`} business={business} embedded persist={persist}
+        pagadorMap={inicial.pagadores} onPagadorMap={onPagadorMap} abrirClientes={abrirClientes}
+        destinos={destinos} onTrasladar={trasladar} />
     </div>
   );
+}
+
+// Traslados entre PDV (20/11): lo que se mandó a otra sucursal sale de acá; lo que llegó de otra entra,
+// marcado con de dónde vino (trasladoDesde).
+function conTraslados(fuentes, tr) {
+  if (!tr || (!tr.salen?.length && !tr.entran?.length)) return fuentes;
+  const out = { ...fuentes };
+  ['ventas', 'banco', 'pagos'].forEach((t) => {
+    const salen = new Set((tr.salen || []).filter((x) => x.tipo === t).map((x) => x.clave));
+    const entran = (tr.entran || []).filter((x) => x.tipo === t && x.fila);
+    if (!salen.size && !entran.length) return;
+    const base = (out[t] || []).filter((x) => !salen.has(x.id));
+    const ya = new Set(base.map((x) => x.id));
+    out[t] = [...base, ...entran.filter((x) => !ya.has(x.clave)).map((x) => ({ ...x.fila, id: x.clave, trasladoDesde: x.desde }))];
+  });
+  return out;
 }
 
 // Lista simple de los movimientos del banco cargados (13/11): el módulo arma sus tablas recién
