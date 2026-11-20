@@ -485,10 +485,13 @@ const InsumosTable = forwardRef(function InsumosTable({
   // corren los gridColumn de las filas de rubro).
   const { veMontos = true } = useAccess() || {};
   const sinPrecio = isStaff && !veMontos;
-  const colPrecio = sinPrecio ? '0px' : '.7fr';
-  const fixedStartElab = `${checkCol}.4fr 2fr .45fr ${colPrecio}`;
-  const fixedStartNoElab = `${checkCol}.4fr 2fr .35fr ${colPrecio}`;
-  const dynCols = visibleCols.map(c => c.width).join(' ');
+  // Mínimos en px (20/11/2026): a 1100 de ancho el código pisaba el Nombre y el precio se partía en
+  // dos renglones ($ arriba, número abajo). El Nombre (2fr) absorbe lo que falte.
+  const colPrecio = sinPrecio ? '0px' : 'minmax(104px, .7fr)';
+  const fixedStartElab = `${checkCol}minmax(72px, .4fr) minmax(120px, 2fr) minmax(64px, .45fr) ${colPrecio}`;
+  const fixedStartNoElab = `${checkCol}minmax(72px, .4fr) minmax(120px, 2fr) minmax(64px, .35fr) ${colPrecio}`;
+  const MIN_COL = { desperdicio: 96, compras: 96, total: 88 };
+  const dynCols = visibleCols.map(c => (MIN_COL[c.id] ? `minmax(${MIN_COL[c.id]}px, ${c.width})` : c.width)).join(' ');
   const fixedEnd = branches && branches.length > 1 ? `${branchExtraCols} .4fr` : '.4fr';
 
   // minmax(0, Nfr): sin esto un título largo ("Precio con merma default ($)")
@@ -1081,8 +1084,8 @@ const InsumosTable = forwardRef(function InsumosTable({
             <div onClick={() => toggleSort("nombre")} className="col-sortable c-keep">
               Nombre {sortIcon("nombre")}
             </div>
-            <div onClick={() => toggleSort("unidad")} className="col-sortable">
-              U. medida {sortIcon("unidad")}
+            <div onClick={() => toggleSort("unidad")} className="col-sortable" title="Unidad de medida">
+              Unidad {sortIcon("unidad")}
             </div>
             {sinPrecio ? <div /> : (
             <div onClick={() => toggleSort("precio")} className="col-sortable">
@@ -1505,7 +1508,7 @@ const InsumosTable = forwardRef(function InsumosTable({
                         ? `Promedio compras 90d: ${formatMoney(r.precio_promedio, 4)}\nÚltima compra: ${formatMoney(r.precio_ultima_compra, 4)}`
                         : 'Precio de referencia (sin compras registradas)'
                     }
-                    style={{ cursor: 'help' }}
+                    style={{ cursor: 'help', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}
                   >
                     {formatMoney(getDisplayedPrice(r), 2)}
                     {r.precio_promedio && Math.abs(Number(r.precio_promedio) - Number(r.precio_ref)) / (Number(r.precio_ref) || 1) > 0.05 && (
