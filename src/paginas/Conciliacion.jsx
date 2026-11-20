@@ -110,23 +110,31 @@ export default function Conciliacion() {
   // Mandar registros a otro PDV (Diego 20/11/2026: «lo tildo y aprieto el PDV donde lo quiero mandar»).
   // Se sacan de esta sucursal en el momento y el módulo se rearma con lo que queda (sin volver a pedir todo).
   const [rearme, setRearme] = useState(0);
-  const destinos = useMemo(() => branches
-    .map((b) => ({ suc: sucursalNum(b.id), nombre: b.id === 'main' ? (b.name || 'Principal') : b.name }))
-    .filter((d) => d.suc !== suc), [branches, suc]);
-  const trasladar = useCallback(async (items, hacia) => {
-    const dest = destinos.find((d) => d.suc === hacia);
-    avisar(`Mandando ${items.length} registro${items.length === 1 ? '' : 's'} a ${dest?.nombre || 'la otra sucursal'}…`, 0);
+  // 20/11 (Diego: «otro PDV puede ser cualquiera de la organización, incluso el Bar»): los destinos son
+  // todas las sucursales de todos los negocios de la organización (los trae el servidor).
+  const [destinosOrg, setDestinosOrg] = useState([]);
+  useEffect(() => {
+    if (!bid) return undefined;
+    let vivo = true;
+    ConciliacionAPI.destinos(bid, suc || 0).then((r) => { if (vivo) setDestinosOrg(r?.destinos || []); }).catch(() => { if (vivo) setDestinosOrg([]); });
+    return () => { vivo = false; };
+  }, [bid, suc]);
+  const destinos = useMemo(() => destinosOrg
+    .filter((d) => !(d.bid === bid && d.suc === suc))
+    .map((d) => ({ ...d, label: d.bid === bid ? d.nombre : (d.nombre === d.negocio ? d.negocio : `${d.negocio} · ${d.nombre}`) })), [destinosOrg, bid, suc]);
+  const trasladar = useCallback(async (items, dest) => {
+    avisar(`Mandando ${items.length} registro${items.length === 1 ? '' : 's'} a ${dest.label}…`, 0);
     try {
-      await ConciliacionAPI.trasladar(bid, suc, hacia, items);
+      await ConciliacionAPI.trasladar(bid, suc, dest.bid, dest.suc, items);
       const sale = {}; items.forEach((it) => { (sale[it.tipo] = sale[it.tipo] || new Set()).add(it.clave); });
       setInicial((ini) => ini && ({ ...ini, fuentes: { ...ini.fuentes,
         ...Object.fromEntries(Object.keys(sale).map((t) => [t, (ini.fuentes[t] || []).filter((x) => !sale[t].has(x.id))])) } }));
       setRearme((n) => n + 1);
-      avisar(`Listo: ${items.length === 1 ? 'el registro ya está' : items.length + ' registros ya están'} en ${dest?.nombre || 'la otra sucursal'}. Para traerlo de vuelta, tildalo allá y mandalo a esta.`, 7000);
+      avisar(`Listo: ${items.length === 1 ? 'el registro ya está' : items.length + ' registros ya están'} en ${dest.label}. Para traerlo de vuelta, tildalo allá y mandalo a este PDV.`, 7000);
     } catch {
-      avisar('No se pudo mandar a la otra sucursal. Probá de nuevo.', 7000);
+      avisar('No se pudo mandar al otro PDV. Probá de nuevo.', 7000);
     }
-  }, [bid, suc, destinos, avisar]);
+  }, [bid, suc, avisar]);
 
   const persist = useMemo(() => (bid && suc !== null && inicial ? {
     fuentes: inicial.fuentes,
@@ -260,7 +268,7 @@ function conTraslados(fuentes, tr) {
     if (!salen.size && !entran.length) return;
     const base = (out[t] || []).filter((x) => !salen.has(x.id));
     const ya = new Set(base.map((x) => x.id));
-    out[t] = [...base, ...entran.filter((x) => !ya.has(x.clave)).map((x) => ({ ...x.fila, id: x.clave, trasladoDesde: x.desde }))];
+    out[t] = [...base, ...entran.filter((x) => !ya.has(x.clave)).map((x) => ({ ...x.fila, id: x.clave, trasladoDesde: x.desde, trasladoNegocio: x.desdeNegocio }))];
   });
   return out;
 }
