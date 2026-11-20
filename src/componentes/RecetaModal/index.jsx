@@ -279,6 +279,8 @@ export default function RecetaModal({
   // 'off' (% off sobre la venta sin promo) o 'nxm' (llevás N, pagás M). En 'off' y 'nxm' el precio
   // sale solo y queda atado al de sus artículos; no se edita a mano.
   const [promoRegla, setPromoRegla] = useState('margen');
+  // Para cuántos comensales es el plato (Diego 20/11/2026): «te queda» se mide por comensal.
+  const [comensales, setComensales] = useState(1);
   const [promoOffPct, setPromoOffPct] = useState('');
   const [promoLlevas, setPromoLlevas] = useState('');
   const [promoPagas, setPromoPagas] = useState('');
@@ -1115,6 +1117,7 @@ export default function RecetaModal({
           setAlmacenamientoFreezer(rec.almacenamiento_freezer || '');
           setAlmacenamientoHeladera(rec.almacenamiento_heladera || '');
           setPromoRegla(['off', 'nxm'].includes(rec.promo_regla) ? rec.promo_regla : 'margen');
+          setComensales(Math.min(10, Math.max(1, Number(rec.comensales) || 1)));
           setPreciosArticuloPromo({});
           setPromoOffPct(rec.promo_off_pct != null ? String(Number(rec.promo_off_pct)) : '');
           setPromoLlevas(rec.promo_llevas != null ? String(rec.promo_llevas) : '');
@@ -1354,7 +1357,6 @@ export default function RecetaModal({
     new Map(items.map((it, idx) => [String(it.supplyId), idx]).filter(([id]) => id !== 'undefined' && id !== 'null')),
     [items]
   );
-
   // El mismo insumo puede ir más de una vez (Diego 12/11/2026: 20 g con mamadera para decorar y 50 g
   // en un dip aparte); cada renglón con su cantidad y su observación. Ya no se bloquea el guardado.
   const hasDuplicates = false;
@@ -1529,6 +1531,7 @@ export default function RecetaModal({
     almacenamientoFreezer: almacenamientoFreezer || '',
     almacenamientoHeladera: almacenamientoHeladera || '',
     pctCostoIdeal,
+    comensales,
     items: items
       .filter(it => it.supplyId || it.articleRefId)
       .map(it => ({
@@ -1544,7 +1547,7 @@ export default function RecetaModal({
         observaciones: it.observaciones || '',
         fotosUrls: Array.isArray(it.fotosUrls) ? it.fotosUrls : [],
       })),
-  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera, pctCostoIdeal, items]);
+  }), [nombre, rendimiento, rendimientoUnidad, rendimientoPeso, unidadPeso, notas, notasUpdatedAt, foto, fotos, metodoCoccion, temperatura, tiempoMin, pasos, almacenamientoFreezer, almacenamientoHeladera, pctCostoIdeal, comensales, items]);
 
   const pristineSnapshotRef = useRef(null);
   // Lo último que se autoguardó sin cerrar (keepOpen: cambio de pestaña, flechas, cascada).
@@ -1803,7 +1806,6 @@ export default function RecetaModal({
       }
       return;
     }
-
     // ── Editar una promo YA EXISTENTE (agregar/quitar/ajustar componentes) ──
     // Antes esta rama no existía: esPromo nunca se chequeaba acá (solo en
     // handleDelete), así que guardar una promo ya creada caía en el guardado
@@ -1947,6 +1949,7 @@ export default function RecetaModal({
       pasos,
       almacenamientoFreezer,
       almacenamientoHeladera,
+      ...(!modoInsumo ? { comensales } : {}),
       ...(promoMode ? {
         promoRegla,
         promoOffPct: promoRegla === 'off' ? Number(promoOffPct) || null : null,
@@ -2796,7 +2799,7 @@ export default function RecetaModal({
               }))}
               costoTotal={costoTotal} costoPorcion={costoXRendimiento}
               precioActual={precioActual} pctCostoActual={pctCostoActual} pctObjetivo={Number(pctCostoIdeal) || 0}
-              precioObjetivo={precioSugerido} promo={promoMode} ventaSinPromo={ventaSinPromo}
+              precioObjetivo={precioSugerido} promo={promoMode} ventaSinPromo={ventaSinPromo} comensales={comensales}
               canNavigate={canNavigate} onNavigate={onNavigate} onClose={handleClose}
               conFicha={conPestanasArt} onFicha={() => setTabArt('ficha')}
             />
@@ -3493,6 +3496,8 @@ export default function RecetaModal({
               precioActual={precioActual}
               estaPorDebajo={estaPorDebajo}
               pctCostoActual={pctCostoActual}
+              comensales={comensales}
+              onComensales={isStaff ? null : setComensales}
               acciones={verFicha ? (
                 <BotonesReceta enPie receta={!!fichaCtl?.puedeBorrar} saving={!!fichaCtl?.guardando} deleting={false} loading={!fichaCtl}
                   hasDuplicates={!fichaCtl || fichaCtl.faltan || !fichaCtl.sucio}
