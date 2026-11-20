@@ -401,7 +401,7 @@ export function DayGroupedRows({ rows, windowDays, center, renderRow, innerRef, 
 // Vista por día COMPARTIDA (opción B): una banda de día a lo ancho, y debajo
 // ingresos a la izquierda y banco a la derecha. Las dos columnas se estiran a la
 // misma altura (flex stretch), así la banda del día siempre queda alineada.
-export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, renderIng, renderBan, faltantes, tipDia, selIng, selBan, onSelDia, efectivoDia, efectivoOpen, onToggleEfectivo, efectivoSosp, selEfec, onToggleEfec, ccDia, ccOpen, onToggleCC, onCliente, tieneCuentaFn, formaFn, selCC, onToggleCCSel, ccConc }) {
+export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, renderIng, renderBan, faltantes, tipDia, selIng, selBan, onSelDia, efectivoDia, efectivoOpen, onToggleEfectivo, efectivoSosp, selEfec, onToggleEfec, ccDia, cobrosDia, ccOpen, onToggleCC, onCliente, tieneCuentaFn, formaFn, selCC, onToggleCCSel, ccConc }) {
   const [verConcCC, setVerConcCC] = React.useState(new Set()); // días donde mostrás también las CC ya conciliadas
   const fmtSep = (d) => {
     const dt = new Date(d + "T12:00:00");
@@ -414,12 +414,13 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
     ban: banRows.filter((r) => r.fecha === d),
     falt: (faltantes || []).filter((f) => f.fecha === d),
   }));
-  const any = byDay.some((g) => g.ing.length || g.ban.length || g.falt.length);
+  const cobrosPend = React.useMemo(() => { const o = {}; Object.keys(cobrosDia || {}).forEach((d) => { o[d] = cobrosDia[d].filter((r) => !r.conciliado); }); return o; }, [cobrosDia]);
+  const any = byDay.some((g) => g.ing.length || g.ban.length || g.falt.length || (cobrosPend[g.d] || []).length);
   return (
     <div ref={innerRef} style={{ overflowY: "auto", flex: 1 }}>
       {!any && <div style={{ padding: 40, textAlign: "center", color: C.txt3, fontSize: 15 }}>Sin pendientes en esta ventana</div>}
       {byDay.map((g) => {
-        const totIng = g.ing.reduce((a, r) => a + r.imp, 0) + g.falt.reduce((a, f) => a + f.monto, 0);
+        const totIng = g.ing.reduce((a, r) => a + r.imp, 0) + g.falt.reduce((a, f) => a + f.monto, 0) + (cobrosPend[g.d] || []).reduce((a, r) => a + r.imp, 0);
         const totBan = g.ban.reduce((a, r) => a + r.imp, 0);
         return (
           <div key={g.d}>
@@ -472,21 +473,25 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
                   const verConc = verConcCC.has(g.d);
                   const lista = verConc ? [...pendCC, ...concCC] : pendCC;
                   const fC = (d) => d ? fmtFecha(d).slice(0, 5).replace("-", "/") : "";
-                  const motivo = (r) => r.saldado ? "conciliado" : "cobro por Mercado Pago";
+                  const motivo = (r) => r.estado === "impaga" ? "sin cobro en el ERP"
+                    : r.estado === "erp" ? "ERP: cobrada " + fC(r.cobroFecha) + " · falta en banco"
+                    : r.estado === "galicia" ? "ERP: cobrada por Galicia " + fC(r.cobroFecha) + " · banco no cargado"
+                    : r.estado === "otro" ? "cobro de ticket anterior" + (r.ticketFecha ? " (" + fC(r.ticketFecha) + ")" : "") + " · falta en banco"
+                    : "saldada" + (r.cobroFecha ? " " + fC(r.cobroFecha) : "") + ((r.formas || []).some((f) => f !== "banco") ? " · " + r.formas.filter((f) => f !== "banco").join("/") : "");
                   return (
                   <div>
                     <div onClick={(e) => { e.stopPropagation(); onToggleCC && onToggleCC(g.d); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 16px", borderBottom: "1px solid " + C.line, cursor: "pointer", background: "#7c5fd30c", opacity: g.isCenter ? 1 : 0.62 }}>
                       <span style={{ color: C.txt3, fontSize: 10, width: 10, flexShrink: 0 }}>{open ? "▾" : "▸"}</span>
-                      <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", color: "#7c5fd3" }}>{"🧾"} Cuenta corriente</span>
-                      <span style={{ fontSize: 11, color: C.txt3 }}>{pendCC.length ? pendCC.length + " cobro" + (pendCC.length === 1 ? "" : "s") + " sin conciliar" : "cobros conciliados"}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", color: "#7c5fd3" }}>{"🧾"} Deudas nuevas · cta. cte.</span>
+                      <span style={{ fontSize: 11, color: C.txt3 }}>{pendCC.length ? pendCC.length + " impaga" + (pendCC.length === 1 ? "" : "s") : "todas saldadas"}</span>
                       {concCC.length > 0 && <span onClick={(e) => { e.stopPropagation(); setVerConcCC((s) => { const n = new Set(s); n.has(g.d) ? n.delete(g.d) : n.add(g.d); return n; }); if (!open && onToggleCC) onToggleCC(g.d); }}
-                        title={verConc ? "Ocultar los ya conciliados" : "Ver los ya conciliados (" + fmt(totConc) + ")"}
-                        style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", background: verConc ? "#1a9c6e" : "#1a9c6e1c", color: verConc ? C.white : C.green, borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>{"✓"} {concCC.length} conciliado{concCC.length === 1 ? "" : "s"} {verConc ? "▴" : "▾"}</span>}
+                        title={verConc ? "Ocultar las ya saldadas" : "Ver las ya saldadas (" + fmt(totConc) + ")"}
+                        style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", background: verConc ? "#1a9c6e" : "#1a9c6e1c", color: verConc ? C.white : C.green, borderRadius: 6, padding: "1px 6px", cursor: "pointer" }}>{"✓"} {concCC.length} saldada{concCC.length === 1 ? "" : "s"} {verConc ? "▴" : "▾"}</span>}
                       <span style={{ marginLeft: "auto", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 12.5, color: pendCC.length ? "#7c5fd3" : C.txt3 }}>{fmt(totPend)}</span>
                     </div>
                     {open && lista.map((r) => { const clic = onCliente && r.cliente && (!tieneCuentaFn || tieneCuentaFn(r.cliente)); const conc = r.saldado; const selec = r.cobroIds.length > 0; const sel = selec && selCC && r.cobroIds.every((id) => selCC.has(id)); return (
                       <div key={r.key} onClick={(e) => { e.stopPropagation(); if (!conc && selec && onToggleCCSel) onToggleCCSel(r.cobroIds); }}
-                        title={r.saldado ? "Cobro de cuenta corriente ya conciliado con el banco" : "Cobro de su cuenta corriente (paga " + (r.comp || "un ticket") + (r.ticketFecha ? " del " + fC(r.ticketFecha) : "") + "). Tildalo junto con la venta del día y el pago del banco para conciliarlos."}
+                        title={r.estado === "impaga" ? "El ERP no tiene cobro de este ticket: queda impaga hasta que se cobre" : r.estado === "erp" ? "Tildalo para conciliar su cobro con el pago del banco" : r.estado === "galicia" ? "Se cobró por Banco Galicia: se va a conciliar cuando carguemos ese banco" : ""}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 14px", borderBottom: "1px solid " + C.line, fontSize: 12, cursor: !conc && selec ? "pointer" : "default", background: sel ? "#5BC2EA14" : (conc ? "#1a9c6e0a" : "#7c5fd306"), boxShadow: sel ? "inset 3px 0 0 " + C.celeste : (conc ? "inset 3px 0 0 " + C.green : undefined), opacity: g.isCenter ? 1 : 0.62 }}>
                         {conc
                           ? <span title="Saldada: su pago está conciliado" style={{ width: 15, height: 15, borderRadius: 4, background: C.green, color: C.white, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{"✓"}</span>
@@ -495,13 +500,27 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
                             : <span style={{ width: 15, flexShrink: 0 }} />}
                         <span style={{ fontSize: 11, color: C.txt3, width: 40, flexShrink: 0 }}>{r.hora || "—"}</span>
                         <span onClick={clic ? (e) => { e.stopPropagation(); onCliente(r.cliente); } : undefined} style={{ flex: 1, minWidth: 0, color: clic ? C.celesteDeep : C.txt2, cursor: clic ? "pointer" : "default", textDecoration: clic ? "underline" : "none", textDecorationColor: "rgba(36,146,200,.35)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={clic ? "Ver cuenta corriente de " + r.cliente : ""}>{r.cliente || "—"}</span>
-                        <span style={{ flexShrink: 0, fontSize: 10.5, whiteSpace: "nowrap", fontWeight: 700, color: conc ? C.green : C.amber }}>{motivo(r)}</span>
+                        <span style={{ flexShrink: 0, fontSize: 10.5, whiteSpace: "nowrap", fontWeight: 700, color: conc ? C.green : r.estado === "impaga" ? C.txt3 : C.amber }}>{motivo(r)}</span>
                         <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, color: C.txt2, textAlign: "right", flexShrink: 0 }}>{fmt(r.imp)}</span>
                         <span style={{ width: 100, flexShrink: 0, fontSize: 11, color: C.txt3, textTransform: "uppercase", letterSpacing: ".3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.comp}>{(r.comp || "Cta. cte.").replace(/^(\S+)\s+\d+-0*/, "$1 …")}</span>
                       </div>
                     ); })}
                   </div>
                 ); })()}
+                {/* Pagos de cuenta corriente del día (20/11, Diego): sueltos en la lista, con un chip, para conciliarlos
+                    con la venta del día y el pago del banco. Los ya conciliados no se listan acá. */}
+                {(cobrosPend[g.d] || []).map((r) => { const sel = selCC && selCC.has(r.id); const clic = onCliente && r.cliente && (!tieneCuentaFn || tieneCuentaFn(r.cliente)); return (
+                  <div key={r.key} onClick={(e) => { e.stopPropagation(); onToggleCCSel && onToggleCCSel([r.id]); }}
+                    title={"Cobro de su cuenta corriente (paga " + (r.comp || "un ticket") + (r.ticketFecha ? " del " + fmtFecha(r.ticketFecha).slice(0, 5).replace("-", "/") : "") + "). Tildalo junto con la venta del día y el pago del banco para conciliarlos."}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid " + C.line, fontSize: 13, cursor: "pointer", background: sel ? "#5BC2EA14" : "#7c5fd308", boxShadow: sel ? "inset 3px 0 0 " + C.celeste : "inset 3px 0 0 #7c5fd3", opacity: g.isCenter ? 1 : 0.62 }}>
+                    <span style={{ width: 15, height: 15, borderRadius: 4, border: "1.5px solid " + (sel ? C.celeste : C.line2), background: sel ? C.celeste : C.white, color: C.white, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{sel ? "✓" : ""}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".3px", background: "#7c5fd31f", color: "#7c5fd3", borderRadius: 6, padding: "2px 7px", flexShrink: 0, whiteSpace: "nowrap" }}>{"🧾"} Pago cta. cte.</span>
+                    <span onClick={clic ? (e) => { e.stopPropagation(); onCliente(r.cliente); } : undefined} title={clic ? "Ver cuenta corriente de " + r.cliente : ""}
+                      style={{ flex: 1, minWidth: 0, color: clic ? C.celesteDeep : C.txt2, cursor: clic ? "pointer" : "default", textDecoration: clic ? "underline" : "none", textDecorationColor: "rgba(36,146,200,.35)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.cliente || "—"}</span>
+                    <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 14.5, color: C.tinta, textAlign: "right", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{fmt(r.imp)}</span>
+                    <span style={{ width: 100, flexShrink: 0, fontSize: 11, color: C.txt3, textTransform: "uppercase", letterSpacing: ".3px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.comp}>{(r.comp || "Cta. cte.").replace(/^(\S+)\s+\d+-0*/, "$1 …")}</span>
+                  </div>
+                ); })}
                 {g.ing.map((r) => renderIng(r, !g.isCenter))}
                 {g.falt.map((f) => (
                   <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px 8px 30px", borderBottom: "1px solid " + C.line, background: "#7c5fd30c", opacity: g.isCenter ? 1 : 0.62 }}>
@@ -511,7 +530,7 @@ export function DiaCompartido({ ingRows, banRows, windowDays, center, innerRef, 
                     <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 14.5, color: "#7c5fd3", flexShrink: 0 }}>{fmt(f.monto)}</span>
                   </div>
                 ))}
-                {!g.ing.length && !g.falt.length && !(efectivoDia && efectivoDia[g.d] && efectivoDia[g.d].items.length) && !(ccDia && ccDia[g.d] && ccDia[g.d].items.length) && <div style={{ padding: "10px 16px", fontSize: 12, color: C.txt3, opacity: 0.6 }}>—</div>}
+                {!g.ing.length && !g.falt.length && !(efectivoDia && efectivoDia[g.d] && efectivoDia[g.d].items.length) && !(ccDia && ccDia[g.d] && ccDia[g.d].items.length) && !(cobrosPend[g.d] || []).length && <div style={{ padding: "10px 16px", fontSize: 12, color: C.txt3, opacity: 0.6 }}>—</div>}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {g.ban.map((r) => renderBan(r, !g.isCenter))}
