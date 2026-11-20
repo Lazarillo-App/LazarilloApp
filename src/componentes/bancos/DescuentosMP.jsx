@@ -69,7 +69,7 @@ export default function DescuentosMP({ bid, avisar }) {
   // que ya se usaron en compras de su proveedor (los más usados primero). Hasta 6.
   const sugeridosDe = (g) => {
     // «Buenos Aires» es «Provincia» en los conceptos (y no «Mantenimiento Aires»); «Ib» es IIBB.
-    const pal = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const pal = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
       .replace(/buenos aires|bs\.? ?as\.?/g, 'provincia').replace(/\bib\b/g, 'iibb').split(/[^a-z0-9]+/)
       .filter((w) => w.length >= 3 && !['con', 'por', 'del', 'los', 'las', 'que', 'cobro', 'pago'].includes(w));
     const deLeyenda = pal(g.nombre);
