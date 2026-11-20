@@ -279,6 +279,13 @@ export default function PlazaPage() {
     setData((d) => ({ ...d, productos: lista }));
     try { await guardarProductos(lista); } catch (e) { setError(e.message); setData((d) => ({ ...d, productos: previa })); }
   };
+  // ★ NUEVO a mano (Diego 20/11/2026): se ve al toque; si el servidor falla, vuelve.
+  const marcarNuevo = async (prod, nuevo) => {
+    const previo = prod.nuevoDesde || null;
+    const poner = (v) => setData((d) => ({ ...d, productos: d.productos.map((x) => (x.articleId === prod.articleId ? { ...x, nuevoDesde: v } : x)) }));
+    poner(nuevo ? new Date().toISOString() : null);
+    try { const r = await PlazasAPI.marcarNuevo(id, prod.articleId, nuevo); poner(r?.nuevoDesde || null); } catch (e) { setError(e.message); poner(previo); }
+  };
   const quitarProducto = async (prod) => {
     const idx = data.productos.findIndex((x) => x.articleId === prod.articleId);
     const resto = data.productos.filter((x) => x.articleId !== prod.articleId);
@@ -392,7 +399,7 @@ export default function PlazaPage() {
       {!data.productos.length ? (
         <Typography data-tour="tab-vacia" color="text.secondary" sx={{ py: 6, textAlign: 'center' }}>Esta plaza todavía no tiene productos. Sumalos con «+ Productos».</Typography>
       ) : (
-        <Box data-tour="tab-vista" sx={{ zoom }}><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onOrdenar={ordenarProductos} onQuitar={quitarProducto} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
+        <Box data-tour="tab-vista" sx={{ zoom }}><VistaPlaza productos={data.productos} armando={armando} mostrarPlaza={data.plaza.mostrar || 'peso'} onOrdenar={ordenarProductos} onQuitar={quitarProducto} onMarcarNuevo={marcarNuevo} onCambiar={cambiar} onColorIngrediente={colorIngrediente} onMostrarIngrediente={mostrarIngrediente} onAliasIngrediente={aliasIngrediente} onOcultarIngrediente={ocultarIngrediente}
           onEditarItem={editarItem}
           onCrearEquivalencia={(articleId, r) => {
             const insumoId = String(r.ref || '').startsWith('i:') ? Number(String(r.ref).slice(2)) : null;
@@ -418,7 +425,7 @@ export default function PlazaPage() {
       )}
       <EditorPlaza abierto={sumando} onCerrar={() => setSumando(false)}
         sector={{ id: data.plaza.sectorId, nombre: data.plaza.sectorNombre }}
-        plaza={{ id: data.plaza.id, nombre: data.plaza.nombre, productos: data.productos.map((p) => ({ articleId: p.articleId, nombre: p.nombre })) }}
+        plaza={{ id: data.plaza.id, nombre: data.plaza.nombre, grupos: data.plaza.grupos, productos: data.productos.map((p) => ({ articleId: p.articleId, nombre: p.nombre })) }}
         onGuardado={() => { setSumando(false); cargar(); }} />
       <VincularTV abierto={tv} plaza={data.plaza} onCerrar={() => setTv(false)} onAviso={setAviso} />
       <Snackbar open={!!quitado} autoHideDuration={6000} onClose={(_, motivo) => { if (motivo !== 'clickaway') setQuitado(null); }}

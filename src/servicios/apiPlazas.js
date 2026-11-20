@@ -13,8 +13,11 @@ export const PlazasAPI = {
     const r = ok(await httpBiz(`/plazas/articulos?q=${encodeURIComponent(q)}`, { method: 'GET', cache: false }), 'No se pudieron cargar los artículos');
     return { articulos: r.articulos || [], agrupaciones: r.agrupaciones || [] };
   },
-  async crear(sectorId, nombre, articleIds) { return ok(await httpBiz('/plazas', { method: 'POST', body: { sectorId, nombre, articleIds } }), 'No se pudo crear la plaza'); },
-  async editar(id, nombre, articleIds) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds } }), 'No se pudo guardar la plaza'); },
+  // grupos: [{ tipo: 'rubro'|'subrubro', nombre }] que la plaza sigue (sus productos nuevos se suman solos).
+  async crear(sectorId, nombre, articleIds, grupos) { return ok(await httpBiz('/plazas', { method: 'POST', body: { sectorId, nombre, articleIds, grupos } }), 'No se pudo crear la plaza'); },
+  async editar(id, nombre, articleIds, grupos) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { nombre, articleIds, grupos } }), 'No se pudo guardar la plaza'); },
+  // ★ NUEVO a mano (Diego 20/11/2026): marca (una semana desde hoy) o desmarca un producto de la plaza.
+  async marcarNuevo(id, articleId, nuevo) { return ok(await httpBiz(`/plazas/${id}/fichas/${articleId}/nuevo`, { method: 'PUT', body: { nuevo } }), 'No se pudo guardar'); },
   // Lugares de los productos (Diego 19/11/2026): [articleId | null], null = lugar libre.
   async casillas(id, casillas) { return ok(await httpBiz(`/plazas/${id}`, { method: 'PUT', body: { casillas } }), 'No se pudo guardar el orden'); },
   // Qué muestra la plaza por defecto ('peso' | 'obs' | 'ambos'); cada ingrediente puede tener el suyo.

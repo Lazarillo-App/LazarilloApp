@@ -70,6 +70,7 @@ export default function EditorPlaza({ abierto, sector, sectores = [], sectorInic
   React.useEffect(() => {
     if (!abierto) return;
     setNombre(plaza?.nombre || '');
+    setSeguidos(new Set((plaza?.grupos || []).map((g) => `${g.tipo}:${g.nombre}`)));
     setElegidos((plaza?.productos || []).map((p) => ({ id: p.articleId, nombre: p.nombre || `#${p.articleId}` })));
     setQ('');
     // Desde el «+» de un sector (chips o mapa) llega ese sector elegido.
@@ -109,8 +110,16 @@ export default function EditorPlaza({ abierto, sector, sectores = [], sectorInic
   // Buscando, se ve todo (también lo omitido) para poder encontrar cualquier producto.
   const visibles = q.trim() ? grupos : grupos.filter((g) => !ocultos.has(kGrupo(g)));
   const ocultosDelModo = [...ocultos].filter((k) => k.startsWith(`${modoGrupo}:`));
+  // Rubro entero = la plaza lo «sigue» (Diego 20/11/2026: «cuando se agregue un producto a ese rubro lo
+  // muestra solo»). Se sigue al tildar el rubro completo sin buscador ni filtro; destildarlo lo deja de seguir.
+  // Sacar un producto suelto no corta el seguimiento: ese producto no vuelve, los nuevos sí.
+  const [seguidos, setSeguidos] = React.useState(() => new Set());
+  const dejarDeSeguir = (k) => setSeguidos((prev) => { const n = new Set(prev); n.delete(k); return n; });
   const toggleGrupo = (g) => {
     const todos = g.items.every((a) => ids.has(Number(a.id)));
+    const k = kGrupo(g);
+    if (todos) dejarDeSeguir(k);
+    else if (!q.trim() && !agrupFiltro) setSeguidos((prev) => new Set(prev).add(k));
     setElegidos((prev) => (todos
       ? prev.filter((e) => !g.items.some((a) => Number(a.id) === Number(e.id)))
       : [...prev, ...g.items.filter((a) => !ids.has(Number(a.id))).map((a) => ({ id: Number(a.id), nombre: a.nombre }))]));
@@ -123,8 +132,11 @@ export default function EditorPlaza({ abierto, sector, sectores = [], sectorInic
     try {
       const articleIds = elegidos.map((e) => Number(e.id));
       let id = plaza?.id;
-      if (plaza?.id) await PlazasAPI.editar(plaza.id, nombre.trim(), articleIds);
-      else id = (await PlazasAPI.crear(sectorElegido.id, nombre.trim(), articleIds))?.id;
+      // Los grupos se mandan solo si se conocen (plaza nueva o la plaza ya los trajo), para no borrarlos sin querer.
+      const grupos = !plaza?.id || Array.isArray(plaza?.grupos)
+        ? [...seguidos].map((k) => { const i = k.indexOf(':'); return { tipo: k.slice(0, i), nombre: k.slice(i + 1) }; }) : undefined;
+      if (plaza?.id) await PlazasAPI.editar(plaza.id, nombre.trim(), articleIds, grupos);
+      else id = (await PlazasAPI.crear(sectorElegido.id, nombre.trim(), articleIds, grupos))?.id;
       try { window.dispatchEvent(new CustomEvent('plazas:changed')); } catch { /* sin evento */ }
       onGuardado(id);
     } catch (e) {
@@ -240,10 +252,19 @@ export default function EditorPlaza({ abierto, sector, sectores = [], sectorInic
                     el ojito lo omite de esta lista para Tableros. */}
                 <Stack direction="row" alignItems="center" onClick={() => plegar(g)}
                   sx={{ px: 1, minHeight: 34, cursor: 'pointer', bgcolor: '#f5f7fa', borderBottom: '1px solid #eef0f4', position: 'sticky', top: 0, zIndex: 1 }}>
-                  <Checkbox size="small" checked={marcados === g.items.length} indeterminate={marcados > 0 && marcados < g.items.length}
-                    onClick={(e) => { e.stopPropagation(); toggleGrupo(g); }} sx={{ p: 0.5, mr: 0.25 }} />
+                  <Tooltip title={`Tildar ${modoGrupo === 'rubro' ? 'el rubro' : 'el subrubro'} entero: también se suman solos los productos nuevos que aparezcan`}>
+                    <Checkbox size="small" checked={marcados === g.items.length} indeterminate={marcados > 0 && marcados < g.items.length}
+                      onClick={(e) => { e.stopPropagation(); toggleGrupo(g); }} sx={{ p: 0.5, mr: 0.25 }} />
+                  </Tooltip>
                   <ExpandMoreIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.25, transition: 'transform .15s', transform: cerrado ? 'rotate(-90deg)' : 'none' }} />
                   <Typography sx={{ fontSize: '0.75rem', fontWeight: 800, letterSpacing: 0.3, textTransform: 'uppercase', flex: 1, minWidth: 0 }} noWrap>{g.nombre}</Typography>
+                  {seguidos.has(kGrupo(g)) && (
+                    <Tooltip title="Los productos nuevos de este grupo se suman solos a la plaza. Tocá para dejar de seguirlo (los que ya están quedan).">
+                      <Box component="span" onClick={(e) => { e.stopPropagation(); dejarDeSeguir(kGrupo(g)); }}
+                        sx={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '.06em', color: '#fff', bgcolor: '#5BC2EA', borderRadius: '9px',
+                          px: 0.9, height: 18, display: 'inline-flex', alignItems: 'center', mr: 0.75, whiteSpace: 'nowrap', cursor: 'pointer' }}>↻ AUTO</Box>
+                    </Tooltip>
+                  )}
                   <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary', whiteSpace: 'nowrap', mr: 0.5 }}>{g.items.length} · {fmtVentas(g.ventas)}</Typography>
                   {!q.trim() && (
                     <Tooltip title={`No mostrar ${modoGrupo === 'rubro' ? 'este rubro' : 'este subrubro'} al armar plazas`}>
