@@ -47,14 +47,14 @@ export function Expansor({ abierto, onClick, children, indent = 0, vacio = false
 }
 
 // Fila que junta los rubros sin movimiento del año, al final y cerrados (Diego 20/11/2026).
-export function FilaSinMovimiento({ n, abierto, onToggle, colSpan, anio }) {
+export function FilaSinMovimiento({ n, abierto, onToggle, colSpan, anio, que = 'rubro', indent = 0 }) {
   if (!n) return null;
   return (
     <TableRow hover onClick={onToggle} sx={{ cursor: 'pointer' }}>
       <TableCell colSpan={colSpan} sx={{ py: 1, px: 0, borderTop: '1px dashed', borderTopColor: 'divider' }}>
-        <Box sx={{ ...sxStickyNombre(), display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 2, fontSize: 13, color: 'text.secondary', bgcolor: 'transparent', boxShadow: 'none' }}>
+        <Box sx={{ ...sxStickyNombre(), display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 2, pl: 2 + indent, fontSize: que === 'rubro' ? 13 : 12.5, color: 'text.secondary', bgcolor: 'transparent', boxShadow: 'none' }}>
           {abierto ? <ExpandMoreIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />}
-          {n === 1 ? '1 rubro' : `${n} rubros`} sin movimiento en {anio}
+          {n === 1 ? `1 ${que}` : `${n} ${que}s`} sin movimiento en {anio}
           <Box component="span" sx={{ ml: 1, fontSize: 11.5, color: 'text.disabled' }}>{abierto ? 'ocultar' : 'ver para cargar'}</Box>
         </Box>
       </TableCell>
