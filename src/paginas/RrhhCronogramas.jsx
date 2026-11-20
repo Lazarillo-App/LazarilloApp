@@ -728,7 +728,7 @@ export default function RrhhCronogramas() {
   };
   const guardarEspacio = async (nombre) => {
     const nuevo = !!espacioSel?.nuevo;
-    const clave = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+    const clave = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
     if ((config?.espacios || []).some((e) => e.id !== espacioSel?.id && clave(e.nombre) === clave(nombre))) {
       avisar(`Ya hay un espacio «${nombre}».`, 'error');
       return;
