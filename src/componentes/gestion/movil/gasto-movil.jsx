@@ -2,6 +2,7 @@
 // Traído de lazarillo_gestion/components/movil/gasto-movil.tsx (misma lógica).
 import { gestionFetch } from "@/servicios/apiGestion";
 import { useState } from "react";
+import ReglaAperturaGasto from "../apertura/ReglaAperturaGasto";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -116,6 +117,8 @@ export function GastoMovil({ pdvId, onCerrar, inicial }) {
 
       <span className={lbl}>Importe</span>
       <input inputMode="decimal" className={`${inp} text-right text-[18px] font-bold`} value={importeTxt} placeholder="0,00" onChange={(e) => setImporteTxt(e.target.value.replace(/[^\d.,]/g, ""))}/>
+      {/* Regla de apertura del concepto, siempre visible (Diego 20/11/2026) */}
+      {concepto && <div className="mt-3"><ReglaAperturaGasto codigo={concepto.codigo} origenPdvId={pdvId} fecha={fecha} importe={importe} /></div>}
 
       <label className="mt-4 flex items-center gap-2.5 text-[15px] font-semibold">
         <input type="checkbox" checked={pagado} onChange={(e) => setPagado(e.target.checked)} className="size-5"/>
