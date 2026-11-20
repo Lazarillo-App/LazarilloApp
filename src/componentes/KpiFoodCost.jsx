@@ -135,7 +135,7 @@ function BarrasMes({ datos, serie, foco }) {
 
     // Mes en curso: ventas y compras proyectadas a fin de mes (Diego 20/11/2026). La barra llega hasta
     // lo proyectado (clara, con borde punteado) y adentro, pleno, lo que ya pasó.
-    const valDe = (d) => (d.proy && serie !== "foodcost" ? d.proy[serie] : d[serie]);
+    const valDe = (d) => (d.proy ? d.proy[serie] : d[serie]);
     const vals = datos.map(valDe);
     const mx = Math.max(...vals) * 1.18 || 1;
     const hayDosAnios = new Set(datos.map((d) => String(d.mes ?? "").slice(0, 4))).size > 1;
@@ -210,7 +210,7 @@ function BarrasMes({ datos, serie, foco }) {
     // había 51 de espacio.
     g.font = "bold 11px -apple-system, Segoe UI, Helvetica, Arial";
     const anchoMax = Math.max(...datos.map((d) =>
-      Math.max(g.measureText((d.proy && serie !== "foodcost" ? "≈ " : "") + fmtV(valDe(d))).width,
+      Math.max(g.measureText((d.proy ? "≈ " : "") + fmtV(valDe(d))).width,
                g.measureText("+99,9%").width)));
     const apretado = anchoMax + 6 > paso;
     g.font = "9.5px -apple-system, Segoe UI, Helvetica, Arial";
@@ -222,7 +222,7 @@ function BarrasMes({ datos, serie, foco }) {
       // el mes en foco va pleno, el resto apagado — con el semáforo encendido
       // el color ya no puede marcar cuál se está mirando
       const esFoco = i === (foco ?? datos.length - 1);
-      const proyectado = d.proy && serie !== "foodcost";
+      const proyectado = !!d.proy;
       const col = colorDe(valDe(d));
       g.fillStyle = col + (proyectado ? "33" : esFoco ? "" : "59");
       g.beginPath();
@@ -230,10 +230,10 @@ function BarrasMes({ datos, serie, foco }) {
       else g.rect(X - bw / 2, Y, bw, alt);
       g.fill();
       if (proyectado) {
-        // borde punteado = lo proyectado; adentro, pleno, lo real
+        // borde punteado = lo proyectado; adentro, pleno, lo real (en food cost no hay «parte real»)
         g.setLineDash([3, 2]); g.strokeStyle = col; g.lineWidth = 1;
         g.stroke(); g.setLineDash([]);
-        const altReal = Math.max(0, T + h - py(d[serie]));
+        const altReal = serie === "foodcost" ? 0 : Math.max(0, T + h - py(d[serie]));
         g.fillStyle = col + (esFoco ? "" : "59");
         g.beginPath();
         g.rect(X - bw / 2, T + h - altReal, bw, altReal);
@@ -248,7 +248,7 @@ function BarrasMes({ datos, serie, foco }) {
       if (!apretado || (datos.length - 1 - i) % 2 === 0) {
         g.fillStyle = i === datos.length - 1 ? "#8A5209" : "#6B7C76";
         g.font = "bold 11px -apple-system, Segoe UI, Helvetica, Arial";
-        g.fillText((d.proy && serie !== "foodcost" ? "≈ " : "") + fmtV(valDe(d)), X, Y - 15);
+        g.fillText((d.proy ? "≈ " : "") + fmtV(valDe(d)), X, Y - 15);
         const ant = datos[i - 1] ? valDe(datos[i - 1]) : null;
         if (i > 0 && ant) {
           // Food cost ya es un % — mostrar "cambio % del cambio %" (ej. de
@@ -257,10 +257,11 @@ function BarrasMes({ datos, serie, foco }) {
           // se espera leer. Compras/ventas son montos, ahí el cambio relativo
           // sigue siendo la lectura correcta.
           const esPuntos = serie === "foodcost";
-          const dv = esPuntos ? (d[serie] - ant) : ((valDe(d) - ant) / ant) * 100;
+          const dv = esPuntos ? (valDe(d) - ant) : ((valDe(d) - ant) / ant) * 100;
           // en food cost y en compras subir es malo; en ventas es al revés
           const sube = dv > 0;
-          g.fillStyle = serie === "ventas"
+          // Mes proyectado: la variación va en gris, es una estimación (no se marca en rojo por víspera).
+          g.fillStyle = d.proy ? "#8B9A95" : serie === "ventas"
             ? (sube ? "#2E8B57" : "#C0392B")
             : (sube ? "#C0392B" : "#2E8B57");
           g.font = "bold 9.5px -apple-system, Segoe UI, Helvetica, Arial";
@@ -269,7 +270,7 @@ function BarrasMes({ datos, serie, foco }) {
         g.font = "9.5px -apple-system, Segoe UI, Helvetica, Arial";
       }
     });
-    ptsRef.current = datos.map((d, i) => ({ x: L + paso * i + paso / 2, y: py(d[serie]), d }));
+    ptsRef.current = datos.map((d, i) => ({ x: L + paso * i + paso / 2, y: py(valDe(d)), d }));
   }, [datos, serie, fmtV, foco]);
 
   useEffect(() => { dibujar(); }, [dibujar]);
@@ -297,7 +298,7 @@ function BarrasMes({ datos, serie, foco }) {
       {tip && (
         <div className="kfc-tip" style={{ left: tip.x, top: tip.y - 8 }}>
           <b>{tip.d.etiqueta}</b>
-          <span className="t">food cost</span> <b>{d1(tip.d.foodcost)}%</b>
+          <span className="t">food cost</span> <b>{tip.d.proy ? `≈ ${d1(tip.d.proy.foodcost)}% a fin de mes (hoy ${d1(tip.d.foodcost)}%)` : `${d1(tip.d.foodcost)}%`}</b>
           <span className="t">compras</span> <b>{fmtCorto(tip.d.compras)}{tip.d.proy ? ` (≈ ${fmtCorto(tip.d.proy.compras)} a fin de mes)` : ""}</b>
           <span className="t">ventas</span> <b>{fmtCorto(tip.d.ventas)}{tip.d.proy ? ` (≈ ${fmtCorto(tip.d.proy.ventas)} a fin de mes)` : ""}</b>
         </div>
@@ -883,6 +884,10 @@ export default function KpiFoodCost({
   // un KPI recién creado se dibuja al instante. Con porcentajes precalculados
   // habría que volver al backend cada vez que alguien arma o toca un KPI.
   porMes = null,
+  // Mes en curso proyectado por el servidor (useFoodCostKpi → /purchases/food-cost-proyeccion):
+  // factores de ventas (método único + feriados) y compras (ritmo + efecto víspera). Sin esto, regla de tres.
+  proyeccion = null,
+  onRubrosProyeccion = null,
   // Maestro completo de artículos e insumos, sin filtrar por período:
   //   { ventas: [{id, nombre, agrupacion, rubro, subrubro}], compras: [...] }
   //
@@ -1045,21 +1050,39 @@ export default function KpiFoodCost({
           ventas: v, compras: c,
           foodcost: v > 0 ? (c / v) * 100 : 0,
         };
-        // Mes en curso: ventas y compras proyectadas a fin de mes con los días ya cerrados (hasta ayer).
+        // Mes en curso proyectado a fin de mes (Diego 20/11/2026). Con la proyección del servidor: ventas
+        // con el calendario de feriados y compras con el efecto víspera del local. Sin ella (todavía no
+        // llegó o no hay historia): regla de tres con los días cerrados (hasta ayer).
         const hoy = new Date();
         const mesHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
         if (String(m.mes).slice(0, 7) === mesHoy) {
           const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-          const cerrados = Math.max(1, hoy.getDate() - 1);
+          const pr = proyeccion?.mes === mesHoy ? proyeccion : null;
+          const cerrados = pr?.cerrados ?? Math.max(1, hoy.getDate() - 1);
           if (cerrados < diasMes) {
-            const f = diasMes / cerrados;
-            fila.proy = { ventas: v * f, compras: c * f, cerrados, diasMes };
+            const fv = pr?.ventas?.factor ?? diasMes / cerrados;
+            const fc = pr?.compras?.factor ?? diasMes / cerrados;
+            const pv = v * fv, pc = c * fc;
+            fila.proy = {
+              ventas: pv, compras: pc, foodcost: pv > 0 ? (pc / pv) * 100 : 0,
+              cerrados, diasMes, calendario: !!pr, vispera: pr?.compras?.vispera ?? null,
+            };
           }
         }
         return fila;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [porMes, kpis, kpi, actual]);
+  }, [porMes, kpis, kpi, actual, proyeccion]);
+
+  // Rubros de compras que mira este KPI en el mes en curso: con eso el servidor proyecta solo esas compras.
+  const mesHoyKpi = (() => { const h = new Date(); return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}`; })();
+  const rubrosMesKey = useMemo(() => {
+    const m = (porMes || []).find((x) => String(x.mes).slice(0, 7) === mesHoyKpi);
+    if (!m || !kpi) return null;
+    const r = [...new Set(itemsDe(m.compras ?? [], kpis, kpi.id, "compras").map((it) => it.rubro).filter(Boolean))].sort();
+    return r.length ? JSON.stringify(r) : null; // sin compras del mes todavía: no se pide nada
+  }, [porMes, kpis, kpi, mesHoyKpi]);
+  useEffect(() => { if (rubrosMesKey && onRubrosProyeccion) onRubrosProyeccion(JSON.parse(rubrosMesKey)); }, [rubrosMesKey, onRubrosProyeccion]);
 
   const hayGrafico = evolucion.length > 1;
 
@@ -1086,6 +1109,8 @@ export default function KpiFoodCost({
     () => (idxMes < 0 ? [] : evolucion.slice(Math.max(0, idxMes - (MESES_EN_GRAFICO - 1)), idxMes + 1)),
     [evolucion, idxMes]);
   const pctVista = mesActual ? mesActual.foodcost : (calc?.pct ?? 0);
+  const proyMes = mesActual?.proy || null;
+  const fcMesVista = proyMes ? proyMes.foodcost : (mesActual?.foodcost ?? 0);
 
   // Promedio anual: los 12 meses ANTERIORES al que se mira, sin incluirlo.
   // Comparar un mes contra un promedio que se incluye a sí mismo achica la
@@ -1406,16 +1431,18 @@ export default function KpiFoodCost({
                   ) : <div className="kfc-nav"><span className="kfc-mes">{periodoLabel}</span></div>}
 
                   <div className="kfc-fcrow">
-                    <span className={`kfc-fcbig ${pctVista > 20 ? "na" : "ok"}`}>{d1(pctVista)}%</span>
+                    {/* Mes en curso: manda lo proyectado a fin de mes (feriados y víspera); lo cargado hasta hoy
+                        queda abajo, chico. Las variaciones de un mes proyectado van en gris (Diego 20/11/2026). */}
+                    <span className={`kfc-fcbig ${pctVista > 20 ? "na" : "ok"}`}>{proyMes ? "≈ " : ""}{d1(proyMes ? proyMes.foodcost : pctVista)}%</span>
                     <span className="kfc-deltas">
                       {/* Nombra el mes real contra el que compara, así el valor
                           de referencia entre paréntesis sobra. */}
                       {mesActual && idxMes > 0 && (() => {
                         const prev = evolucion[idxMes - 1];
-                        const dv = mesActual.foodcost - prev.foodcost;
+                        const dv = (proyMes ? proyMes.foodcost : mesActual.foodcost) - prev.foodcost;
                         return (
                           <span className="kfc-delta">
-                            <b className={dv > 0 ? "sube" : "baja"}>
+                            <b className={proyMes ? "est" : dv > 0 ? "sube" : "baja"}>
                               {dv >= 0 ? "+" : "−"}{d1(Math.abs(dv))} pts
                             </b>
                             <span> vs {MESES_LARGOS[Number(prev.mes.slice(5, 7)) - 1]}</span>
@@ -1424,14 +1451,17 @@ export default function KpiFoodCost({
                       })()}
                       {mesActual && promedioAnual && (
                         <span className="kfc-delta">
-                          <b className={mesActual.foodcost - promedioAnual.pct > 0 ? "sube" : "baja"}>
-                            {mesActual.foodcost - promedioAnual.pct >= 0 ? "+" : "−"}
-                            {d1(Math.abs(mesActual.foodcost - promedioAnual.pct))} pts
+                          <b className={proyMes ? "est" : mesActual.foodcost - promedioAnual.pct > 0 ? "sube" : "baja"}>
+                            {fcMesVista - promedioAnual.pct >= 0 ? "+" : "−"}
+                            {d1(Math.abs(fcMesVista - promedioAnual.pct))} pts
                           </b>
                           <span> vs {promedioAnual.meses >= 12
                             ? "el promedio del año"
                             : `el promedio de ${promedioAnual.meses} meses`}</span>
                         </span>
+                      )}
+                      {proyMes && (
+                        <span className="kfc-delta"><span>a fin de mes · hoy {d1(mesActual.foodcost)}% con lo cargado</span></span>
                       )}
                     </span>
                   </div>
@@ -1461,12 +1491,21 @@ export default function KpiFoodCost({
                     </div>
                     <div className="kfc-gcanvas">
                       <BarrasMes datos={ventana} serie={serie} foco={ventana.length - 1} />
-                      {serie !== "foodcost" && ventana.some((d) => d.proy) && (() => {
-                        const p = ventana.find((d) => d.proy);
+                      {ventana.some((d) => d.proy) && (() => {
+                        const p = ventana.find((d) => d.proy).proy;
+                        const et = ventana.find((d) => d.proy).etiqueta;
+                        const vis = p.vispera;
+                        const txt = !p.calendario
+                          ? (serie === "foodcost"
+                            ? `≈ ${et}: ${d1(p.foodcost)}% a fin de mes con ${p.cerrados} de ${p.diasMes} días`
+                            : `≈ ${et}: proyectado a fin de mes con ${p.cerrados} de ${p.diasMes} días · lo pleno es lo que ya pasó`)
+                          : serie === "foodcost"
+                            ? `≈ ${et}: ${d1(p.foodcost)}% a fin de mes, con ventas y compras proyectadas (feriados${vis ? " y víspera" : ""}) · con lo cargado hasta hoy da ${d1(ventana.find((d) => d.proy).foodcost)}%`
+                            : serie === "compras"
+                              ? `≈ ${et}: proyectado con el ritmo de cada día${vis ? ` y la víspera de feriados (${vis.antes >= 0 ? "+" : "−"}${Math.round(Math.abs(vis.antes * 100))}% la semana antes, según ${vis.feriados} feriados del local)` : ""} · lo pleno es lo que ya pasó`
+                              : `≈ ${et}: proyectado con el calendario de feriados · lo pleno es lo que ya pasó`;
                         return (
-                          <div className="kfc-gproy">
-                            ≈ {p.etiqueta}: proyectado a fin de mes con {p.proy.cerrados} de {p.proy.diasMes} días · lo pleno es lo que ya pasó
-                          </div>
+                          <div className="kfc-gproy">{txt}</div>
                         );
                       })()}
                     </div>
@@ -1698,7 +1737,7 @@ const CSS = `
 .kfc-deltas{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .kfc-delta{font-size:11.5px;color:#8B9A95;white-space:nowrap;line-height:1.35;}
 .kfc-delta b{font-weight:700;font-variant-numeric:tabular-nums;}
-.kfc-delta .sube{color:#C0392B;} .kfc-delta .baja{color:#2E8B57;}
+.kfc-delta .sube{color:#C0392B;} .kfc-delta .baja{color:#2E8B57;} .kfc-delta .est{color:#8B9A95;}
 
 .kfc-corto{display:none;}
 
