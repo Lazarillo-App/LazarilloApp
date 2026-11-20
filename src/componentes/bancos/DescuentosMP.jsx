@@ -113,7 +113,7 @@ export default function DescuentosMP({ bid, avisar }) {
   };
   // Rubro nuevo desde el panel de concepto nuevo (Diego 20/11/2026: «¿y si quiero crear un rubro de comisiones?»).
   // Queda elegido; el «igual que» se limpia porque ese rubro todavía no tiene conceptos.
-  const crearRubro = async (nombre) => {
+  const crearRubro = async (nombre, destino = 'nuevo') => {
     const n = String(nombre || '').trim();
     if (!n) return;
     setGuardando('rubro');
@@ -121,7 +121,8 @@ export default function DescuentosMP({ bid, avisar }) {
       const x = await GestionAPI.crearRubroCaja(n);
       if (!x?.codigo) throw new Error(x?.error || 'No se pudo crear el rubro');
       setRubros((rs) => (rs.some((y) => String(y.codigo) === String(x.codigo)) ? rs : [...rs, { codigo: x.codigo, nombre: x.nombre }]));
-      setNuevo((v) => (v ? { ...v, rubro: String(x.codigo), padrino: '' } : v));
+      if (destino === 'arriba') setRubroNuevo(String(x.codigo));
+      else setNuevo((v) => (v ? { ...v, rubro: String(x.codigo), padrino: '' } : v));
       avisar?.(x.existente ? `Ya existía el rubro «${x.nombre}»: quedó elegido` : `Rubro creado: ${x.nombre}`);
     } catch (e) {
       avisar?.(e?.message || 'No se pudo crear el rubro');
@@ -372,13 +373,13 @@ export default function DescuentosMP({ bid, avisar }) {
         {sinConcepto.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '8px 0', fontSize: 13.5 }}>
             <span style={{ color: T.txt2 }}>Conceptos nuevos con el nombre de cada cargo, en el rubro</span>
-            <select value={rubroPorDefecto()} onChange={(e) => setRubroNuevo(e.target.value)}
-              style={{ height: celu ? 44 : 36, borderRadius: 8, border: '1px solid rgba(21,33,62,.18)', padding: '0 8px', fontFamily: 'inherit', fontSize: 13.5, background: '#fff', maxWidth: 260 }}>
-              <option value="">Elegí el rubro…</option>
-              {rubros.map((x) => <option key={x.codigo} value={String(x.codigo)}>{x.codigo} · {x.nombre}</option>)}
-            </select>
+            {/* Con buscador y «+ Crear rubro nuevo…» (Diego 20/11/2026: «en ese desplegable no me lo deja crear»). */}
+            <SelectorBuscable label="Rubro" placeholder="Elegí el rubro…" ancho={celu ? '100%' : '260px'} opciones={rubros.map(etiquetaRubro)}
+              value={rubros.find((x) => String(x.codigo) === String(rubroPorDefecto())) ? etiquetaRubro(rubros.find((x) => String(x.codigo) === String(rubroPorDefecto()))) : null}
+              onChange={(t) => { const x = rubros.find((y) => etiquetaRubro(y) === t); if (x) setRubroNuevo(String(x.codigo)); }}
+              textoCrear="Crear rubro nuevo…" onCrear={(n) => crearRubro(n, 'arriba')} deshabilitado={guardando === 'rubro'} />
             <button type="button" disabled={guardando === 'crear' || !rubroPorDefecto()} onClick={() => crearConceptos(sinConcepto.map((g) => g.grupo))}
-              style={{ height: celu ? 44 : 36, padding: '0 14px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', fontWeight: 700, fontFamily: 'inherit', fontSize: 13.5, cursor: 'pointer', opacity: guardando === 'crear' || !rubroPorDefecto() ? 0.5 : 1 }}>
+              style={{ height: celu ? 44 : 40, padding: '0 14px', borderRadius: 8, border: 'none', background: T.celeste, color: '#12111F', fontWeight: 700, fontFamily: 'inherit', fontSize: 13.5, cursor: 'pointer', opacity: guardando === 'crear' || !rubroPorDefecto() ? 0.5 : 1 }}>
               {guardando === 'crear' ? 'Creando…' : `Crear los ${sinConcepto.length} que faltan`}
             </button>
           </div>
