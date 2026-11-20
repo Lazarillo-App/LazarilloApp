@@ -160,7 +160,8 @@ export default function GestionConceptos() {
     staleTime: 60_000,
   });
   const [desde, setDesde] = useState('');
-  const [q, setQ] = useState('');
+  // ?q= viene de «Ver la regla ›» de la carga de Gastos Varios (Diego 20/11/2026).
+  const [q, setQ] = useState(() => { try { return new URLSearchParams(window.location.search).get('q') || ''; } catch { return ''; } });
   const [libresAbierta, setLibresAbierta] = useState(false);
   const [rubrosAbiertos, setRubrosAbiertos] = useState(() => new Set());
   const [form, setForm] = useState(null);
