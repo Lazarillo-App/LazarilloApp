@@ -52,6 +52,11 @@ export const SuperAPI = {
   actividadVista: () => http('/superusuarios/actividad/visto', { method: 'POST', withBusinessId: false }),
   // Guía del proyecto: qué queremos lograr y cómo trabajamos (14/11/2026).
   guia: () => http('/superusuarios/guia', { withBusinessId: false, cache: false }),
+  // Calendario de feriados único (20/11/2026)
+  feriados: (anio) => http(`/superusuarios/feriados?anio=${anio}`, { withBusinessId: false, cache: false }),
+  crearFeriado: (body) => http('/superusuarios/feriados', { method: 'POST', withBusinessId: false, body }),
+  editarFeriado: (id, body) => http(`/superusuarios/feriados/${id}`, { method: 'PUT', withBusinessId: false, body }),
+  borrarFeriado: (id) => http(`/superusuarios/feriados/${id}`, { method: 'DELETE', withBusinessId: false }),
   guardarGuia: (texto) => http('/superusuarios/guia', { method: 'PUT', withBusinessId: false, body: { texto } }),
   // Manual (16/11/2026): capítulos en la base, editables desde el panel.
   manual: () => http('/superusuarios/manual', { withBusinessId: false, cache: false }),
