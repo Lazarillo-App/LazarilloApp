@@ -40,7 +40,9 @@ export function calcCcPorDia({ ccConc, data, facturasCC }) {
 export function calcCobrosCcPorDia({ ccConc, data }) {
     const m = {};
     (data.pagos || []).forEach((p) => {
-      if (!esMP(p) || !p.fecha) return;
+      // 20/11 (Diego: «tienen que ser siempre los no efectivo»): todo cobro que no sea efectivo ni retiro
+      // (Mercado Pago, seña online, transferencias…), no solo los que el sistema reconoce como Mercado Pago.
+      if (/EFECTIVO|RETIRO/i.test(String(p.cobro || "")) || !p.fecha) return;
       const conc = ccConc.has(p.id);
       (m[p.fecha] = m[p.fecha] || []).push({
         key: "c-" + p.id, id: p.id, cliente: p.cliente, comp: p.comp, hora: p.hora, imp: p.imp,
