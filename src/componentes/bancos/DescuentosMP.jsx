@@ -155,8 +155,11 @@ export default function DescuentosMP({ bid, avisar }) {
   const faltan = visibles.filter((g) => g.total > 0 && (!g.proveedor || !g.concepto)).length;
 
   const estado = (g) => {
-    if (!r.activo) return { t: 'Solo se muestra', c: T.txt3 };
-    if (!g.proveedor || !g.concepto) return { t: 'Falta elegir', c: T.ambar };
+    // Antes del día en que arranca la carga sola (o apagada): solo se muestra.
+    if (!r.activo || (r.desde && `${mes}-31` < r.desde)) return { t: 'Solo se muestra', c: T.txt3 };
+    if (!g.proveedor) return { t: 'Falta elegir proveedor', c: T.ambar };
+    // Sin concepto se carga igual (Diego 20/11/2026): queda en «Sin concepto de caja asociado» hasta que se elige.
+    if (!g.concepto) return { t: g.cargado ? `${g.tickets} día${g.tickets === 1 ? '' : 's'} sin concepto` : 'Entra sin concepto', c: T.ambar };
     if (g.facturado && g.facturado >= g.cargado - 1) return { t: 'En la factura', c: T.verde };
     if (g.cargado) return { t: `${g.tickets} día${g.tickets === 1 ? '' : 's'} cargado${g.tickets === 1 ? '' : 's'}${g.facturado ? ` · ${pesos(g.facturado)} en factura` : ''}`, c: T.verde };
     return { t: 'Se carga con la próxima actualización', c: T.txt2 };
@@ -308,7 +311,7 @@ export default function DescuentosMP({ bid, avisar }) {
 
         {faltan > 0 && (
           <div style={{ border: `1px solid ${T.ambar}`, background: T.ambarFondo, borderRadius: 10, padding: '9px 12px', fontSize: 13.5, margin: '8px 0' }}>
-            Falta elegir proveedor o concepto en {faltan === 1 ? 'un tipo de cargo' : `${faltan} tipos de cargo`}. {r.activo ? 'Hasta entonces ese tipo no se carga.' : ''}
+            Falta elegir proveedor o concepto en {faltan === 1 ? 'un tipo de cargo' : `${faltan} tipos de cargo`}. {r.activo ? 'Mientras tanto se carga igual, como «Sin concepto de caja asociado»: cuando lo elegís, lo ya cargado pasa a ese concepto.' : ''}
           </div>
         )}
 

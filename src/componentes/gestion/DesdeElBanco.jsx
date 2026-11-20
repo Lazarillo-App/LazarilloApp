@@ -2,8 +2,9 @@
 // «Desde el banco» (Diego 19/11/2026: «en Sin concepto de caja asociado deberían estar estos movimientos
 // cuando aún no estén configurados… como atajo en el tablero, agrupados como "desde el banco"»).
 // Lo que descontó Mercado Pago (comisiones, cargos de Mercado Libre, impuestos y retenciones) y TODAVÍA no
-// entró al tablero, por mes. Va debajo de Sin rubro, en gris y sin sumar al total: cuando se elige su concepto
-// en Movimientos bancarios › Lo que descuenta MP se carga solo y pasa a su rubro (y deja de verse acá).
+// entró al tablero, por mes. Va debajo de Sin rubro, en gris y sin sumar al total. Desde que arranca la carga
+// sola (20/11/2026: por defecto, desde el 1/12) todo se carga y deja de verse acá; las comisiones de los meses
+// con factura de Mercado Pago tampoco se ven (ya entraron por la factura).
 // Al abrirlo, cada leyenda del débito; un clic en un mes lleva a esa pantalla con ese mes.
 import React, { useState } from 'react';
 import { Box, TableRow, TableCell } from '@mui/material';
@@ -55,7 +56,7 @@ export function FilasDesdeElBanco({ months, sinColTotal }) {
         </Expansor>
         <Box sx={{ pl: 5.5, display: 'flex', alignItems: 'center', gap: 0.75, fontSize: 11, color: 'text.disabled', whiteSpace: 'nowrap' }}>
           <span>no suma ·</span>
-          <Box component="span" title="Lo que descontó Mercado Pago y todavía no entró al tablero. No suma al total: se carga solo cuando le elegís el concepto."
+          <Box component="span" title="Lo que descontó Mercado Pago y todavía no entró al tablero (antes de que arrancara la carga sola). No suma al total."
             onClick={() => ir()} sx={{ color: 'primary.main', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
             elegir concepto ›
           </Box>
