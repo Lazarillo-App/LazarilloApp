@@ -29,11 +29,13 @@ export default function RecetaConsultaCelular({
   tipo = 'RECETA', id, nombre, loading,
   items = [], costoTotal = 0, costoPorcion = 0,
   precioActual = 0, pctCostoActual = null, pctObjetivo = 0, precioObjetivo = 0,
-  promo = false, ventaSinPromo = 0,
+  promo = false, ventaSinPromo = 0, comensales = 1,
   canNavigate = { prev: false, next: false }, onNavigate, onClose,
   conFicha = false, onFicha,
 }) {
-  const queda = precioActual > 0 ? precioActual - costoPorcion : null;
+  const nCom = Math.min(10, Math.max(1, Number(comensales) || 1));
+  // Te queda por comensal (Diego 20/11/2026): la ganancia se mide por comensal, no por plato.
+  const queda = precioActual > 0 ? (precioActual - costoPorcion) / nCom : null;
   const pasado = pctCostoActual != null && pctObjetivo > 0 && pctCostoActual > pctObjetivo + 0.05;
   const diferencia = precioObjetivo > 0 && precioActual > 0 ? precioObjetivo - precioActual : 0;
   const lista = items.filter((it) => it.nombre || it.costo > 0);
@@ -81,7 +83,7 @@ export default function RecetaConsultaCelular({
           <Box sx={{ bgcolor: '#fff', borderRadius: 3, p: 1.75, boxShadow: '0 1px 3px rgba(15,23,42,.08)' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 1 }}>
               <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontSize: 12, color: 'text.secondary', fontWeight: 600 }}>Precio actual</Typography>
+                <Typography sx={{ fontSize: 12, color: 'text.secondary', fontWeight: 600 }}>{`Precio actual · para ${nCom} comensal${nCom > 1 ? 'es' : ''}`}</Typography>
                 <Typography sx={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, ...NUM }}>{precioActual > 0 ? pesos(precioActual) : 'Sin precio'}</Typography>
               </Box>
               {promo && ventaSinPromo > 0 && (
@@ -94,7 +96,7 @@ export default function RecetaConsultaCelular({
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, mt: 1.5 }}>
               <Kpi titulo="Costo" valor={pesos(costoPorcion)} />
               <Kpi titulo="% costo" valor={pctCostoActual != null ? pct(pctCostoActual) : '—'} color={pasado ? '#dc2626' : pctCostoActual != null ? '#15803d' : undefined} />
-              <Kpi titulo="Te queda" valor={queda != null ? pesos(queda, 0) : '—'} color={queda != null ? (queda >= 0 ? '#15803d' : '#dc2626') : undefined} />
+              <Kpi titulo={nCom > 1 ? 'Por comensal' : 'Te queda'} valor={queda != null ? pesos(queda, 0) : '—'} color={queda != null ? (queda >= 0 ? '#15803d' : '#dc2626') : undefined} />
             </Box>
             {pctObjetivo > 0 && precioObjetivo > 0 && (
               <Box sx={{ mt: 1.25, fontSize: 13, lineHeight: 1.35, borderRadius: 2, px: 1.25, py: 1,
