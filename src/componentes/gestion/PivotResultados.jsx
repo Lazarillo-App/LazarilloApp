@@ -21,7 +21,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import { useQueryClient } from '@tanstack/react-query';
-import { sortPivotRows, flattenRows, TANDA_PIVOT, hasValue, separarSinMovimiento } from '@/gestion/pivotUtils';
+import { sortPivotRows, flattenRows, TANDA_PIVOT, hasValue, separarSinMovimiento, plegarConceptosSinMovimiento } from '@/gestion/pivotUtils';
 import { MESES, fmtARS, fmtARSDecimal, normalize, fechaCorta } from '@/gestion/formato';
 import {
   RESULT_COLORS, pctSobreIngresos, parseMontoARS, montoNoGuardable, sumarDiferenciaCajaVisible,
@@ -85,6 +85,9 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
 
   const renderFila = (item) => {
     const d = item.data;
+    if (item.type === 'conceptosSinMov') {
+      return <FilaSinMovimiento key={d.id} n={d.n} abierto={d.abierto} onToggle={() => toggle(d.id)} colSpan={colSpan} anio={year} que="concepto" indent={d.indent} />;
+    }
     const clic = (mes, extra) => (hasValue(d.values[mes]) ? { onClick: () => abrirDetalle(extra) } : {});
     const sxDe = (mes) => (hasValue(d.values[mes]) ? sxClic : {});
     if (item.type === 'rubro') {
@@ -187,7 +190,7 @@ export default function PivotResultados({ operacion, resultados, ventas, months,
               </TableCell>
             </TableRow>
           ) : (() => {
-            const { con, sin, n } = separarSinMovimiento(filas);
+            const { con, sin, n } = separarSinMovimiento(plegarConceptosSinMovimiento(filas, expanded));
             return [...con.map(renderFila),
               <FilaSinMovimiento key="__sinmov" n={n} abierto={verSinMov} onToggle={() => setVerSinMov((v) => !v)} colSpan={colSpan} anio={year} />,
               ...(verSinMov ? sin.map(renderFila) : [])];
