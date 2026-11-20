@@ -26,6 +26,14 @@ body,
   zoom: 0.9;
 }
 
+/* En el celular, sin achicar (Diego 20/11/2026): el 0.9 dejaba los botones por debajo de los 44px y el
+   iPhone a veces abría la app agrandada y cortada a la derecha (Safari maneja raro el zoom de CSS). */
+@media (max-width: 599.95px) {
+  #root {
+    zoom: 1;
+  }
+}
+
 /* Cancela el zoom de arriba para pantallas "administrativas" (Perfil,
    Configuración) que no son tablas de datos — 1/0.9. */
 .zoom-reset {
