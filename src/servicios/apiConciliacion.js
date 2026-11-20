@@ -18,6 +18,8 @@ export const ConciliacionAPI = {
   leerEstado: (bid, suc, periodo) => http(`${base(bid)}/estado${q(suc, `&periodo=${encodeURIComponent(periodo)}`)}`, { cache: false }),
   guardarEstado: (bid, suc, periodo, estado) =>
     http(`${base(bid)}/estado${q(suc)}`, { method: 'PUT', timeoutMs: 60000, body: { periodo, estado } }),
+  // Mandar registros a otro PDV (20/11): items [{ tipo: 'ventas'|'banco'|'pagos', clave, fila }].
+  trasladar: (bid, suc, hacia, items) => http(`${base(bid)}/traslados${q(suc)}`, { method: 'POST', timeoutMs: 60000, body: { hacia, items } }),
   guardarPagadores: (bid, suc, mapa) => http(`${base(bid)}/pagadores${q(suc)}`, { method: 'PUT', body: { mapa } }),
   // Ventas y cobranzas de cuenta corriente desde MaxiRest (lo que sube el kit a Render).
   maxiEstado: (bid, suc) => http(`${base(bid)}/maxi${q(suc)}`, { cache: false }),
