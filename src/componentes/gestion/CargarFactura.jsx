@@ -65,9 +65,9 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
   useEffect(() => {
     if (!pedido) return undefined;
     let vivo = true;
-    const abrir = (fechaPagoPrev) => {
+    const abrir = (fechaPagoPrev, aprendido = null) => {
       if (!vivo) return;
-      setCtx(ctxDesdeCelda(pedido, fechaPagoPrev));
+      setCtx(ctxDesdeCelda(pedido, fechaPagoPrev, aprendido));
       setAbierto(true);
       onPedidoAtendido?.();
     };
@@ -76,9 +76,11 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
     GestionAPI.detalle({ year: pedido.anio, sucursal, conceptoCodigo: pedido.conceptoCodigo, mes: pedido.prev.mes })
       .catch(() => null)
       .then((d) => {
-        const filas = (d?.data ?? []).filter((f) => f.fechaPago);
-        filas.sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
-        abrir(filas[0]?.fechaPago ? String(filas[0].fechaPago) : null);
+        const todas = [...(d?.data ?? [])].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
+        const filas = todas.filter((f) => f.fechaPago);
+        // La última carga del concepto tenía proveedor (no «Gastos Varios»): esta va con el mismo.
+        const conProv = todas.find((f) => f.proveedorRef?.id != null && f.codigoProveedor !== 'GV');
+        abrir(filas[0]?.fechaPago ? String(filas[0].fechaPago) : null, conProv ? { proveedorId: conProv.proveedorRef.id } : null);
       });
     return () => { vivo = false; };
   }, [pedido, sucursal, onPedidoAtendido]);

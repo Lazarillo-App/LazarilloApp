@@ -1136,12 +1136,38 @@ function ModalNuevaCarga(props) {
         const e = edeDesdeFactura(d.ultima.rowId, d.ultima.factura, { maestros, pdvsRef });
         setUltFact({ ...e, importe: d.ultima.totalFilas });
         // La última factura de este proveedor fue en US$: esta arranca en US$, con el dólar del día (Diego 20/11/2026).
-        if (e.moneda) setUsdF((u) => u || nuevoUsd({ tipo: e.moneda.tipo }));
+        if (e.moneda && !(ctx.precargar && !precargadaRef.current)) setUsdF((u) => u || nuevoUsd({ tipo: e.moneda.tipo }));
       })
       .catch(() => {});
     return () => { vivo = false; };
   }, [prov]);
   const ultConLineas = () => ultFact;
+  // Desde una celda del Panel (Diego 20/11/2026: «aprendé de la carga»): se abre como la última factura
+  // de ese proveedor — mismo tipo (si es Ticket, ya con número generado), mismo total (o los mismos US$
+  // con el dólar de hoy) y los mismos renglones. Todo editable.
+  const precargadaRef = useRef(false);
+  useEffect(() => {
+    if (!ctx.precargar || precargadaRef.current || !ultFact || vista !== "nueva") return;
+    precargadaRef.current = true;
+    const t = normTipo(ultFact.tipoCpb || "");
+    if (t && !tipoCpb) {
+      setTipoCpb(t);
+      if (t === "Ticket") {
+        const ahora = new Date();
+        setCompPref(String(ahora.getHours()).padStart(2, "0") + String(ahora.getMinutes()).padStart(2, "0"));
+        setCompNum(String(ahora.getDate()).padStart(2, "0") + String(ahora.getMonth() + 1).padStart(2, "0") + ahora.getFullYear());
+      }
+    }
+    if (ultFact.moneda) setUsdF(nuevoUsd({ monto: ultFact.moneda.monto, tipo: ultFact.moneda.tipo }));
+    else if (ultFact.importe > 0) setTotalCtrl(fmtNum(Math.round(ultFact.importe * 100) / 100));
+    if (ultFact.lineas && ultFact.lineas.length) {
+      setOrigenPre(ultFact.comp);
+      const ls = abrirPrecarga(ultFact.lineas, ultFact.comp);
+      // Un solo renglón: su neto sigue al total (si cambia el total o el dólar, se acomoda solo).
+      setLineas(ls.length === 1 ? [{ ...ls[0], neto: "", autoNeto: true }] : ls);
+      setPercepciones((ultFact.percepciones || []).map((p) => ({ ...p })));
+    }
+  }, [ultFact]); // eslint-disable-line react-hooks/exhaustive-deps
   // Precargada la estructura y después se cambia el proveedor: se saca la precarga (era de otro
   // proveedor) y vuelve a aparecer la opción de precargar la del nuevo (Diego, 28/10/2026).
   const provAnterior = useRef(prov);
