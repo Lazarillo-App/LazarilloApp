@@ -112,6 +112,8 @@ export const GestionAPI = {
   borrarVentasManuales: (ids) => api(`${base()}/ventas-manuales${qs({ ids: ids.join(',') })}`, { method: 'DELETE' }),
   conceptos: () => api(`${base()}/conceptos`),
   crearConcepto: (body) => api(`${base()}/conceptos`, { method: 'POST', body }),
+  // Rubro de caja nuevo ({ nombre }); si ya hay uno con ese nombre devuelve ese (Diego 20/11/2026).
+  crearRubroCaja: (nombre) => api(`${base()}/rubros-caja`, { method: 'POST', body: { nombre } }),
   editarConcepto: (codigo, body) => api(`${base()}/conceptos/${codigo}`, { method: 'PATCH', body }),
   borrarConcepto: (codigo) => api(`${base()}/conceptos/${codigo}`, { method: 'DELETE' }),
   mediosPago: () => api(`${base()}/medios-pago`),
