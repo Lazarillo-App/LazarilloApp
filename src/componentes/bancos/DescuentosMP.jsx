@@ -111,6 +111,22 @@ export default function DescuentosMP({ bid, avisar }) {
     const rubro = g.concepto?.rubro || (sug?.codRubro != null ? String(sug.codRubro) : rubroPorDefecto());
     setNuevo({ grupo: g.grupo, nombre: nombre || g.nombre, padrino, rubro });
   };
+  // Rubro nuevo desde el panel de concepto nuevo (Diego 20/11/2026: «¿y si quiero crear un rubro de comisiones?»).
+  // Queda elegido; el «igual que» se limpia porque ese rubro todavía no tiene conceptos.
+  const crearRubro = async (nombre) => {
+    const n = String(nombre || '').trim();
+    if (!n) return;
+    setGuardando('rubro');
+    try {
+      const x = await GestionAPI.crearRubroCaja(n);
+      if (!x?.codigo) throw new Error(x?.error || 'No se pudo crear el rubro');
+      setRubros((rs) => (rs.some((y) => String(y.codigo) === String(x.codigo)) ? rs : [...rs, { codigo: x.codigo, nombre: x.nombre }]));
+      setNuevo((v) => (v ? { ...v, rubro: String(x.codigo), padrino: '' } : v));
+      avisar?.(x.existente ? `Ya existía el rubro «${x.nombre}»: quedó elegido` : `Rubro creado: ${x.nombre}`);
+    } catch (e) {
+      avisar?.(e?.message || 'No se pudo crear el rubro');
+    } finally { setGuardando(''); }
+  };
   const crearConceptos = async (grupos, nombres = {}, rubroElegido = null) => {
     const codRubro = rubroElegido || rubroPorDefecto();
     if (!codRubro) { avisar?.('Elegí arriba el rubro para los conceptos nuevos.'); return; }
@@ -252,7 +268,8 @@ export default function DescuentosMP({ bid, avisar }) {
             filtra los conceptos de ese rubro»). Los dos con buscador. */}
         <SelectorBuscable label="Rubro" placeholder="Elegí el rubro…" opciones={rubros.map(etiquetaRubro)}
           value={rubros.find((x) => String(x.codigo) === String(nuevo.rubro)) ? etiquetaRubro(rubros.find((x) => String(x.codigo) === String(nuevo.rubro))) : null}
-          onChange={(t) => { const x = rubros.find((y) => etiquetaRubro(y) === t); if (x) setNuevo((n) => ({ ...n, rubro: String(x.codigo), padrino: n.padrino && String(rubroDePadrino(n.padrino)) === String(x.codigo) ? n.padrino : '' })); }} />
+          onChange={(t) => { const x = rubros.find((y) => etiquetaRubro(y) === t); if (x) setNuevo((n) => ({ ...n, rubro: String(x.codigo), padrino: n.padrino && String(rubroDePadrino(n.padrino)) === String(x.codigo) ? n.padrino : '' })); }}
+          textoCrear="Crear rubro nuevo…" onCrear={crearRubro} />
         <SelectorBuscable label="Igual que (opcional)" placeholder="Ninguno"
           opciones={conceptos.filter((c) => !nuevo.rubro || String(c.codRubro) === String(nuevo.rubro)).map(etiquetaConcepto)}
           destacadas={sugeridosDe(g)} rotuloDestacadas={`Sugeridos para ${g.proveedor?.nombre || 'este cargo'}`}
