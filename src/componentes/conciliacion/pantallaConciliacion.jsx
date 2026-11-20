@@ -133,6 +133,15 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
 
             {/* El día que se concilia, en grande, con la tira del mes (19/11, opción A de Diego) */}
             {/* y en Todas / Conciliadas: tocar un día filtra la tabla (19/11) */}
+            {/* 20/11 (Diego: «los botones de conciliadas, pendientes, todas repetidos»): un solo selector para las dos tablas */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <div role="tablist" style={{ display: "flex", gap: 3, background: C.white, border: "1px solid " + C.line2, borderRadius: 10, padding: 3 }}>
+                {[["pend", "Pendientes"], ["ok", "Conciliadas"], ["all", "Todas"]].map(([f, lbl]) => (
+                  <button key={f} role="tab" aria-selected={activeTab === f} onClick={() => goTab(f)}
+                    style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13, minHeight: 36, padding: "0 16px", borderRadius: 8, border: "none", cursor: "pointer", background: activeTab === f ? C.celeste : "transparent", color: activeTab === f ? C.tinta : C.txt2 }}>{lbl}</button>
+                ))}
+              </div>
+            </div>
             <BarraDia modo={dayView ? "pend" : filterV} dayCenter={dayCenter} diaFiltro={diaFiltro} onFiltrarDia={setDiaFiltro} result={result} pendPorDia={pendPorDia} pendingDays={pendingDays}
               onMove={moveDay} onPick={elegirDia} desde={desde} hasta={hasta} nSugerencias={sugerir ? sugerencias.length : 0}
               meses={months} onMes={cambiarMes} onPeriodo={cambiarPeriodo} />
@@ -171,7 +180,7 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
                 <div data-tour="conc-paneles" style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                   <div style={{ minWidth: 0, borderRight: "1px solid " + C.line }}>
                     <PanelHead titulo="Facturas y Cobranzas" count={diaCounts ? diaCounts.v + " del día" : view.fV.length + " de " + view.V.length}
-                      tabs={[["all","Todas"],["ok","Conciliadas"],["pend","Pendientes"]]} active={activeTab} onTab={goTab}
+                      active={activeTab} onTab={goTab}
                       colMenu={colMenu === "ingresos"} onToggleColMenu={() => setColMenu(colMenu === "ingresos" ? null : "ingresos")}
                       allCols={COLS_INGRESOS} visibleCols={colsV} onToggleCol={(k) => setColsV((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} grouped />
                     <DynThead allCols={COLS_INGRESOS} visible={colsVeff} hidden={anchoAmplio() ? null : HIDE_ING_COMPARTIDO} sort={sortV} onSort={(campo) => setSortV((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
@@ -179,16 +188,13 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <PanelHead titulo="Banco" count={diaCounts ? diaCounts.b + " del día" : view.fB.length + " de " + view.B.length}
-                      tabs={[["all","Todos"],["ok","Conciliados"],["pend","Pendientes"]]} active={activeTab} onTab={goTab}
+                      active={activeTab} onTab={goTab}
                       colMenu={colMenu === "banco"} onToggleColMenu={() => setColMenu(colMenu === "banco" ? null : "banco")}
                       allCols={COLS_BANCO} visibleCols={colsB} onToggleCol={(k) => setColsB((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} />
                     <DynThead allCols={COLS_BANCO} visible={colsBeff} hidden={anchoAmplio() ? null : HIDE_BAN_COMPARTIDO} sort={sortB} onSort={(campo) => setSortB((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
                       side="banco" rows={result.B} colFilter={colFilterB} setColFilter={setColFilterB} openKey={colFilterOpen} setOpenKey={setColFilterOpen} />
                   </div>
                 </div>
-                <DayNav center={dayCenter} tol={tol} onMove={moveDay}
-                  canPrev={pendingDays.some((d) => d < dayCenter)} canNext={pendingDays.some((d) => d > dayCenter)}
-                  diasPend={pendPorDia} onPick={elegirDia} desde={desde} hasta={hasta} />
                 <DiaCompartido ingRows={view.fV} banRows={view.fB} windowDays={dayWindow()} center={dayCenter}
                   tipDia={tipsInfo.porDia}
                   efectivoDia={efectivoPorDia} efectivoOpen={efectivoOpen} efectivoSosp={efectivoSospechoso}
@@ -225,7 +231,7 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
               {/* INGRESOS */}
               <Panel>
                 <PanelHead titulo="Facturas y Cobranzas" count={(dayView && filterV === "pend" && diaCounts) ? diaCounts.v + " del día" : view.fV.length + " de " + view.V.length}
-                  tabs={[["all","Todas"],["ok","Conciliadas"],["pend","Pendientes"]]} active={activeTab}
+                  active={activeTab}
                   onTab={goTab}
                   colMenu={colMenu === "ingresos"} onToggleColMenu={() => setColMenu(colMenu === "ingresos" ? null : "ingresos")}
                   allCols={COLS_INGRESOS} visibleCols={colsV} onToggleCol={(k) => setColsV((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} grouped />
@@ -235,11 +241,6 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
                 <DynThead allCols={COLS_INGRESOS} visible={filterV === "pend" ? colsVeff : colsV} sort={sortV} onSort={(campo) => setSortV((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
                   side="ingresos" rows={result.V} colFilter={colFilterV} setColFilter={setColFilterV}
                   openKey={colFilterOpen} setOpenKey={setColFilterOpen} />
-                {dayView && filterV === "pend" && (
-                  <DayNav center={dayCenter} tol={tol} onMove={moveDay}
-                    canPrev={pendingDays.some((d) => d < dayCenter)} canNext={pendingDays.some((d) => d > dayCenter)}
-                  diasPend={pendPorDia} onPick={elegirDia} desde={desde} hasta={hasta} />
-                )}
                 {dayView && filterV === "pend" ? (
                   <DayGroupedRows innerRef={rowsVref} rows={view.fV} windowDays={dayWindow()} center={dayCenter}
                     faltantes={faltantes}
@@ -276,7 +277,7 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
               {/* BANCO */}
               <Panel>
                 <PanelHead titulo="Banco" count={(dayView && filterB === "pend" && diaCounts) ? diaCounts.b + " del día" : view.fB.length + " de " + view.B.length}
-                  tabs={[["all","Todos"],["ok","Conciliados"],["pend","Pendientes"]]} active={activeTab}
+                  active={activeTab}
                   onTab={goTab}
                   colMenu={colMenu === "banco"} onToggleColMenu={() => setColMenu(colMenu === "banco" ? null : "banco")}
                   allCols={COLS_BANCO} visibleCols={colsB} onToggleCol={(k) => setColsB((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })} />
@@ -286,11 +287,6 @@ export function renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, 
                 <DynThead allCols={COLS_BANCO} visible={filterB === "pend" ? colsBeff : colsB} sort={sortB} onSort={(campo) => setSortB((s) => s.campo === campo ? { campo, dir: -s.dir } : { campo, dir: 1 })}
                   side="banco" rows={result.B} colFilter={colFilterB} setColFilter={setColFilterB}
                   openKey={colFilterOpen} setOpenKey={setColFilterOpen} />
-                {dayView && filterB === "pend" && (
-                  <DayNav center={dayCenter} tol={tol} onMove={moveDay}
-                    canPrev={pendingDays.some((d) => d < dayCenter)} canNext={pendingDays.some((d) => d > dayCenter)}
-                  diasPend={pendPorDia} onPick={elegirDia} desde={desde} hasta={hasta} />
-                )}
                 {dayView && filterB === "pend" ? (
                   <DayGroupedRows innerRef={rowsBref} rows={view.fB} windowDays={dayWindow()} center={dayCenter}
                     groupEqual expandedGroups={expandedGroups} sort={sortB}
