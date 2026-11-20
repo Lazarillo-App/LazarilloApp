@@ -56,6 +56,8 @@ export default function ModuloConciliacion({
   pagadorMap = {}, // memoria de pagadores (formato nuevo por cuenta, o el viejo pagador → cliente)
   onPagadorMap, // callback(memoria) para que el Shell la persista
   abrirClientes = 0, // CLIENTES del header (19/11): cada vez que sube, abre el modal del cliente vacío
+  destinos = [], // otros PDV del negocio a los que se puede mandar un registro (20/11): [{ suc, nombre }]
+  onTrasladar = null, // (items, hacia) → manda lo tildado a otro PDV
   // Lazarillo (14/11): guardado en el servidor. { fuentes, onFuente(tipo, filas, archivo),
   // cargarEstado(periodo) → Promise<estado|null>, guardarEstado(periodo, estado) }. Sin esto,
   // el módulo funciona igual que el prototipo (todo en memoria).
@@ -881,6 +883,21 @@ export default function ModuloConciliacion({
       return n;
     });
   }
+  // Mandar lo tildado a otro PDV (Diego 20/11/2026): ventas, movimientos del banco y cobros de cta. cte.
+  // Viaja la fila tal como está guardada en la fuente (sin el corte de madrugada ni lo conciliado).
+  const itemsParaTrasladar = () => {
+    const por = (arr) => { const m = new Map(); (arr || []).forEach((x) => m.set(x.id, x)); return m; };
+    const V = por(dataBase.ventas), B = por(dataBase.banco), P = por(dataBase.pagos);
+    const items = [];
+    selIng.forEach((id) => { if (V.has(id)) items.push({ tipo: "ventas", clave: id, fila: V.get(id) }); });
+    selBan.forEach((id) => { if (B.has(id)) items.push({ tipo: "banco", clave: id, fila: B.get(id) }); });
+    selCC.forEach((id) => { if (P.has(id)) items.push({ tipo: "pagos", clave: id, fila: P.get(id) }); });
+    return items;
+  };
+  const mandarA = onTrasladar && destinos.length ? (hacia) => {
+    const items = itemsParaTrasladar();
+    if (items.length) onTrasladar(items, hacia);
+  } : null;
   function limpiarSeleccion() {
     setSelIng(new Set()); setSelBan(new Set()); setSelEfec(new Set()); setSelCC(new Set());
     if (editSnap.current) { // estábamos editando y se canceló → restaurar y volver a Conciliadas
@@ -1235,7 +1252,7 @@ export default function ModuloConciliacion({
         {renderBarraSuperior({ corte, setCorte, allDates, allLoaded, autoMargenTipo, autoMargenVal, data, desde, hasta, margenTipo, margenVal, mesActivo, months, selectMonth, setAutoMargenTipo, setAutoMargenVal, setDesde, setHasta, setMargenTipo, setMargenVal, setMesActivo, setModal, setSetupOpen, setTol, setupOpen, tol, xlsxReady })}
 
         {/* RESULTADOS */}
-        {renderCuerpo({ cobrosCcPorDia, diaFiltro, setDiaFiltro, months, cambiarMes, cambiarPeriodo, activeTab, aplicarSugerencia, aprobExp, aprobOpen, aprobadas, barTotals, busqComp, busqPago, ccById, ccConc, ccListaOpen, ccOpen, ccPorDia, ccSplit, colFilterB, colFilterOpen, colFilterV, colMenu, colsB, colsBeff, colsV, colsVeff, conciliarManual, conocePagador, controlCC, ctrlOpen, dayCenter, dayView, dayWindow, desarmarCluster, descartarSugerencia, desde, deshacerAprobada, diaCounts, diasPend, difFiltro, difPend, editarCluster, efectivoOpen, efectivoPorDia, efectivoSospechoso, elegirDia, expandedGroups, exportarControl, faltantes, filterB, filterV, filtrarPorDif, formaProps, goTab, hasta, hayHighlight, haySeleccion, hlBanTotal, hlIngTotal, irAResultado, kpis, limiteFilas, limpiarSeleccion, mesesPend, moveDay, notaProps, onSubFiltro, parB, parV, pendOpen, pendPorDia, pendPorMes, pendUnif, pendingDays, resComp, resPago, result, rowsBref, rowsVref, selBan, selBanTotal, selCC, selEfec, selIng, selIngTotal, setAprobExp, setAprobOpen, setBusqComp, setBusqPago, setCcListaOpen, setCcOpen, setColFilterB, setColFilterOpen, setColFilterV, setColMenu, setColsB, setColsV, setCtrlOpen, setCuentaModal, setDayCenter, setDayView, setDiasPend, setEfectivoOpen, setExpandedGroups, setFilterB, setFilterV, setLimiteFilas, setMesesPend, setParB, setParV, setPendOpen, setSelBan, setSelCC, setSelEfec, setSelIng, setSortB, setSortV, setSubFilterV, sortB, sortV, subFilterV, sugActiva, sugResaltados, sugerencias, sugerir, tieneCuenta, tipDe, tipProps, tipsInfo, toggleBan, toggleBanGroup, toggleIng, tol, verParDeBanco, verParDeIngreso, verSugerencia, view, xlsxReady })}
+        {renderCuerpo({ destinos, mandarA, cobrosCcPorDia, diaFiltro, setDiaFiltro, months, cambiarMes, cambiarPeriodo, activeTab, aplicarSugerencia, aprobExp, aprobOpen, aprobadas, barTotals, busqComp, busqPago, ccById, ccConc, ccListaOpen, ccOpen, ccPorDia, ccSplit, colFilterB, colFilterOpen, colFilterV, colMenu, colsB, colsBeff, colsV, colsVeff, conciliarManual, conocePagador, controlCC, ctrlOpen, dayCenter, dayView, dayWindow, desarmarCluster, descartarSugerencia, desde, deshacerAprobada, diaCounts, diasPend, difFiltro, difPend, editarCluster, efectivoOpen, efectivoPorDia, efectivoSospechoso, elegirDia, expandedGroups, exportarControl, faltantes, filterB, filterV, filtrarPorDif, formaProps, goTab, hasta, hayHighlight, haySeleccion, hlBanTotal, hlIngTotal, irAResultado, kpis, limiteFilas, limpiarSeleccion, mesesPend, moveDay, notaProps, onSubFiltro, parB, parV, pendOpen, pendPorDia, pendPorMes, pendUnif, pendingDays, resComp, resPago, result, rowsBref, rowsVref, selBan, selBanTotal, selCC, selEfec, selIng, selIngTotal, setAprobExp, setAprobOpen, setBusqComp, setBusqPago, setCcListaOpen, setCcOpen, setColFilterB, setColFilterOpen, setColFilterV, setColMenu, setColsB, setColsV, setCtrlOpen, setCuentaModal, setDayCenter, setDayView, setDiasPend, setEfectivoOpen, setExpandedGroups, setFilterB, setFilterV, setLimiteFilas, setMesesPend, setParB, setParV, setPendOpen, setSelBan, setSelCC, setSelEfec, setSelIng, setSortB, setSortV, setSubFilterV, sortB, sortV, subFilterV, sugActiva, sugResaltados, sugerencias, sugerir, tieneCuenta, tipDe, tipProps, tipsInfo, toggleBan, toggleBanGroup, toggleIng, tol, verParDeBanco, verParDeIngreso, verSugerencia, view, xlsxReady })}
       </div>
 
       {/* MODAL DE CUENTA CORRIENTE (al tocar el nombre del cliente) */}
