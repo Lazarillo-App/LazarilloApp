@@ -365,7 +365,10 @@ export function parseVentas(rows) {
 // el banco MP y se excluyen (Galicia irá contra su propio extracto en el futuro).
 // forma de cobro del 72: solo MercadoPago se busca en el banco MP; Galicia en su banco
 // (todavía no cargado); efectivo y retiros no pasan por banco.
-export const esMP = (p) => /MERCADO\s*PAGO/i.test((p && p.cobro) || "");
+// Cobros por Mercado Pago según la forma de cobro del POS: cada negocio la llama distinto (Comercio
+// «MERCADOPAGO»; Container «TRANSFERENCIA MP» y «QR-POSNET», que cruzan con Mercado Pago por cupón).
+// 20/11: antes solo se reconocía «MERCADO PAGO» y en Container los cobros de cta. cte. no aparecían.
+export const esMP = (p) => /MERCADO\s*PAGO|\bMP\b|QR[\s-]*POSNET/i.test((p && p.cobro) || "");
 export const esGalicia = (p) => /GALICIA/i.test((p && p.cobro) || "");
 export function parsePagos(rows) {
   const out = [];
