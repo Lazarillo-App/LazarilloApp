@@ -36,6 +36,9 @@
     #tarjetas { padding: 0.75rem 1rem 1rem; display: flex; flex-wrap: wrap; align-items: flex-start; }
     .tarjeta { width: 13.75rem; margin: 0 0.75rem 1.25rem; }
     .titulo { font-weight: 800; font-size: 1.3125rem; text-align: center; text-transform: uppercase; line-height: 1.05; margin-bottom: 0.5rem; }
+    .tarjeta.nuevo { background: #FFF6D6; border-radius: 6px; box-shadow: 0 0 0 0.375rem #FFF6D6, 0 0 0 0.5rem #F2B705; }
+    .marca { text-align: center; margin-bottom: 0.3rem; }
+    .marca span { display: inline-block; background: #F2B705; color: #3A2A00; font-weight: 800; font-size: 0.75rem; letter-spacing: .08em; padding: 0.2rem 0.6rem; border-radius: 0.6rem; }
     .obsp { font-style: italic; font-weight: 600; font-size: 0.8rem; color: #6b7280; text-align: center; margin: -0.25rem 0 0.5rem; }
     .renglon { border-radius: 3px; border: 1px solid rgba(0,0,0,.08); padding: 3px 0.375rem; min-height: 1.875rem; margin-bottom: 0.3125rem; text-align: center;
       display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -161,7 +164,10 @@
         for (var j = 0; j < (p.renglones || []).length; j++) filas += renglon(p.renglones[j]);
         // Observación del producto (la última de su receta), debajo del nombre.
         var obsP = p.obs ? '<div class="obsp">&#8627; ' + esc(p.obs) + '</div>' : '';
-        html += '<div class="tarjeta"><div class="titulo">' + esc(p.nombre) + '</div>' + obsP + filas + '</div>';
+        // Producto nuevo en la plaza (una semana desde que se agregó): fondo amarillo y ★ NUEVO.
+        var nuevo = !!p.nuevoDesde;
+        html += '<div class="tarjeta' + (nuevo ? ' nuevo' : '') + '">' + (nuevo ? '<div class="marca"><span>&#9733; NUEVO</span></div>' : '') +
+          '<div class="titulo">' + esc(p.nombre) + '</div>' + obsP + filas + '</div>';
       }
       $('tarjetas').innerHTML = html || '<div class="vacio">Esta plaza todavía no tiene productos.</div>';
       mostrar('espera', false); mostrar('plaza', true);

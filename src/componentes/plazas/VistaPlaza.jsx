@@ -213,7 +213,14 @@ const moverEn = (lista, desde, hasta) => {
   return l;
 };
 
+// Producto nuevo en la plaza (Diego 20/11/2026: «así quien opera se da cuenta rápido»): fondo amarillo
+// claro con borde y la marca ★ NUEVO durante una semana desde que se agregó (lo decide el servidor).
+const NUEVO_FONDO = '#FFF6D6';
+const NUEVO_BORDE = '#F2B705';
+const fechaCorta = (f) => { const d = new Date(f); return Number.isNaN(d.getTime()) ? '' : `${d.getDate()}/${d.getMonth() + 1}`; };
+
 function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false, arrastreTarjetas = false, onAgarrarTarjeta, onQuitar, onCambiar, onColorIngrediente, onMostrarIngrediente, onAliasIngrediente, onOcultarIngrediente, onEditarItem, onCrearEquivalencia, onAbrir }) {
+  const esNuevo = !!p.nuevoDesde;
   // arrastre: { key, desde, hasta, mids } — mids = centro vertical de cada renglón al agarrar.
   const [arrastre, setArrastre] = useState(null);
   const arrastreRef = useRef(null);
@@ -300,13 +307,22 @@ function Tarjeta({ p, armando, mostrarPlaza = 'peso', cardRef, levantada = false
   // usa menos renglones, queda el espacio (Diego 11/11/2026).
   return (
     <Box ref={cardRef} sx={{ width: '100%', display: 'grid', gridRow: 'span 2', gridTemplateRows: 'subgrid', rowGap: 0,
-      position: 'relative', zIndex: levantada ? 3 : 'auto', borderRadius: '6px', bgcolor: levantada ? '#fff' : 'transparent',
-      outline: levantada ? '2px solid #5BC2EA' : 'none', outlineOffset: 6, boxShadow: levantada ? '0 12px 28px rgba(0,0,0,.22)' : 'none',
+      position: 'relative', zIndex: levantada ? 3 : 'auto', borderRadius: '6px', bgcolor: levantada ? '#fff' : (esNuevo ? NUEVO_FONDO : 'transparent'),
+      outline: levantada ? '2px solid #5BC2EA' : 'none', outlineOffset: 6,
+      boxShadow: levantada ? '0 12px 28px rgba(0,0,0,.22)' : (esNuevo ? `0 0 0 6px ${NUEVO_FONDO}, 0 0 0 8px ${NUEVO_BORDE}` : 'none'),
       transform: levantada ? 'scale(1.02)' : 'none', transition: 'box-shadow .12s, transform .12s',
       pointerEvents: arrastreTarjetas && !levantada ? 'none' : 'auto' }}>
       {/* Título (y la observación del producto, si tiene). En «Armar»: ⋮⋮ a la izquierda para mover la tarjeta
           (Diego 17/11/2026) y ✕ a la derecha para sacarla (14/11). Padding a los dos lados: el título sigue centrado. */}
       <Box sx={{ alignSelf: 'start', mb: 1 }}>
+      {esNuevo && (
+        <Box sx={{ textAlign: 'center', mb: 0.5 }}>
+          <Tooltip title={`En la plaza desde el ${fechaCorta(p.nuevoDesde)} · se destaca una semana`}>
+            <Box component="span" sx={{ display: 'inline-block', bgcolor: NUEVO_BORDE, color: '#3A2A00', fontWeight: 800, fontSize: '0.7rem',
+              letterSpacing: '.08em', lineHeight: 1, px: 1, py: 0.5, borderRadius: '10px' }}>★ NUEVO</Box>
+          </Tooltip>
+        </Box>
+      )}
       <Typography sx={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: '1.3rem', textAlign: 'center',
         textTransform: 'uppercase', lineHeight: 1.05, position: 'relative', px: armando && (onQuitar || onAgarrarTarjeta) ? 3.5 : 0 }}>
         {armando && onAgarrarTarjeta && (
