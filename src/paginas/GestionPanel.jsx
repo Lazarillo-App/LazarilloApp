@@ -24,7 +24,6 @@ import { MAIN_BRANCH_ID } from '@/context/BranchContext';
 import { GestionAPI, sucursalParam } from '@/servicios/apiGestion';
 import PivotCompras from '@/componentes/gestion/PivotCompras';
 import { SinRubroPanel } from '@/componentes/gestion/SinRubro';
-import { OrganizarGastosPanel, AvisoOrganizar } from '@/componentes/gestion/OrganizarGastos';
 import PivotVentas from '@/componentes/gestion/PivotVentas';
 import PivotResultados from '@/componentes/gestion/PivotResultados';
 import KpiTarjetas from '@/componentes/gestion/KpiTarjetas';
@@ -398,7 +397,6 @@ function GestionPanelContenido() {
     <PanelGestionContext.Provider value={panel}>
     <Toaster position="bottom-right" />
     <SinRubroPanel />
-    <OrganizarGastosPanel />
     <Box sx={{ p: { xs: 1.5, md: 3 }, display: 'flex', flexDirection: 'column', height: { md: 'calc(100vh - 64px)' } }}>
       {/* Título y subtítulo solo en pantallas chicas (Diego 10/11/2026): en la compu el módulo va bajo el
           logo del header y la sucursal en sus chips; los íconos pasan a la barra de filtros. */}
@@ -481,8 +479,8 @@ function GestionPanelContenido() {
       {busquedaActiva && <ChipBusqueda busqueda={busquedaActiva} onQuitar={() => setBusqueda(null)} />}
       <BuscadorPanel open={buscadorAbierto} onClose={() => setBuscadorAbierto(false)} onElegir={elegirBusqueda} />
 
-      {/* Rubros de insumo o proveedores sin concepto de caja: «Organizá tus gastos» (17/11/2026). */}
-      {verPanel && !busquedaActiva && <AvisoOrganizar />}
+      {/* Sin aviso «Organizá tus gastos» (Diego 20/11/2026): no todo rubro o proveedor necesita concepto;
+          lo que no lo tiene queda en la fila «Sin concepto de caja asociado», primera de la tabla. */}
       {/* Con gastos pero sin ninguna venta en el año: falta conectar el punto de venta (14/11/2026). */}
       {verPanel && !posConectado && !sinDatosPanel && ventas.data && !(ventas.data.rows || []).length && !busquedaActiva && (
         <Box sx={{ mb: 2 }}>
