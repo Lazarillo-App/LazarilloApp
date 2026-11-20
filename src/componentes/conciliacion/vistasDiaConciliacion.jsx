@@ -149,13 +149,29 @@ export function SugerenciasPanel({ sugerencias, activa, dayCenter, onMoveDay, ca
   );
 }
 
-export function DayCompareBar({ ing, ban, ctxIng, ctxBan, refIng, refBan, cntIng, cntBan, cntIngRef, cntBanRef, conc, onDif, difFiltro, tipsTotal, tipsDia, haySeleccion, readonly, selIngTotal, selBanTotal, selIngCount, selBanCount, onConciliar, onLimpiar, onDesarmar, onEditar }) {
+// Día en la barra flotante (20/11, Diego: «en la barra que queda flotante, que esté el día claro»).
+function DiaFlotante({ dia, periodo }) {
+  if (!dia && !periodo) return null;
+  const DS = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"], MS = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+  const d = dia ? new Date(dia + "T12:00:00") : null;
+  return (
+    <div style={{ flexShrink: 0, minWidth: 92, padding: "8px 16px", background: C.tinta, color: C.white, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "'Sora',sans-serif", lineHeight: 1.1 }}>
+      {d ? (<>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: C.celeste }}>{DS[d.getDay()]}</span>
+        <span style={{ fontSize: 26, fontWeight: 800 }}>{d.getDate()}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: "#8fa0c0" }}>{MS[d.getMonth()]}</span>
+      </>) : <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", color: C.celeste, textAlign: "center" }}>TODO EL<br />PERÍODO</span>}
+    </div>
+  );
+}
+export function DayCompareBar({ dia, periodo, ing, ban, ctxIng, ctxBan, refIng, refBan, cntIng, cntBan, cntIngRef, cntBanRef, conc, onDif, difFiltro, tipsTotal, tipsDia, haySeleccion, readonly, selIngTotal, selBanTotal, selIngCount, selBanCount, onConciliar, onLimpiar, onDesarmar, onEditar }) {
   if (haySeleccion) {
     const dif = selIngTotal - selBanTotal;
     const cierra = dif === 0;
     const puede = selIngCount > 0 && selBanCount > 0;
     return (
       <div style={{ display: "flex", alignItems: "stretch", background: C.white, border: "1.5px solid " + C.celeste, borderRadius: 12, overflow: "hidden", marginBottom: 14, boxShadow: "0 4px 16px rgba(91,194,234,.18)" }}>
+        <DiaFlotante dia={dia} periodo={periodo} />
         <div style={{ flex: 1, padding: "10px 18px", textAlign: "center" }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".5px", color: C.txt3, fontWeight: 700, marginBottom: 2 }}>Ingreso seleccionado</div>
           <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 19, color: C.tinta }}>{fmt(selIngTotal)}</div>
@@ -169,7 +185,7 @@ export function DayCompareBar({ ing, ban, ctxIng, ctxBan, refIng, refBan, cntIng
         </div>
         <div style={{ flexShrink: 0, padding: "10px 20px", textAlign: "center", background: (cierra || dif < 0) ? C.greenBg : "#d94f6314", borderLeft: "1px solid " + C.line }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".5px", color: C.txt3, fontWeight: 700, marginBottom: 2 }}>Diferencia</div>
-          <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 19, color: (cierra || dif < 0) ? C.green : C.red }}>{cierra ? "$0" : (<span>{dif > 0 ? "-" : ""}{fmt(Math.abs(dif))} <span style={{ fontSize: 12, fontWeight: 700 }}>{dif < 0 ? "de más" : "de menos"} · {(() => { const p = Math.abs(dif) / (selIngTotal || 1) * 100; return p < 0.1 ? "<0,1%" : p.toFixed(1).replace(".", ",") + "%"; })()}</span></span>)}</div>
+          <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 19, color: (cierra || dif < 0) ? C.green : C.red }}>{cierra ? "$0" : (<span>{dif > 0 ? "-" : ""}{fmt(Math.abs(dif))} <span style={{ fontSize: 12, fontWeight: 700 }}>{dif < 0 ? "de más" : "de menos"}{selIngTotal > 0 ? " · " + (() => { const p = Math.abs(dif) / selIngTotal * 100; return p < 0.1 ? "<0,1%" : p.toFixed(1).replace(".", ",") + "%"; })() : ""}</span></span>)}</div>
         </div>
         <div style={{ flexShrink: 0, display: "flex", alignItems: "stretch" }}>
           <button onClick={onLimpiar} title={readonly ? "Cerrar resaltado" : "Limpiar selección"} style={{ border: "none", borderLeft: "1px solid " + C.line, background: C.white, color: C.txt3, cursor: "pointer", padding: "0 14px", fontSize: 18 }}>×</button>
@@ -190,6 +206,7 @@ export function DayCompareBar({ ing, ban, ctxIng, ctxBan, refIng, refBan, cntIng
   const escala = refIng != null ? "del día" : "del período";
   return (
     <div style={{ display: "flex", alignItems: "stretch", background: C.white, border: "1px solid " + C.line2, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
+      <DiaFlotante dia={dia} periodo={periodo} />
       {conc && (
         <div style={{ flex: 1, padding: "11px 18px" }}>
           <div style={lbl}>Conciliados</div>
