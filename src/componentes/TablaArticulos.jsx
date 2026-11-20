@@ -654,7 +654,10 @@ export default function TablaArticulos({
   const valorAlEnfocarRef = useRef({});
   React.useEffect(() => { sortByRef.current = sortBy; }, [sortBy]);
 
+  // Top 20: arranca ordenado por facturación (su puesto), hasta que se toca un título (Diego 20/11/2026).
+  const [sortManual, setSortManual] = useState(false);
   const toggleSort = useCallback((k) => {
+    setSortManual(true);
     const isSameColumn = sortByRef.current === k;
     if (isSameColumn) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -1367,7 +1370,8 @@ export default function TablaArticulos({
         todos.map(({ a }) => getId(a))
           .sort((x, y) => getVentasAmount(y) - getVentasAmount(x))
           .map((id, k) => [id, k + 1]));
-      todos.sort((x, y) => cmp(x.a, y.a));
+      if (sortManual) todos.sort((x, y) => cmp(x.a, y.a));
+      else todos.sort((x, y) => (puesto.get(getId(x.a)) ?? 1e9) - (puesto.get(getId(y.a)) ?? 1e9));
       for (const { a, sec } of todos) {
         const id = getId(a);
         rows.push({
@@ -1447,7 +1451,7 @@ export default function TablaArticulos({
     }
 
     return rows;
-  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo, sortBy, sortDir]);
+  }, [bloques, cmp, tableHeaderMode, getVentasAmount, esAgrupEspecifica, agrupacionSeleccionada, totalVentasPeriodo, agrupDeArticulo, sortBy, sortDir, sortManual]);
 
   // Altura de cada tipo de fila (debe coincidir con el rowHeight del VirtualList)
   const rowH = useCallback((row) => (row?.kind === 'item' ? 60 : row?.kind === 'agrupacion-header' ? 0 : 42), []);
