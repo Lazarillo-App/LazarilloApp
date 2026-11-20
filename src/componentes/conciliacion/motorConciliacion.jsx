@@ -81,6 +81,7 @@ export const pagadorCoincide = (a, b) => {
 // o por el mapa aprendido). Corre DESPUÉS del motor de ventas (las ventas tienen
 // prioridad sobre el banco) y puede juntar hasta 4 cobranzas del mismo cliente contra
 // un pago. Lo que no cumple las tres condiciones queda como sugerencia.
+export const esPagadorGenerico = (p) => /^(cardholder[_ ]?name|ventapresencial@mercadopago\..*)$/i.test(String(p || "").trim());
 export function autoConciliarCC(res, pagos, conoce) {
   // Confía en el ERP: si el 72 dice que el cliente pagó por banco y el pago está en
   // MercadoPago, se concilia. Por cliente y por día (una transferencia suele pagar
@@ -89,7 +90,10 @@ export function autoConciliarCC(res, pagos, conoce) {
   // libre por ese monto y ninguna venta pendiente por el mismo monto).
   const ccIds = [], pares = [];
   if (!res || !pagos || !pagos.length) return { res, ccIds, pares };
-  const mismo = (cli, pag) => !!pag && (pagadorCoincide(cli, pag) || (!!conoce && conoce(cli, pag)));
+  // 20/11: «cardholder_name» (relleno de Mercado Pago cuando no manda el nombre) y el pagador genérico de
+  // Point no identifican a nadie; aunque estén en la memoria vieja de un cliente, no cuentan como su pagador.
+  // (Montaldo 18/11: su cobro de $11.600 se cerraba con dos pagos «cardholder_name» del 19.)
+  const mismo = (cli, pag) => !!pag && !esPagadorGenerico(pag) && (pagadorCoincide(cli, pag) || (!!conoce && conoce(cli, pag)));
   const B = res.B.slice(); const nuevosV = []; const usadosBan = new Set();
   const ventasPend = {}; res.V.forEach((v) => { if (v.status === "pend") { const k = v.fecha + "|" + v.imp; ventasPend[k] = (ventasPend[k] || 0) + 1; } });
   const libres = (fecha, imp) => B.map((b, i) => ({ b, i })).filter((x) => x.b.status === "pend" && !usadosBan.has(x.b.id) && x.b.fecha === fecha && x.b.imp === imp);
@@ -147,10 +151,10 @@ export function autoConciliarCC(res, pagos, conoce) {
     { const tot = rest.reduce((a, p) => a + p.imp, 0);
       // un pago por el TOTAL del día (como paga en la realidad: una transferencia por varios tickets),
       // ese día o, si MercadoPago lo acreditó después, el día siguiente
-      const x = (rest.length > 1 ? elegir(cli, fecha, tot) : null) || elegir(cli, diaSig(fecha), tot);
+      // (orden 20/11: primero lo del MISMO día —el total, o la venta del día + sus cobros— y recién
+      // después el día siguiente o varios pagos; antes el día siguiente se llevaba cobros del día)
+      const x = rest.length > 1 ? elegir(cli, fecha, tot) : null;
       if (x) { cerrar(rest, x); return; }
-      const xs = variosDelPagador(cli, fecha, tot) || variosDelPagador(cli, diaSig(fecha), tot);
-      if (xs) { cerrarMulti(rest, xs); return; }
       // venta(s) del día del mismo cliente + sus cobros (todos o de a uno) = un pago
       const vs = ventasDe(cli, fecha);
       if (vs.length) {
@@ -161,7 +165,12 @@ export function autoConciliarCC(res, pagos, conoce) {
           if (y) { cerrarConVentas(g, vs, y); const ids = new Set(g.map((p) => p.id)); rest = rest.filter((p) => !ids.has(p.id)); break; }
         }
         if (!rest.length) return;
-      } }
+      }
+      const tot2 = rest.reduce((a, p) => a + p.imp, 0);
+      const x2 = (rest.length === 1 ? elegir(cli, fecha, tot2) : null) || elegir(cli, diaSig(fecha), tot2);
+      if (x2) { cerrar(rest, x2); return; }
+      const xs = variosDelPagador(cli, fecha, tot2) || variosDelPagador(cli, diaSig(fecha), tot2);
+      if (xs) { cerrarMulti(rest, xs); return; } }
     // 2) combinaciones (de más grandes a más chicas), hasta que no cierre nada más
     let cambio = true;
     while (cambio && rest.length) {
