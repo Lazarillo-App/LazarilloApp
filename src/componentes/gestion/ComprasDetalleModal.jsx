@@ -27,6 +27,7 @@ import { MoverPdvButton } from './apertura/mover-pdv-button';
 import { cuerpoMover, filasAMover } from '@/gestion/apertura/mover';
 import { refrescarCompras } from '@/gestion/hooksPanel';
 import { gestionFetch } from '@/servicios/apiGestion';
+import { getSession } from '@/servicios/apiBase';
 import { toast } from 'sonner';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { usePasosPresentes } from '@/componentes/asistente/pasosHeader';
@@ -311,8 +312,10 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     if (!imp.ok) { setSaveError('El importe ingresado no es un número válido.'); return; }
     setSaving(true);
     setSaveError(null);
-    // Una compra repartida solo cambia su observación hasta que esté el motor de apertura.
-    const base = state.esDistribuida
+    // Repartida (Diego 20/11/2026): fecha, concepto e importe TOTAL se editan en el negocio donde se
+    // carga; el servidor la vuelve a repartir según la regla (reevaluarCompra). Si se carga en otro
+    // negocio, desde acá solo la observación.
+    const base = state.ajena
       ? { observacManual: state.observacManual !== '' ? state.observacManual : null }
       : {
         ...(imp.incluir ? { importeManual: imp.value } : {}),
@@ -391,6 +394,8 @@ export default function ComprasDetalleModal({ filter, onClose }) {
 
   const abrirEdicion = (item) => {
     const esDistribuida = item.esDistribuido || item.distribucionId != null;
+    const activo = Number(getSession()?.activeBusinessId);
+    const ajena = esDistribuida && item.localIdOrigen != null && Number(item.localIdOrigen) !== activo;
     // El importe llega de la base como "58300.00000000": se muestra sin los ceros de más (58300).
     // Mismo número, así que no cambia lo que se guarda (parseImporteManual compara números).
     const crudo = esDistribuida ? item.importeBase : item.importeManual ?? item.importe;
@@ -401,6 +406,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       rowId: String(item.rowId),
       distribucionId: item.distribucionId,
       esDistribuida,
+      ajena,
       importeManual: importeInicial,
       importeInicial,
       fechaManual: fechaInput(item.fechaManual ?? item.fecha),
@@ -424,7 +430,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     const seleccion = conSeleccion ? { tildado: tildadas.has(item.rowId), onToggle: () => cambiarTildadas([item], !tildadas.has(item.rowId)) } : null;
     const enEdicion = editing?.rowId === item.rowId && editing.distribucionId === item.distribucionId;
     if (enEdicion) {
-      const bloqueada = editing.esDistribuida;
+      const bloqueada = editing.ajena;
       const opciones = editing.rubroFiltro === SIN_RUBRO_CODE ? conceptos.filter((o) => !o.rubroCodigo) : conceptos.filter((o) => o.rubroCodigo === editing.rubroFiltro);
       return (
         <TableRow key={key} sx={{ bgcolor: 'grey.50' }}>
@@ -547,7 +553,8 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
     ? `Fecha, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
-    : editing?.esDistribuida ? 'Esta compra está repartida entre negocios: por ahora solo se puede cambiar su observación' : null;
+    : editing?.ajena ? 'Esta compra se carga en otro negocio: fecha, importe y concepto se cambian desde ese negocio'
+      : editing?.esDistribuida ? 'Repartida entre negocios: el importe es el total; al guardar se vuelve a repartir según la regla' : null;
 
   return (
     <>
