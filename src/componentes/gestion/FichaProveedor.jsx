@@ -4,6 +4,8 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { gestionFetch } from "@/servicios/apiGestion";
+import { useMediosPago } from "@/gestion/hooksPanel";
+import { mediosParaElegir } from "@/gestion/cargaUtils";
 
 // La cuenta corriente se carga al abrirla.
 const CtaCteModal = React.lazy(() => import("@/componentes/gestion/pagos/cta-cte-proveedor").then((m) => ({ default: m.CtaCteModal })));
@@ -40,12 +42,16 @@ const CAMPOS_FICHA = [
   ["celular", "Celular", 1], ["email", "Email", 1], ["direccion", "Dirección", 2], ["localidad", "Localidad", 1],
   ["contacto", "Contacto", 1], ["cbu", "CBU / CVU", 1], ["aliasCbu", "Alias", 1],
 ];
+// Forma de pago habitual (tablero #83, Diego 15/11/2026): con qué se le suele pagar. Los cargos que
+// descuenta Mercado Pago se cargan como pagos con este medio (si no hay, «Mercado Pago»).
+const CAMPOS = [...CAMPOS_FICHA.map(([k]) => k), "medioPago"];
 export default function FichaProveedor({ id, onCerrar, onGuardado }) {
   const [f, setF] = useState(null);
   const [ctaCte, setCtaCte] = useState(false); // la ficha lleva a la cuenta corriente (Diego 06/11/2026)
   const [orig, setOrig] = useState(null);
   const [err, setErr] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const { data: mediosData } = useMediosPago();
   useEffect(() => {
     let vivo = true;
     gestionFetch(`/api/facturas/proveedores/${id}`)
@@ -53,26 +59,26 @@ export default function FichaProveedor({ id, onCerrar, onGuardado }) {
       .then(({ ok, d }) => {
         if (!vivo) return;
         if (!ok || !d) { setErr((d && d.error) || "No se pudo abrir la ficha."); return; }
-        const v = Object.fromEntries(CAMPOS_FICHA.map(([k]) => [k, d[k] || ""]));
+        const v = Object.fromEntries(CAMPOS.map((k) => [k, d[k] || ""]));
         setF({ ...v, deMaxirest: !!d.deMaxirest, codigo: d.codigo }); setOrig(v);
       })
       .catch(() => vivo && setErr("Error de red: no se pudo abrir la ficha."));
     return () => { vivo = false; };
   }, [id]);
-  const cambio = f && orig && CAMPOS_FICHA.some(([k]) => (f[k] || "") !== (orig[k] || ""));
+  const cambio = f && orig && CAMPOS.some((k) => (f[k] || "") !== (orig[k] || ""));
   // Mientras se mira la cuenta corriente la ficha queda guardada atrás (lo tipeado no se pierde).
   if (ctaCte && f && f.codigo) return <div className="gestion-tw" style={{ display: "contents" }}><React.Suspense fallback={null}><CtaCteModal origen={{ codPro: f.codigo }} onCerrar={() => setCtaCte(false)} /></React.Suspense></div>;
   const guardar = () => {
     if (!f.nombre.trim()) { setErr("Poné el nombre del proveedor."); return; }
     setGuardando(true); setErr("");
-    const body = Object.fromEntries(CAMPOS_FICHA.map(([k]) => [k, String(f[k] || "").trim() || null]));
+    const body = Object.fromEntries(CAMPOS.map((k) => [k, String(f[k] || "").trim() || null]));
     gestionFetch(`/api/facturas/proveedores/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
       .then(async (r) => ({ ok: r.ok, d: await r.json().catch(() => null) }))
       .then(({ ok, d }) => {
         setGuardando(false);
         if (!ok) { setErr((d && d.error) || "No se pudo guardar la ficha."); return; }
         toast.success("Ficha del proveedor guardada");
-        onGuardado({ id, nombre: body.nombre, razon: body.razon });
+        onGuardado({ id, nombre: body.nombre, razon: body.razon, medioPago: body.medioPago });
       })
       .catch(() => { setGuardando(false); setErr("Error de red: no se guardó."); });
   };
@@ -94,6 +100,17 @@ export default function FichaProveedor({ id, onCerrar, onGuardado }) {
               <div key={k} style={{ gridColumn: span === 2 ? "1 / -1" : undefined }}><span style={lab}>{t}</span>
                 <input style={inp} autoFocus={ix === 0} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} /></div>
             ))}
+            <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Forma de pago habitual</span>
+              {mediosParaElegir(mediosData, f.medioPago || null).length ? (
+                <select style={inp} value={f.medioPago} onChange={(e) => setF({ ...f, medioPago: e.target.value })}>
+                  <option value="">— Sin definir —</option>
+                  {mediosParaElegir(mediosData, f.medioPago || null).map((m) => <option key={m.id ?? m.nombre} value={m.nombre}>{m.nombre}</option>)}
+                </select>
+              ) : (
+                <input style={inp} value={f.medioPago} placeholder="Ej.: Mercado Pago, transferencia…" onChange={(e) => setF({ ...f, medioPago: e.target.value })} />
+              )}
+              <div style={{ fontSize: 11.5, color: C.gris, marginTop: 4 }}>Con qué se le suele pagar. Lo que descuenta Mercado Pago se le carga como pago con este medio.</div>
+            </div>
           </div>
         </>)}
         {err && <div style={{ marginTop: 10, fontSize: 12.5, color: C.rojo, fontWeight: 600 }}>{err}</div>}

@@ -888,7 +888,9 @@ function ModalNuevaCarga(props) {
   const mediosPago = mediosParaElegir(mediosData);
   const abmMedios = useAbmMediosPago();
   const [medioPagoSel, setMedioPago] = useState("");
-  const medioPago = medioPagoSel || (mediosPago[0] && mediosPago[0].nombre) || "";
+  // Sin elegir a mano, sale la forma de pago habitual del proveedor (su ficha, tablero #83) si es un medio activo.
+  const medioDelProv = (proveedores.find((x) => x.nombre === prov) || {}).medioPago;
+  const medioPago = medioPagoSel || (medioDelProv && mediosPago.some((m) => m.nombre === medioDelProv) ? medioDelProv : "") || (mediosPago[0] && mediosPago[0].nombre) || "";
   const pidePagoId = !!(mediosPago.find((m) => m.nombre === medioPago) || {}).pideId;
   const [refPago, setRefPago] = useState("");
   const [importePago, setImportePago] = useState(""); // vacío = el total de la factura
@@ -1328,7 +1330,7 @@ function ModalNuevaCarga(props) {
         {fichaProvId && <FichaProveedor id={fichaProvId} onCerrar={() => setFichaProvId(null)}
           onGuardado={(d) => {
             const antes = (proveedores.find((x) => x.id === d.id) || {}).nombre;
-            setProvsEditados((m) => ({ ...m, [d.id]: { nombre: d.nombre, razon: d.razon } }));
+            setProvsEditados((m) => ({ ...m, [d.id]: { nombre: d.nombre, razon: d.razon, medioPago: d.medioPago } }));
             if (antes && prov === antes) { provAnterior.current = d.nombre; setProv(d.nombre); }
             setFichaProvId(null);
             if (props.onProveedorEditado) props.onProveedorEditado(d);
