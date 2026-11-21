@@ -21,6 +21,7 @@ import BusinessDivisionSelector from './BusinessDivisionSelector';
 import NotificationsPanel from '@/componentes/NotificationsPanel';
 import ModulosDrawer from './ModulosDrawer';
 import TablerosBotonera, { TablerosChips } from './plazas/TablerosBotonera';
+import { useFuncionesOcultas, estaOculta } from '@/funciones';
 import PulsoDatos from './PulsoDatos';
 import MenuPerfil from '@/componentes/MenuPerfil';
 import { MisPendientesDrawer, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
@@ -105,6 +106,7 @@ export default function Navbar() {
   const [verPendientes, setVerPendientes] = useState(false);
   // Menú (vista diseño, la carta): el Staff no lo usa; se habilita por rol con «ver_menu» (Diego 11/11/2026).
   const veMenuDiseno = !isStaff || staffPuede('ver_menu');
+  const produccionOculta = estaOculta(useFuncionesOcultas(), 'produccion');
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Movimientos bancarios: en el header van solo los bancos conectados (Diego 14/11/2026).
@@ -185,6 +187,7 @@ export default function Navbar() {
     if (p.startsWith('/menu') || p.startsWith('/insumos') || p.startsWith('/agrupacioneslist')) return 'Recetas';
     if (p.startsWith('/rrhh')) return 'RRHH';
     if (p.startsWith('/tableros')) return 'Tableros';
+    if (p.startsWith('/produccion')) return 'Producción';
     if (p.startsWith('/movimientos-bancarios')) return 'Movimientos bancarios';
     if (p.startsWith('/clientes')) return 'Clientes';
     return null;
@@ -406,6 +409,12 @@ export default function Navbar() {
                               <Button color="inherit" component={NavLink} to="/tableros" sx={{ color: 'inherit', position: 'relative' }}>
                                 Tableros
                               </Button>
+                              {/* Producción: sus tareas del día (usuaria 21/11/2026). */}
+                              {!produccionOculta && (
+                                <Button color="inherit" component={NavLink} to="/produccion" sx={{ color: 'inherit', position: 'relative' }}>
+                                  Producción
+                                </Button>
+                              )}
                             </>
                           )}
                         </>

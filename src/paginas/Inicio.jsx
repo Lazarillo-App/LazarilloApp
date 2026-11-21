@@ -21,6 +21,8 @@ const GROUPS = [
     modules: [
       // Tableros = las plazas de despacho de cocina y barra (Diego 12/11/2026).
       { id: 'tableros', label: 'Tableros', emoji: '📋', desc: 'La lámina de armado de cada plaza.', to: '/tableros' },
+      // Tareas operativas: la producción de elaborados de la cocina (usuaria 21/11/2026).
+      { id: 'produccion', label: 'Producción', emoji: '🍳', desc: 'Programá, delegá y medí la producción de la cocina.', to: '/produccion' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', desc: 'Cronogramas, nómina y altas de tu equipo.', to: '/rrhh/cronogramas' },
     ],
   },
