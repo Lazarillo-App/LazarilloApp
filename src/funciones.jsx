@@ -8,7 +8,7 @@ import { Navigate } from 'react-router-dom';
 import { useAjuste } from '@/hooks/useAjustes';
 
 export const AREAS = [
-  { id: 'operacion', label: 'Operación', funciones: [['tableros', 'Tableros'], ['rrhh', 'RRHH']] },
+  { id: 'operacion', label: 'Operación', funciones: [['tableros', 'Tableros'], ['produccion', 'Producción'], ['rrhh', 'RRHH']] },
   { id: 'rentabilidad', label: 'Rentabilidad', funciones: [['resultados', 'Resultados'], ['recetas', 'Recetas'], ['stock', 'Stock'], ['compras', 'Compras']] },
   { id: 'administracion', label: 'Administración', funciones: [['conciliacion', 'Conciliación'], ['movimientos-bancarios', 'Movimientos bancarios'], ['clientes', 'Clientes']] },
 ];

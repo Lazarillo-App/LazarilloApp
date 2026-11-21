@@ -29,6 +29,7 @@ const GROUPS = [
       // Medios de pago salió del menú (Diego 10/11/2026): se gestionan desde el desplegable de cada pago.
       // Tableros = las plazas de despacho de cocina y barra (Diego 12/11/2026).
       { id: 'tableros', label: 'Tableros', emoji: '📋', to: '/tableros', claves: 'plazas cocina barra despacho pantalla tv' },
+      { id: 'produccion', label: 'Producción', emoji: '🍳', to: '/produccion', claves: 'tareas operativas cocina elaborados tandas mise en place jefe cocinero turnos' },
       { id: 'rrhh', label: 'RRHH', emoji: '👥', to: '/rrhh/cronogramas', claves: 'empleados personal cronogramas turnos sueldos feriados calendario' },
     ],
   },

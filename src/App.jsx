@@ -9,6 +9,7 @@ import AnthonyChat from './componentes/asistente/AnthonyChat';
 import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
 import PlazaPage, { TablerosInicio, TablerosSector, TablerosTodos, PlazaViejaRedirect } from './paginas/PlazaPage';
+import Produccion from './paginas/Produccion';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
@@ -330,6 +331,8 @@ export default function App() {
                 <Route path="/tableros/sector/:sid" element={<FuncionVisible id="tableros"><RequireSeccion seccion="recetas"><TablerosSector /></RequireSeccion></FuncionVisible>} />
                 <Route path="/tableros/:id" element={<FuncionVisible id="tableros"><RequireSeccion seccion="recetas"><PlazaPage /></RequireSeccion></FuncionVisible>} />
                 <Route path="/plaza/:id" element={<PlazaViejaRedirect />} />
+                {/* Tareas operativas · producción de la cocina (usuaria 21/11/2026) */}
+                <Route path="/produccion" element={<FuncionVisible id="produccion"><Produccion /></FuncionVisible>} />
                 <Route
                   path="/agrupacioneslist"
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}
