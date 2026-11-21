@@ -244,7 +244,7 @@ export default function AnthonyChat() {
     <>
       {avisoArrastre}
       {abierto && (
-      <div data-no-captura="" role="dialog" aria-label="Chat con Anthony" style={{
+      <div ref={fueraDeVentanas} data-no-captura="" role="dialog" aria-label="Chat con Anthony" style={{
         position: 'fixed', right: 20, bottom: 20, zIndex: 1500, width: 'min(380px, calc(100vw - 32px))', maxHeight: 'min(620px, calc(100vh - 40px))',
         background: '#fff', borderRadius: 16, boxShadow: '0 12px 44px rgba(0,0,0,.3)', border: '1px solid #e5e7eb',
         display: grande ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: "'Archivo', system-ui, sans-serif",
@@ -419,10 +419,19 @@ function PuntoRojo({ n }) {
   );
 }
 
+// 21/11: con una ventana de Lazarillo abierta (Dialog de MUI: una receta, un insumo…) no se podía
+// escribir en el chat: esas ventanas escuchan 'focusin' en todo el documento y, si el foco se va
+// afuera, se lo vuelven a llevar. El chat vive afuera de ellas, así que el evento se corta en su raíz.
+const fueraDeVentanas = (el) => {
+  if (!el || el.dataset.sinTrampa) return;
+  el.dataset.sinTrampa = '1';
+  el.addEventListener('focusin', (e) => e.stopPropagation());
+};
+
 // Chat grande: la captura a la izquierda (o arriba en celular) y el pedido al lado.
 function ChatGrande({ captura, tipo, setTipo, mensaje, setMensaje, titulo, pedido, enviando, error, onEnviar, onCancelar, onRecapturar, onCambiar, onQuitar, onPegar, delSistema }) {
   return (
-    <div data-no-captura="" role="dialog" aria-label="Contanos tu pedido" onPaste={onPegar}
+    <div ref={fueraDeVentanas} data-no-captura="" role="dialog" aria-label="Contanos tu pedido" onPaste={onPegar}
       style={{ position: 'fixed', inset: 0, zIndex: 1600, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: "'Archivo', system-ui, sans-serif" }}>
       <div style={{ background: '#fff', borderRadius: 16, width: 'min(1000px, 100%)', maxHeight: '100%', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.35)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: '#15213E', color: '#fff' }}>
