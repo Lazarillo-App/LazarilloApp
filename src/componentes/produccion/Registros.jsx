@@ -196,7 +196,17 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
   const [nota, setNota] = useState('');
   const [msg, setMsg] = useState('');
   const [k, setK] = useState(0);
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    setInfo(null);
+    if (!insumo?.id) return undefined;
+    let vivo = true;
+    ProduccionAPI.mermaInsumo(businessId, insumo.id).then((r) => { if (vivo) setInfo(r); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [businessId, insumo?.id]);
   const b = Number(String(bruto).replace(',', '.')), n = Number(String(neto).replace(',', '.'));
+  const conf = info?.configuradas?.find((x) => x.es_default) || info?.configuradas?.[0] || null;
+  const esperado = conf?.pct != null && b > 0 ? b * (1 - conf.pct / 100) : null;
   const pct = b > 0 && n >= 0 && n <= b ? Math.round(((b - n) / b) * 1000) / 10 : null;
   const guardar = async () => {
     setMsg('');
@@ -209,12 +219,26 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <Texto sutil style={{ fontSize: 12 }}>Pesá antes y después de limpiar (carne, verdura, pescado…). Se compara con la merma que tiene cargada el insumo.</Texto>
       <Campo label="Insumo"><BuscarInsumo key={k} businessId={businessId} valor={insumo?.id ? insumo : null} obligatorio onElegir={setInsumo} /></Campo>
+      {info && (
+        <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 10px', fontFamily: FB, fontSize: 12.5, color: T.text2 }}>
+          {info.configuradas.length ? info.configuradas.map((m, i) => (
+            <div key={i}>Merma cargada{m.nombre ? ` «${m.nombre}»` : ''}: <b style={{ color: T.ink }}>{m.pct}%</b> (de {fmtCant(m.peso_inicial, unidad)} quedan {fmtCant(m.peso_final, unidad)})</div>
+          )) : <div>El insumo no tiene merma cargada: lo que midas sirve para cargarla.</div>}
+          {info.ultimas.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              Últimas medidas: {info.ultimas.map((u) => `${u.pct}%`).join(' · ')}{info.promedio != null && <> · promedio <b>{info.promedio}%</b></>}
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8 }}>
         <Campo label="Peso bruto" style={{ flex: 1 }}><Entrada inputMode="decimal" value={bruto} onChange={(e) => setBruto(e.target.value)} /></Campo>
         <Campo label="Peso limpio" style={{ flex: 1 }}><Entrada inputMode="decimal" value={neto} onChange={(e) => setNeto(e.target.value)} /></Campo>
         <Campo label="Unidad" style={{ width: 90 }}><Selector value={unidad} onChange={setUnidad} opciones={UNIDADES.filter((u) => ['gr', 'kg', 'ml', 'lt'].includes(u.value))} /></Campo>
       </div>
-      {pct != null && <Texto>Merma: <b style={{ color: T.ink }}>{pct}%</b> ({fmtCant(b - n, unidad)} afuera)</Texto>}
+      {esperado != null && !neto && <Texto sutil>Con la merma cargada te tendrían que quedar {fmtCant(esperado, unidad)} limpios.</Texto>}
+      {pct != null && <Texto>Merma: <b style={{ color: conf?.pct != null && pct > conf.pct + 3 ? T.warn : T.ink }}>{pct}%</b> ({fmtCant(b - n, unidad)} afuera)
+        {conf?.pct != null && <> · cargada {conf.pct}%</>}</Texto>}
       <Campo label="Nota (opcional)"><Entrada value={nota} maxLength={300} onChange={(e) => setNota(e.target.value)} /></Campo>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {msg && <span style={{ fontFamily: FB, fontSize: 12.5, color: msg.endsWith('✓') ? T.ok : T.bad, flex: 1 }}>{msg}</span>}

@@ -120,7 +120,48 @@ function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel, businessId, ta
   );
 }
 
-function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCambiar, onDeshacer, onDecidir, onAprobaciones }) {
+/** «La receta pide 55 kg de nalga pero hay 51»: recalcula TODA la fórmula en proporción. */
+function AjustarModal({ abierto, item, tarea, insumos, onCerrar, onAplicar, cel }) {
+  const [hay, setHay] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => { if (abierto && item) { setHay(String(item.cantidad ?? '').replace('.', ',')); setError(''); } }, [abierto, item]);
+  if (!abierto || !item || !tarea) return null;
+  const v = Number(String(hay).replace(',', '.'));
+  const factor = v > 0 && item.cantidad > 0 ? v / item.cantidad : null;
+  const tandasNuevas = factor ? Math.round(Number(tarea.tandas) * factor * 1000) / 1000 : null;
+  const aplicar = async () => { const err = await onAplicar(v); if (err) setError(err); else onCerrar(); };
+  return (
+    <Modal abierto={abierto} onCerrar={onCerrar} cel={cel} ancho={520} titulo={`Ajustar por ${item.nombre}`}
+      pie={<>{error && <span style={{ color: T.bad, fontFamily: FB, fontSize: 12.5, marginRight: 'auto' }}>{error}</span>}
+        <Boton onClick={onCerrar}>Cancelar</Boton>
+        <Boton primario deshabilitado={!factor || Math.abs(factor - 1) < 0.0005} onClick={aplicar}>Recalcular todo</Boton></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Texto>Para {textoTandas(tarea.tandas)} la receta pide <b>{fmtCant(item.cantidad, item.unidad)}</b> de {item.nombre}. ¿Cuánto hay?</Texto>
+        <Campo label={`Hay (${unidadCorta(item.unidad)})`} style={{ maxWidth: 200 }}>
+          <Entrada autoFocus inputMode="decimal" value={hay} onChange={(e) => setHay(e.target.value)} />
+        </Campo>
+        {factor && Math.abs(factor - 1) >= 0.0005 && (
+          <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, fontFamily: FB }}>
+            <div style={{ fontSize: 13.5, color: T.text, marginBottom: 8 }}>
+              Queda en <b>{fmtTandas(tandasNuevas)} tandas</b>
+              {tarea.rinde_esperado != null && <> · rinde <b>{fmtCant(tarea.rinde_esperado * factor, tarea.unidad)}</b></>}
+              {tarea.minutos_estimados != null && <> · {fmtMin(tarea.minutos_estimados * factor)}</>}
+            </div>
+            {insumos.filter((x) => !x.agregado && x.cantidad != null).map((x, i) => (
+              <div key={x.id ?? `r${i}`} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '3px 0', color: T.text2 }}>
+                <span style={{ flex: 1 }}>{x.nombre}</span>
+                <span style={{ color: T.text3, textDecoration: 'line-through' }}>{fmtCant(x.cantidad, x.unidad)}</span>
+                <b style={{ color: T.ink, minWidth: 80, textAlign: 'right' }}>{fmtCant(x.cantidad * factor, x.unidad)}</b>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCambiar, onDeshacer, onDecidir, onAprobaciones, onAjustar }) {
   const cambiado = it.cambio || it.falta || it.agregado;
   const colorCambio = it.cambio === 'aprobado' ? T.ok : it.cambio === 'rechazado' ? T.bad : T.warn;
   return (
@@ -161,6 +202,9 @@ function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCamb
           </div>
         )}
       </div>
+      {onAjustar && !it.agregado && it.cantidad != null && !it.falta && (
+        <Boton chico onClick={() => onAjustar(it)} title="Tengo otra cantidad: recalcular toda la receta en proporción">⚖ Ajustar</Boton>
+      )}
       {enCurso && puedeEjecutar && !cambiado && <Boton chico onClick={() => onCambiar(it)} title="No había, usé otro u otra cantidad">Cambió</Boton>}
     </div>
   );
@@ -177,6 +221,7 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
   const [nota, setNota] = useState('');
   const [editando, setEditando] = useState(false);
   const [etiquetas, setEtiquetas] = useState(false);
+  const [ajustar, setAjustar] = useState(null);
 
   const cargar = useCallback(async () => {
     if (!tareaId) return;
@@ -276,6 +321,7 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
                     onTildar={(x, v) => hacer(() => ProduccionAPI.insumo(businessId, t.id, x.id, { usado: v }))}
                     onCambiar={(x) => setCambio(x)}
                     onAprobaciones={() => navigate('/configuracion?tab=6')}
+                    onAjustar={puede.ejecutar && t.estado !== 'hecha' && t.estado !== 'cancelada' ? (x) => setAjustar(x) : null}
                     onDeshacer={(x) => hacer(() => ProduccionAPI.insumo(businessId, t.id, x.id, { deshacer: true }))}
                     onDecidir={(x, dec) => {
                       const n = dec === 'rechazado' ? window.prompt('¿Por qué lo rechazás? (lo ve el cocinero)') : '';
@@ -352,6 +398,8 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
           </div>
         )}
       </Modal>
+      <AjustarModal abierto={!!ajustar} item={ajustar} tarea={t} insumos={d?.insumos || []} cel={cel} onCerrar={() => setAjustar(null)}
+        onAplicar={(cant) => hacer(() => ProduccionAPI.escalar(businessId, t.id, ajustar.id ? { item_id: ajustar.id, cantidad: cant } : { receta_item_id: ajustar.receta_item_id, cantidad: cant }))} />
       <EtiquetasModal abierto={etiquetas} onCerrar={() => setEtiquetas(false)} tarea={t} etiqueta={d?.etiqueta} cel={cel} />
       <DialogoCambio abierto={!!cambio} item={cambio} cel={cel} onCerrar={() => setCambio(null)} businessId={businessId} tandas={t?.tandas}
         permiteReceta={t?.tipo === 'produccion'}
