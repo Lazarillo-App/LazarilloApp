@@ -205,7 +205,8 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
     return () => { vivo = false; };
   }, [businessId, insumo?.id]);
   const b = Number(String(bruto).replace(',', '.')), n = Number(String(neto).replace(',', '.'));
-  const conf = info?.configuradas?.find((x) => x.es_default) || info?.configuradas?.[0] || null;
+  const conf = info?.configuradas?.find((x) => x.es_default) || info?.configuradas?.[0]
+    || (info?.desperdicio != null ? { nombre: 'desperdicio del insumo', pct: info.desperdicio } : null);
   const esperado = conf?.pct != null && b > 0 ? b * (1 - conf.pct / 100) : null;
   const pct = b > 0 && n >= 0 && n <= b ? Math.round(((b - n) / b) * 1000) / 10 : null;
   const guardar = async () => {
@@ -223,7 +224,9 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
         <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 10px', fontFamily: FB, fontSize: 12.5, color: T.text2 }}>
           {info.configuradas.length ? info.configuradas.map((m, i) => (
             <div key={i}>Merma cargada{m.nombre ? ` «${m.nombre}»` : ''}: <b style={{ color: T.ink }}>{m.pct}%</b> (de {fmtCant(m.peso_inicial, unidad)} quedan {fmtCant(m.peso_final, unidad)})</div>
-          )) : <div>El insumo no tiene merma cargada: lo que midas sirve para cargarla.</div>}
+          )) : info.desperdicio != null
+            ? <div>No tiene merma de limpieza cargada; su desperdicio es <b style={{ color: T.ink }}>{info.desperdicio}%</b>.</div>
+            : <div>El insumo no tiene merma cargada: lo que midas sirve para cargarla en su pestaña Merma.</div>}
           {info.ultimas.length > 0 && (
             <div style={{ marginTop: 4 }}>
               Últimas medidas: {info.ultimas.map((u) => `${u.pct}%`).join(' · ')}{info.promedio != null && <> · promedio <b>{info.promedio}%</b></>}

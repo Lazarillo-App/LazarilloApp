@@ -60,11 +60,13 @@ export function Modal({ abierto, onCerrar, titulo, children, pie, ancho = 560, c
 
 export function Campo({ label, children, ayuda, style }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontFamily: FB, ...style }}>
+    // div y no label: dentro de un label, el navegador reenvía cada clic al primer botón o campo
+    // (tocar «2» tandas terminaba en «½», y no se podía elegir de una lista).
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontFamily: FB, ...style }}>
       <span style={{ fontSize: 12, fontWeight: 600, color: T.text2 }}>{label}</span>
       {children}
       {ayuda && <span style={{ fontSize: 11.5, color: T.text3 }}>{ayuda}</span>}
-    </label>
+    </div>
   );
 }
 const estiloInput = {
