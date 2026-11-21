@@ -359,10 +359,15 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
                       const m = window.prompt('¿Por qué se cancela? (opcional)'); if (m === null) return;
                       hacer(() => ProduccionAPI.accion(businessId, t.id, 'cancelar', { motivo: m }));
                     }}>Cancelar tarea</Boton>}
-                    {t.estado === 'pendiente' && <Boton chico peligro onClick={async () => {
-                      if (!window.confirm('¿Borrar esta tarea?')) return;
-                      try { await ProduccionAPI.borrar(businessId, t.id); onCambio?.(); onCerrar(); } catch (e) { setError(textoError(e)); }
-                    }}>Borrar</Boton>}
+                    <Boton chico peligro onClick={async () => {
+                      // Se borra en cualquier estado (se cargó, se hizo o se cambió mal).
+                      const aviso = t.estado === 'pendiente' ? '¿Borrar esta tarea?'
+                        : t.estado === 'hecha' ? 'Esta tarea ya se hizo. Si la borrás, lo que consumió deja de contar en Consumos y en el Panel. ¿Por qué la borrás?'
+                          : 'Esta tarea ya empezó. ¿Por qué la borrás?';
+                      const motivo = t.estado === 'pendiente' ? (window.confirm(aviso) ? '' : null) : window.prompt(aviso, 'Se cargó mal');
+                      if (motivo === null) return;
+                      try { await ProduccionAPI.borrar(businessId, t.id, motivo); onCambio?.(); onCerrar(); } catch (e) { setError(textoError(e)); }
+                    }}>Borrar</Boton>
                   </div>
                 ) : (
                   <EditarTarea t={t} ctx={ctx} cel={cel} onCancelar={() => setEditando(false)}

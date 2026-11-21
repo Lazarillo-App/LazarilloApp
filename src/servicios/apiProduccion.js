@@ -18,7 +18,7 @@ export const ProduccionAPI = {
   tareas: (bid, desde, hasta) => http(`${base(bid)}/tareas?desde=${desde}&hasta=${hasta}`, sin),
   crear: (bid, tareas) => http(`${base(bid)}/tareas`, { method: 'POST', body: { tareas } }),
   editar: (bid, id, body) => http(`${base(bid)}/tareas/${id}`, { method: 'PATCH', body }),
-  borrar: (bid, id) => http(`${base(bid)}/tareas/${id}`, { method: 'DELETE' }),
+  borrar: (bid, id, motivo) => http(`${base(bid)}/tareas/${id}`, { method: 'DELETE', body: { motivo } }),
   copiarSemana: (bid, desde, hacia, sumar = false) => http(`${base(bid)}/semana/copiar`, { method: 'POST', body: { desde, hacia, sumar } }),
   detalle: (bid, id) => http(`${base(bid)}/tareas/${id}`, sin),
   accion: (bid, id, accion, body = {}) => http(`${base(bid)}/tareas/${id}/${accion}`, { method: 'POST', body }),
