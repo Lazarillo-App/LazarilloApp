@@ -11,6 +11,7 @@ import BusinessIcon             from '@mui/icons-material/Business';
 import StorefrontOutlinedIcon   from '@mui/icons-material/StorefrontOutlined';
 
 import { createInvitation, listKnownPeople }   from '@/servicios/apiTeam';
+import { RolesAPI } from '@/servicios/apiRoles';
 import { listarSectores } from '@/servicios/apiSectores';
 import { useAccess }          from '@/context/AccessContext';
 import { useBusiness }        from '@/context/BusinessContext';
@@ -101,6 +102,10 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   // nunca cruza de negocio, así que si se invita a 2+ negocios a la vez cada
   // uno tiene su propio bloque de sectores.
   const [sectorSelByBiz, setSectorSelByBiz]   = useState(() => new Map());
+  // Subrol de Staff al invitar (usuaria 21/11/2026, tarea #47): Jefe de cocina, Cocinero… El back
+  // ya acepta role 'staff' + customRoleId. '' = staff común.
+  const [subrol, setSubrol]                   = useState('');
+  const [subroles, setSubroles]               = useState([]);
 
   // Cargar personas conocidas del owner al abrir (para sugerir y heredar alias)
   useEffect(() => {
@@ -180,6 +185,15 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
   }, [mostrarSelector, isOrgSelected, selectedScopeKeys, scopeId]);
 
   const sectorBizIds = role === 'staff' ? Array.from(selectedBusinessIds) : [];
+  const bizSubroles = scopeType === 'business' ? Number(scopeId) : (sectorBizIds[0] || null);
+  useEffect(() => {
+    if (!open || role !== 'staff') return undefined;
+    let vivo = true;
+    RolesAPI.listStaff(bizSubroles).then((st) => { if (vivo) setSubroles(st?.subroles || []); }).catch(() => { if (vivo) setSubroles([]); });
+    return () => { vivo = false; };
+  }, [open, role, bizSubroles]);
+  useEffect(() => { if (!open) setSubrol(''); }, [open]);
+  const subrolElegido = subroles.find((x) => String(x.id) === String(subrol)) || null;
 
   const nombreDeNegocio = (bizId) => {
     if (!mostrarSelector) return scopeName || `#${bizId}`;
@@ -245,6 +259,7 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
         scopes,
         role,
         alias: alias.trim(),
+        ...(role === 'staff' && subrol ? { customRoleId: Number(subrol) } : {}),
       });
 
       if (res?.ok) {
@@ -353,6 +368,15 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
             {puedeInvitarAdmin && <MenuItem value="admin">Administrador</MenuItem>}
             {puedeInvitarStaff && <MenuItem value="staff">Staff (operativo)</MenuItem>}
           </TextField>
+          {role === 'staff' && subroles.length > 0 && (
+            <TextField label="Subrol" select value={subrol} onChange={(e) => setSubrol(e.target.value)} fullWidth size="small"
+              helperText={subrolElegido?.permisos?.aprobar_equipo
+                ? 'Ve todos los artículos e insumos, programa la producción y da el OK a su equipo. Los sectores que marques abajo son los que conduce.'
+                : subrol ? 'Subrol a medida: ve lo que tenga habilitado en Roles.' : 'Cocinero, bachero, mozo…: ve las áreas que le marques abajo.'}>
+              <MenuItem value="">Staff común</MenuItem>
+              {subroles.map((x) => <MenuItem key={x.id} value={String(x.id)}>{x.nombre}</MenuItem>)}
+            </TextField>
+          )}
           {role === 'owner' && (
             <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
               Ve y edita todo, como vos. El titular de la cuenta sigue siendo uno solo.
