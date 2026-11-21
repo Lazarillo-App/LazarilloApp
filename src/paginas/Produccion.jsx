@@ -15,6 +15,7 @@ import GrillaSemana, { TarjetaTarea } from '@/componentes/produccion/GrillaSeman
 import ProgramarModal from '@/componentes/produccion/ProgramarModal';
 import TareaDetalle from '@/componentes/produccion/TareaDetalle';
 import { TurnosModal, Estimados, Cambios, PanelGeneral, EquipoAreas } from '@/componentes/produccion/Paneles';
+import { MiseEnPlace, Registros, Consumos } from '@/componentes/produccion/Registros';
 import { useNavigate } from 'react-router-dom';
 import { Boton, Pastilla, Vacio, Texto } from '@/componentes/produccion/ui';
 import { isoHoy, lunesDe, sumarDias, diasDeSemana, rangoSemana, diaLargo, textoError } from '@/componentes/produccion/util';
@@ -142,9 +143,10 @@ export default function Produccion() {
   if (!ctx) return <div style={{ padding: 24, fontFamily: FB, color: T.text3 }}>Cargando…</div>;
 
   const pestañas = ctx.planifica
-    ? [['turno', 'Semana'], ['persona', 'Por persona'], ['plaza', 'Por plaza'], ['mias', 'Mis tareas'], ['panel', 'Panel'], ['estimados', 'Estimados'], ['equipo', 'Equipo'], ...(ctx.decide ? [['cambios', 'Cambios']] : [])]
-    : [['mias', 'Mis tareas'], ['semana_staff', 'Semana']];
-  const enSemana = ['turno', 'persona', 'plaza', 'semana_staff', 'panel'].includes(vista);
+    ? [['turno', 'Semana'], ['persona', 'Por persona'], ['plaza', 'Por plaza'], ['mias', 'Mis tareas'], ['panel', 'Panel'], ...(ctx.decide ? [['cambios', 'Cambios']] : []), ['registros', 'Mermas y desperdicios'], ['consumos', 'Consumos'],
+      ['mise', 'Mise en place'], ['estimados', 'Estimados'], ['equipo', 'Equipo']]
+    : [['mias', 'Mis tareas'], ['semana_staff', 'Semana'], ['registros', 'Mermas y desperdicios']];
+  const enSemana = ['turno', 'persona', 'plaza', 'semana_staff', 'panel', 'registros', 'consumos'].includes(vista);
   const mias = tareas.filter((t) => t.responsable_user_id === ctx.uid || (!t.responsable_user_id && !ctx.planifica));
 
   return (
@@ -210,6 +212,9 @@ export default function Produccion() {
         {vista === 'estimados' && <Estimados businessId={bid} elaborados={elaborados} ctx={ctx} onCambio={cargarElaborados} cel={cel} />}
         {vista === 'cambios' && <Cambios cambios={cambios} onAbrir={(id) => setAbierta(id)} onDecidir={decidir} onAprobaciones={() => navigate('/configuracion?tab=6')} />}
         {vista === 'equipo' && <EquipoAreas businessId={bid} ctx={ctx} onCambio={cargarCtx} />}
+        {vista === 'mise' && <MiseEnPlace businessId={bid} ctx={ctx} cel={cel} />}
+        {vista === 'registros' && <Registros businessId={bid} ctx={ctx} desde={lunes} hasta={sumarDias(lunes, 6)} cel={cel} />}
+        {vista === 'consumos' && <Consumos businessId={bid} desde={lunes} hasta={sumarDias(lunes, 6)} cel={cel} />}
       </div>
 
       <ProgramarModal abierto={!!programar} inicial={programar} onCerrar={() => setProgramar(null)} onGuardar={crear}

@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router-dom';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { ProduccionAPI } from '@/servicios/apiProduccion';
 import { Modal, Boton, Campo, Entrada, Selector, Pastilla, Texto } from './ui';
+import BuscarInsumo from './BuscarInsumo';
+import EtiquetasModal from './EtiquetasModal';
 import { ESTADOS, fmtTandas, textoTandas, fmtCant, fmtMin, fmtReloj, diaLargo, unidadCorta, textoError, sumarDias, lunesDe } from './util';
 
 function Reloj({ tarea }) {
@@ -34,44 +36,7 @@ function Reloj({ tarea }) {
   );
 }
 
-/** Elegir un insumo de la lista (para cambiar la receta tiene que ser uno real, con su costo). */
-function BuscarInsumo({ businessId, valor, onElegir, obligatorio }) {
-  const [q, setQ] = useState('');
-  const [res, setRes] = useState([]);
-  useEffect(() => {
-    if (valor || q.trim().length < 2) { setRes([]); return undefined; }
-    const h = setTimeout(async () => {
-      try { const r = await ProduccionAPI.buscarInsumos(businessId, q.trim()); setRes(r.items || []); } catch { setRes([]); }
-    }, 250);
-    return () => clearTimeout(h);
-  }, [q, valor, businessId]);
-  if (valor) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: `1px solid ${T.border2}`, borderRadius: 10, background: T.head, fontFamily: FB }}>
-        <span style={{ flex: 1, fontWeight: 600, color: T.text }}>{valor.nombre}</span>
-        <Boton chico onClick={() => { onElegir(null); setQ(''); }}>Cambiar</Boton>
-      </div>
-    );
-  }
-  return (
-    <div>
-      <Entrada autoFocus value={q} onChange={(e) => { setQ(e.target.value); if (!obligatorio) onElegir({ id: null, nombre: e.target.value }); }}
-        placeholder={obligatorio ? 'Buscá el insumo…' : 'Buscá el insumo o escribí el nombre'} />
-      {res.length > 0 && (
-        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
-          {res.map((i) => (
-            <div key={i.id} onClick={() => { onElegir(i); setRes([]); }}
-              style={{ padding: '8px 10px', cursor: 'pointer', borderBottom: `1px solid ${T.border}`, fontFamily: FB, fontSize: 13.5, display: 'flex', gap: 8 }}>
-              <span style={{ flex: 1, color: T.text }}>{i.nombre}</span><span style={{ color: T.text3, fontSize: 12 }}>{unidadCorta(i.unidad)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel, businessId, tandas }) {
+function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel, businessId, tandas, permiteReceta = true }) {
   const [alcance, setAlcance] = useState('produccion');
   const [modo, setModo] = useState('falta');
   const [insumo, setInsumo] = useState(null);
@@ -114,10 +79,12 @@ function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel, businessId, ta
       pie={<>{error && <span style={{ color: T.bad, fontFamily: FB, fontSize: 12.5, marginRight: 'auto' }}>{error}</span>}
         <Boton onClick={onCerrar}>Cancelar</Boton><Boton primario onClick={guardar}>{receta ? 'Proponer cambio de receta' : 'Guardar cambio'}</Boton></>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {tarjeta('produccion', 'Solo esta producción', 'No había, o vino uno distinto y lo reemplacé hoy.')}
-          {tarjeta('receta', 'Cambio de receta', 'La receta cambió: queda así de ahora en más si se aprueba.')}
-        </div>
+        {permiteReceta && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {tarjeta('produccion', 'Solo esta producción', 'No había, o vino uno distinto y lo reemplacé hoy.')}
+            {tarjeta('receta', 'Cambio de receta', 'La receta cambió: queda así de ahora en más si se aprueba.')}
+          </div>
+        )}
         {!nuevo && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Boton activo={modo === 'falta'} onClick={() => setModo('falta')}>{receta ? 'Ya no va' : 'No había'}</Boton>
@@ -209,6 +176,7 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
   const [rinde, setRinde] = useState('');
   const [nota, setNota] = useState('');
   const [editando, setEditando] = useState(false);
+  const [etiquetas, setEtiquetas] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!tareaId) return;
@@ -276,25 +244,33 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
                     {t.estado === 'pendiente' && <Boton primario deshabilitado={ocupado} onClick={() => hacer(() => ProduccionAPI.accion(businessId, t.id, 'iniciar'))} style={{ minWidth: 160, minHeight: 44, fontSize: 15 }}>▶ Empezar</Boton>}
                     {t.estado === 'en_curso' && <Boton deshabilitado={ocupado} onClick={() => hacer(() => ProduccionAPI.accion(businessId, t.id, 'pausar'))} style={{ minHeight: 44 }}>❚❚ Pausar</Boton>}
                     {t.estado === 'pausada' && <Boton primario deshabilitado={ocupado} onClick={() => hacer(() => ProduccionAPI.accion(businessId, t.id, 'reanudar'))} style={{ minHeight: 44 }}>▶ Retomar</Boton>}
-                    {enCurso && <Boton primario deshabilitado={ocupado} onClick={() => { setRinde(t.rinde_esperado != null ? String(t.rinde_esperado).replace('.', ',') : ''); setTerminar(true); }} style={{ minHeight: 44 }}>✓ Terminé</Boton>}
+                    {enCurso && <Boton primario deshabilitado={ocupado} onClick={() => {
+                      if (t.tipo !== 'produccion') { hacer(() => ProduccionAPI.accion(businessId, t.id, 'terminar')); return; }
+                      setRinde(t.rinde_esperado != null ? String(t.rinde_esperado).replace('.', ',') : ''); setTerminar(true);
+                    }} style={{ minHeight: 44 }}>✓ Terminé</Boton>}
                   </div>
                 )
+              )}
+              {d.etiqueta && (t.estado === 'hecha' || enCurso) && (
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <Boton onClick={() => setEtiquetas(true)}>🏷 Etiquetas · {d.etiqueta.lote}</Boton>
+                </div>
               )}
               {t.estado === 'pendiente' && t.tipo === 'produccion' && puede.ejecutar && (
                 <Texto sutil style={{ textAlign: 'center', fontSize: 12 }}>Al empezar se fija la receta y arranca el reloj.</Texto>
               )}
             </div>
 
-            {/* Ingredientes */}
-            {t.tipo === 'produccion' && (
+            {/* Ingredientes (o lo que se arma en la plaza) */}
+            {(t.tipo === 'produccion' || t.tipo === 'mise_en_place') && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, flex: 1 }}>
-                    Ingredientes <span style={{ fontFamily: FB, fontWeight: 400, fontSize: 12, color: T.text3 }}>para {textoTandas(t.tandas)}</span>
+                    {t.tipo === 'mise_en_place' ? 'Lo que se arma en la plaza' : <>Ingredientes <span style={{ fontFamily: FB, fontWeight: 400, fontSize: 12, color: T.text3 }}>para {textoTandas(t.tandas)}</span></>}
                   </div>
                   {pendientes > 0 && <Pastilla color={T.warn} fondo="#FBF3E2">{pendientes} por aprobar</Pastilla>}
                 </div>
-                {!d.insumos.length && <Texto sutil>La receta no tiene ingredientes cargados.</Texto>}
+                {!d.insumos.length && <Texto sutil>{t.tipo === 'mise_en_place' ? 'La plaza no tiene mise en place cargado (pestaña Mise en place).' : 'La receta no tiene ingredientes cargados.'}</Texto>}
                 {d.insumos.map((it, i) => (
                   <FilaInsumo key={it.id ?? `r${i}`} it={it} enCurso={enCurso} puedeEjecutar={puede.ejecutar} puedeDecidir={puede.decidir}
                     onTildar={(x, v) => hacer(() => ProduccionAPI.insumo(businessId, t.id, x.id, { usado: v }))}
@@ -376,7 +352,9 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
           </div>
         )}
       </Modal>
+      <EtiquetasModal abierto={etiquetas} onCerrar={() => setEtiquetas(false)} tarea={t} etiqueta={d?.etiqueta} cel={cel} />
       <DialogoCambio abierto={!!cambio} item={cambio} cel={cel} onCerrar={() => setCambio(null)} businessId={businessId} tandas={t?.tandas}
+        permiteReceta={t?.tipo === 'produccion'}
         onGuardar={(body) => hacer(() => (cambio?.id
           ? ProduccionAPI.insumo(businessId, t.id, cambio.id, { cambio: body })
           : ProduccionAPI.agregarInsumo(businessId, t.id, body)))} />

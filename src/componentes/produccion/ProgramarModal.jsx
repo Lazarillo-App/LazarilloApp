@@ -58,14 +58,14 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
   const equipo = (ctx?.equipo || []).map((u) => ({ value: String(u.id), label: `${u.nombre}${u.jefe ? ' · jefe' : u.rol !== 'staff' ? ` · ${u.rol === 'owner' ? 'dueño' : 'admin'}` : ''}` }));
   const toggleFecha = (d) => setFechas((f) => (f.includes(d) ? f.filter((x) => x !== d) : [...f, d].sort()));
 
-  const valido = fechas.length > 0 && (tipo === 'produccion' ? insumoId && k > 0 : titulo.trim());
+  const valido = fechas.length > 0 && (tipo === 'produccion' ? insumoId && k > 0 : tipo === 'mise_en_place' ? !!plaza : titulo.trim());
   const guardar = async () => {
     if (!valido) return;
     setGuardando(true); setError('');
     const base = {
       turno_id: Number(turno) || null, responsable_user_id: Number(resp) || null, plaza_id: Number(plaza) || null,
       minutos_estimados: minutos === '' ? null : Number(minutos),
-      ...(tipo === 'produccion' ? { insumo_id: insumoId, tandas: k } : { titulo: titulo.trim() }),
+      ...(tipo === 'produccion' ? { insumo_id: insumoId, tandas: k } : tipo === 'mise_en_place' ? { tipo: 'mise_en_place' } : { titulo: titulo.trim() }),
     };
     const err = await onGuardar(fechas.map((fecha) => ({ ...base, fecha })));
     setGuardando(false);
@@ -84,6 +84,7 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <Boton activo={tipo === 'produccion'} onClick={() => setTipo('produccion')}>Elaborado</Boton>
+          <Boton activo={tipo === 'mise_en_place'} onClick={() => setTipo('mise_en_place')}>Mise en place</Boton>
           <Boton activo={tipo === 'otra'} onClick={() => setTipo('otra')}>Otra tarea</Boton>
         </div>
 
@@ -116,6 +117,8 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
               </>
             )}
           </Campo>
+        ) : tipo === 'mise_en_place' ? (
+          <Texto sutil>Armar la plaza al empezar el turno. Lo que se deja (sal, aceite, salsas…) sale de la plantilla de la plaza y cuenta como consumo al terminar.</Texto>
         ) : (
           <Campo label="Qué hay que hacer" ayuda="Para tareas que no son un elaborado: limpiar la cámara, armar un pedido…">
             <Entrada autoFocus value={titulo} maxLength={120} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej.: Limpieza de cámara" />
@@ -144,7 +147,7 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
           <Campo label="Responsable">
             <Selector value={resp} onChange={setResp} vacio="Sin asignar (la toma quien pueda)" opciones={equipo} />
           </Campo>
-          <Campo label="Plaza">
+          <Campo label={tipo === 'mise_en_place' ? 'Plaza (obligatoria)' : 'Plaza'}>
             <Selector value={plaza} onChange={setPlaza} vacio="Sin plaza" opciones={(ctx?.plazas || []).map((p) => ({ value: String(p.id), label: p.sector ? `${p.nombre} · ${p.sector}` : p.nombre }))} />
           </Campo>
           <Campo label="Tiempo estimado (min)" ayuda={minutos ? fmtMin(minutos) : 'Lo organiza el jefe; se aprende de lo que se va produciendo.'}>

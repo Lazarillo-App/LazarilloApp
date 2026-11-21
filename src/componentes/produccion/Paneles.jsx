@@ -55,7 +55,7 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
     setGuardando(e.insumo_id);
     try {
       await ProduccionAPI.guardarElaborado(businessId, e.insumo_id, {
-        minutos_tanda: e.minutos_tanda, plaza_id: e.plaza_id, responsable_user_id: e.responsable_user_id, ...cambios,
+        minutos_tanda: e.minutos_tanda, plaza_id: e.plaza_id, responsable_user_id: e.responsable_user_id, dias_vida: e.dias_vida, ...cambios,
       });
       onCambio();
     } finally { setGuardando(null); }
@@ -72,7 +72,7 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
           <thead>
             <tr style={{ textAlign: 'left', color: T.text3, fontSize: 11.5 }}>
               <th style={{ padding: 8 }}>Elaborado</th><th style={{ padding: 8 }}>Rinde / tanda</th><th style={{ padding: 8 }}>Min / tanda</th>
-              <th style={{ padding: 8 }}>Real</th><th style={{ padding: 8 }}>Por semana</th><th style={{ padding: 8 }}>Plaza</th><th style={{ padding: 8 }}>Responsable</th>
+              <th style={{ padding: 8 }}>Real</th><th style={{ padding: 8 }}>Por semana</th><th style={{ padding: 8 }} title="Para el vencimiento de la etiqueta">Vida útil (días)</th><th style={{ padding: 8 }}>Plaza</th><th style={{ padding: 8 }}>Responsable</th>
             </tr>
           </thead>
           <tbody>
@@ -88,6 +88,10 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
                   {e.minutos_reales_tanda != null ? fmtMin(e.minutos_reales_tanda) : '—'}
                 </td>
                 <td style={{ padding: 8, color: T.text2 }}>{e.tandas_semana ? `${fmtTandas(e.tandas_semana)} tandas` : '—'}</td>
+                <td style={{ padding: 8 }}>
+                  <Entrada inputMode="numeric" defaultValue={e.dias_vida ?? ''} style={{ width: 70 }} aria-label={`Días de vida útil de ${e.nombre}`}
+                    onBlur={(ev) => { const v = ev.target.value.trim() === '' ? null : Number(ev.target.value); if (v !== e.dias_vida) guardar(e, { dias_vida: v }); }} />
+                </td>
                 <td style={{ padding: 8 }}>
                   <Selector value={e.plaza_id ? String(e.plaza_id) : ''} vacio="—" style={{ minWidth: 120 }}
                     opciones={(ctx?.plazas || []).map((p) => ({ value: String(p.id), label: p.nombre }))} onChange={(v) => guardar(e, { plaza_id: Number(v) || null })} />

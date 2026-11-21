@@ -27,5 +27,13 @@ export const ProduccionAPI = {
   decidir: (bid, id, itemId, decision, nota) => http(`${base(bid)}/tareas/${id}/insumos/${itemId}/decision`, { method: 'POST', body: { decision, nota } }),
   nota: (bid, id, texto) => http(`${base(bid)}/tareas/${id}/notas`, { method: 'POST', body: { texto } }),
   cambios: (bid) => http(`${base(bid)}/cambios`, sin),
+  mise: (bid) => http(`${base(bid)}/mise`, sin),
+  guardarMise: (bid, plazaId, items) => http(`${base(bid)}/mise/${plazaId}`, { method: 'PUT', body: { items } }),
+  mermas: (bid, desde, hasta) => http(`${base(bid)}/mermas?desde=${desde}&hasta=${hasta}`, sin),
+  crearMerma: (bid, body, desde, hasta) => http(`${base(bid)}/mermas?desde=${desde}&hasta=${hasta}`, { method: 'POST', body }),
+  desperdicios: (bid, desde, hasta) => http(`${base(bid)}/desperdicios?desde=${desde}&hasta=${hasta}`, sin),
+  crearDesperdicio: (bid, body, desde, hasta) => http(`${base(bid)}/desperdicios?desde=${desde}&hasta=${hasta}`, { method: 'POST', body }),
+  borrarRegistro: (bid, tipo, id) => http(`${base(bid)}/registros/${tipo}/${id}`, { method: 'DELETE' }),
+  consumos: (bid, desde, hasta) => http(`${base(bid)}/consumos?desde=${desde}&hasta=${hasta}`, sin),
   panel: (bid, desde, hasta) => http(`${base(bid)}/panel?desde=${desde}&hasta=${hasta}`, sin),
 };
