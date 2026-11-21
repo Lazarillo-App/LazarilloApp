@@ -106,7 +106,9 @@ export default function Navbar() {
   const [verPendientes, setVerPendientes] = useState(false);
   // Menú (vista diseño, la carta): el Staff no lo usa; se habilita por rol con «ver_menu» (Diego 11/11/2026).
   const veMenuDiseno = !isStaff || staffPuede('ver_menu');
-  const produccionOculta = estaOculta(useFuncionesOcultas(), 'produccion');
+  const funcionesOcultas = useFuncionesOcultas();
+  const produccionOculta = estaOculta(funcionesOcultas, 'produccion');
+  const mantenimientoOculto = estaOculta(funcionesOcultas, 'mantenimiento');
 
   const { activeBusinessId, items: negocios } = useBusiness() || {};
   // Movimientos bancarios: en el header van solo los bancos conectados (Diego 14/11/2026).
@@ -188,6 +190,7 @@ export default function Navbar() {
     if (p.startsWith('/rrhh')) return 'RRHH';
     if (p.startsWith('/tableros')) return 'Tableros';
     if (p.startsWith('/produccion')) return 'Producción';
+    if (p.startsWith('/mantenimiento')) return 'Mantenimiento';
     if (p.startsWith('/movimientos-bancarios')) return 'Movimientos bancarios';
     if (p.startsWith('/clientes')) return 'Clientes';
     return null;
@@ -420,6 +423,11 @@ export default function Navbar() {
                               {!produccionOculta && (
                                 <Button color="inherit" component={NavLink} to="/produccion" sx={{ color: 'inherit', position: 'relative' }}>
                                   Producción
+                                </Button>
+                              )}
+                              {!mantenimientoOculto && (
+                                <Button color="inherit" component={NavLink} to="/mantenimiento" sx={{ color: 'inherit', position: 'relative' }}>
+                                  Mantenimiento
                                 </Button>
                               )}
                             </>

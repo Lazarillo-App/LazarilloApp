@@ -10,6 +10,7 @@ import AgrupacionesList from './componentes/AgrupacionesList';
 import Insumos from './paginas/InsumosMain';
 import PlazaPage, { TablerosInicio, TablerosSector, TablerosTodos, PlazaViejaRedirect } from './paginas/PlazaPage';
 import Produccion from './paginas/Produccion';
+import Mantenimiento from './paginas/Mantenimiento';
 import RequireMaxi from './componentes/RequireMaxi';
 import OnboardingGuard from './componentes/OnboardingGuard';
 import ArticulosMain from './paginas/ArticulosMain';
@@ -333,6 +334,7 @@ export default function App() {
                 <Route path="/plaza/:id" element={<PlazaViejaRedirect />} />
                 {/* Tareas operativas · producción de la cocina (usuaria 21/11/2026) */}
                 <Route path="/produccion" element={<FuncionVisible id="produccion"><Produccion /></FuncionVisible>} />
+                <Route path="/mantenimiento" element={<FuncionVisible id="mantenimiento"><Mantenimiento /></FuncionVisible>} />
                 <Route
                   path="/agrupacioneslist"
                   element={<AgrupacionesList agrupaciones={agrupaciones} />}

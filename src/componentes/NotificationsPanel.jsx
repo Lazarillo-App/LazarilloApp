@@ -566,6 +566,11 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         navigate('/configuracion?tab=5');
       }
       // Producción: tarea asignada, cambio de ingrediente, decisión u observación → abre la tarea.
+      if (String(notif.kind || '').startsWith('mant_')) {
+        const id = notif.metadata?.orden_id;
+        setOpen(false);
+        navigate(id ? `/mantenimiento?orden=${id}` : '/mantenimiento');
+      }
       if (String(notif.kind || '').startsWith('produccion_')) {
         const id = notif.metadata?.tarea_id ?? notif.metadata?.ids?.[0];
         setOpen(false);
