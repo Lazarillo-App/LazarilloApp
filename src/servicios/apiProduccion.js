@@ -11,6 +11,8 @@ export const ProduccionAPI = {
     ? http(`${base(bid)}/turnos/${t.id}`, { method: 'PUT', body: t })
     : http(`${base(bid)}/turnos`, { method: 'POST', body: t })),
   borrarTurno: (bid, id) => http(`${base(bid)}/turnos/${id}`, { method: 'DELETE' }),
+  buscarInsumos: (bid, q) => http(`${base(bid)}/insumos?q=${encodeURIComponent(q)}`, sin),
+  asignarAreas: (bid, userId, sectorIds) => http(`${base(bid)}/equipo/${userId}/areas`, { method: 'PUT', body: { sector_ids: sectorIds } }),
   elaborados: (bid) => http(`${base(bid)}/elaborados`, sin),
   guardarElaborado: (bid, insumoId, body) => http(`${base(bid)}/elaborados/${insumoId}`, { method: 'PUT', body }),
   tareas: (bid, desde, hasta) => http(`${base(bid)}/tareas?desde=${desde}&hasta=${hasta}`, sin),

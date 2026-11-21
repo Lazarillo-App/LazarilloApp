@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { ProduccionAPI } from '@/servicios/apiProduccion';
 import { Modal, Boton, Entrada, Selector, Texto, Vacio, Pastilla } from './ui';
-import { fmtMin, fmtTandas, fmtCant, diaLargo, unidadCorta, textoError } from './util';
+import { fmtMin, fmtTandas, textoTandas, fmtCant, diaLargo, unidadCorta, textoError } from './util';
 
 export function TurnosModal({ abierto, onCerrar, businessId, turnos, onCambio, cel }) {
   const [lista, setLista] = useState([]);
@@ -105,7 +105,7 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
   );
 }
 
-export function Cambios({ cambios, onAbrir, onDecidir }) {
+export function Cambios({ cambios, onAbrir, onDecidir, onAprobaciones }) {
   if (!cambios.length) return <Vacio emoji="✅" titulo="No hay cambios para aprobar">Cuando un cocinero cambie un ingrediente (no había, usó otro u otra cantidad), aparece acá.</Vacio>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -113,7 +113,7 @@ export function Cambios({ cambios, onAbrir, onDecidir }) {
         <div key={c.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, fontFamily: FB, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: 220 }}>
             <div style={{ fontWeight: 600, color: T.text, fontSize: 14, cursor: 'pointer' }} onClick={() => onAbrir(c.tarea_id)}>
-              {c.titulo} <span style={{ fontWeight: 400, color: T.text3, fontSize: 12 }}>· {diaLargo(c.fecha)} · {fmtTandas(c.tandas)} tandas · {c.responsable || 'sin asignar'}</span>
+              {c.titulo} <span style={{ fontWeight: 400, color: T.text3, fontSize: 12 }}>· {diaLargo(c.fecha)} · {textoTandas(c.tandas)} · {c.responsable || 'sin asignar'}</span>
             </div>
             <div style={{ fontSize: 13.5, color: T.text2, marginTop: 4 }}>
               {c.agregado ? <>Agregó <b>{c.nombre_real || c.nombre} {fmtCant(c.cantidad_real, c.unidad_real)}</b></>
@@ -121,14 +121,21 @@ export function Cambios({ cambios, onAbrir, onDecidir }) {
                   : <><b>{c.nombre} {fmtCant(c.cantidad, c.unidad)}</b> → <b>{c.nombre_real || c.nombre} {fmtCant(c.cantidad_real ?? c.cantidad, c.unidad_real || c.unidad)}</b></>}
             </div>
             {c.motivo && <div style={{ fontSize: 12.5, color: T.text3, marginTop: 2 }}>«{c.motivo}»</div>}
+            <div style={{ marginTop: 6 }}>
+              {c.alcance === 'receta'
+                ? <Pastilla color={T.violet} fondo="#F1EBFE">Cambio de receta (permanente)</Pastilla>
+                : <Pastilla>Solo esta producción</Pastilla>}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <Boton chico onClick={() => onDecidir(c, 'aprobado')}>✓ Aprobar</Boton>
-            <Boton chico peligro onClick={() => onDecidir(c, 'rechazado')}>Rechazar</Boton>
+            {c.alcance === 'receta' ? <Boton chico onClick={onAprobaciones}>Ver en Aprobaciones ›</Boton> : <>
+              <Boton chico onClick={() => onDecidir(c, 'aprobado')}>✓ Aprobar</Boton>
+              <Boton chico peligro onClick={() => onDecidir(c, 'rechazado')}>Rechazar</Boton>
+            </>}
           </div>
         </div>
       ))}
-      <Texto sutil style={{ fontSize: 12 }}>Aprobar vale para esa producción. Si el cambio tiene que quedar en la receta, cambiala desde Insumos.</Texto>
+      <Texto sutil style={{ fontSize: 12 }}>«Solo esta producción» se decide acá. Los cambios de receta se deciden en Aprobaciones, con el antes, el después y el costo.</Texto>
     </div>
   );
 }
@@ -210,6 +217,51 @@ export function PanelGeneral({ datos, cel }) {
             })}</tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+/** Equipo de cocina: qué áreas cubre cada cocinero. El jefe de cocina ve todos los artículos e
+ *  insumos; al resto se le asignan áreas, y el jefe las cambia cuando hay que cubrir un puesto. */
+export function EquipoAreas({ businessId, ctx, onCambio }) {
+  const [guardando, setGuardando] = useState(null);
+  const [error, setError] = useState('');
+  const sectores = ctx?.sectores || [];
+  const gente = (ctx?.equipo || []).filter((u) => u.rol === 'staff');
+  const toggle = async (u, sid) => {
+    const ids = u.sector_ids.includes(sid) ? u.sector_ids.filter((x) => x !== sid) : [...u.sector_ids, sid];
+    setGuardando(u.id); setError('');
+    try { await ProduccionAPI.asignarAreas(businessId, u.id, ids); await onCambio(); } catch (e) { setError(textoError(e)); }
+    finally { setGuardando(null); }
+  };
+  if (!gente.length) return <Vacio emoji="👩‍🍳" titulo="Todavía no hay staff">Invitá a tu equipo de cocina desde Equipo; al jefe dale el rol de jefe de cocina.</Vacio>;
+  return (
+    <div>
+      <Texto sutil style={{ marginBottom: 10 }}>
+        El <b>jefe de cocina</b> ve todos los artículos e insumos. A cada cocinero le asignás las áreas que cubre; cambialas cuando
+        alguien tiene que cubrir otro puesto. Para una sola tarea no hace falta: asignásela directamente en la semana.
+      </Texto>
+      {error && <div style={{ color: T.bad, fontFamily: FB, fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {gente.map((u) => (
+          <div key={u.id} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 12px', border: `1px solid ${T.border}`,
+            borderRadius: 12, background: '#fff', opacity: guardando === u.id ? 0.6 : 1 }}>
+            <div style={{ minWidth: 170, fontFamily: FB }}>
+              <div style={{ fontWeight: 600, color: T.text }}>{u.nombre}</div>
+              <div style={{ fontSize: 12, color: T.text3 }}>{u.jefe ? 'Jefe de cocina · ve todo' : u.sector_ids.length ? `${u.sector_ids.length} área${u.sector_ids.length === 1 ? '' : 's'}` : 'Sin áreas: ve todo'}</div>
+            </div>
+            {u.jefe ? <Pastilla color={T.accentTxt} fondo="#E3F4FB">Todos los artículos e insumos</Pastilla> : (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {sectores.map((s) => (
+                  <Boton key={s.id} chico activo={u.sector_ids.includes(s.id)} deshabilitado={!!guardando || !ctx.planifica} onClick={() => toggle(u, s.id)}>{s.nombre}</Boton>
+                ))}
+                {!sectores.length && <Texto sutil>No hay áreas creadas (Configuración › Sectores).</Texto>}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

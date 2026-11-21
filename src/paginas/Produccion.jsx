@@ -14,7 +14,8 @@ import { showAlert } from '@/servicios/appAlert';
 import GrillaSemana, { TarjetaTarea } from '@/componentes/produccion/GrillaSemana';
 import ProgramarModal from '@/componentes/produccion/ProgramarModal';
 import TareaDetalle from '@/componentes/produccion/TareaDetalle';
-import { TurnosModal, Estimados, Cambios, PanelGeneral } from '@/componentes/produccion/Paneles';
+import { TurnosModal, Estimados, Cambios, PanelGeneral, EquipoAreas } from '@/componentes/produccion/Paneles';
+import { useNavigate } from 'react-router-dom';
 import { Boton, Pastilla, Vacio, Texto } from '@/componentes/produccion/ui';
 import { isoHoy, lunesDe, sumarDias, diasDeSemana, rangoSemana, diaLargo, textoError } from '@/componentes/produccion/util';
 
@@ -47,6 +48,7 @@ export default function Produccion() {
   const [turnosOpen, setTurnosOpen] = useState(false);
   const [abierta, setAbierta] = useState(null);
   const [cargando, setCargando] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => { cargarFuentes(); }, []);
   const dias = useMemo(() => diasDeSemana(lunes), [lunes]);
@@ -140,7 +142,7 @@ export default function Produccion() {
   if (!ctx) return <div style={{ padding: 24, fontFamily: FB, color: T.text3 }}>Cargando…</div>;
 
   const pestañas = ctx.planifica
-    ? [['turno', 'Semana'], ['persona', 'Por persona'], ['plaza', 'Por plaza'], ['mias', 'Mis tareas'], ['panel', 'Panel'], ['estimados', 'Estimados'], ...(ctx.decide ? [['cambios', 'Cambios']] : [])]
+    ? [['turno', 'Semana'], ['persona', 'Por persona'], ['plaza', 'Por plaza'], ['mias', 'Mis tareas'], ['panel', 'Panel'], ['estimados', 'Estimados'], ['equipo', 'Equipo'], ...(ctx.decide ? [['cambios', 'Cambios']] : [])]
     : [['mias', 'Mis tareas'], ['semana_staff', 'Semana']];
   const enSemana = ['turno', 'persona', 'plaza', 'semana_staff', 'panel'].includes(vista);
   const mias = tareas.filter((t) => t.responsable_user_id === ctx.uid || (!t.responsable_user_id && !ctx.planifica));
@@ -206,7 +208,8 @@ export default function Produccion() {
         {vista === 'mias' && <MisTareas tareas={mias} dias={dias} lunes={lunes} setLunes={setLunes} onAbrir={(t) => setAbierta(t.id)} cel={cel} planifica={ctx.planifica} />}
         {vista === 'panel' && <PanelGeneral datos={panel} cel={cel} />}
         {vista === 'estimados' && <Estimados businessId={bid} elaborados={elaborados} ctx={ctx} onCambio={cargarElaborados} cel={cel} />}
-        {vista === 'cambios' && <Cambios cambios={cambios} onAbrir={(id) => setAbierta(id)} onDecidir={decidir} />}
+        {vista === 'cambios' && <Cambios cambios={cambios} onAbrir={(id) => setAbierta(id)} onDecidir={decidir} onAprobaciones={() => navigate('/configuracion?tab=6')} />}
+        {vista === 'equipo' && <EquipoAreas businessId={bid} ctx={ctx} onCambio={cargarCtx} />}
       </div>
 
       <ProgramarModal abierto={!!programar} inicial={programar} onCerrar={() => setProgramar(null)} onGuardar={crear}

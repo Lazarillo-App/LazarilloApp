@@ -7,6 +7,7 @@
 //  · pasos de la receta y el hilo de observaciones de jefe y cocinero
 //  · el jefe edita tandas, día, turno, responsable, plaza y estimado; cancela, reabre o borra
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { ProduccionAPI } from '@/servicios/apiProduccion';
 import { Modal, Boton, Campo, Entrada, Selector, Pastilla, Texto } from './ui';
@@ -33,9 +34,47 @@ function Reloj({ tarea }) {
   );
 }
 
-function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel }) {
+/** Elegir un insumo de la lista (para cambiar la receta tiene que ser uno real, con su costo). */
+function BuscarInsumo({ businessId, valor, onElegir, obligatorio }) {
+  const [q, setQ] = useState('');
+  const [res, setRes] = useState([]);
+  useEffect(() => {
+    if (valor || q.trim().length < 2) { setRes([]); return undefined; }
+    const h = setTimeout(async () => {
+      try { const r = await ProduccionAPI.buscarInsumos(businessId, q.trim()); setRes(r.items || []); } catch { setRes([]); }
+    }, 250);
+    return () => clearTimeout(h);
+  }, [q, valor, businessId]);
+  if (valor) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: `1px solid ${T.border2}`, borderRadius: 10, background: T.head, fontFamily: FB }}>
+        <span style={{ flex: 1, fontWeight: 600, color: T.text }}>{valor.nombre}</span>
+        <Boton chico onClick={() => { onElegir(null); setQ(''); }}>Cambiar</Boton>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <Entrada autoFocus value={q} onChange={(e) => { setQ(e.target.value); if (!obligatorio) onElegir({ id: null, nombre: e.target.value }); }}
+        placeholder={obligatorio ? 'Buscá el insumo…' : 'Buscá el insumo o escribí el nombre'} />
+      {res.length > 0 && (
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: 10, marginTop: 4, maxHeight: 180, overflowY: 'auto' }}>
+          {res.map((i) => (
+            <div key={i.id} onClick={() => { onElegir(i); setRes([]); }}
+              style={{ padding: '8px 10px', cursor: 'pointer', borderBottom: `1px solid ${T.border}`, fontFamily: FB, fontSize: 13.5, display: 'flex', gap: 8 }}>
+              <span style={{ flex: 1, color: T.text }}>{i.nombre}</span><span style={{ color: T.text3, fontSize: 12 }}>{unidadCorta(i.unidad)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel, businessId, tandas }) {
+  const [alcance, setAlcance] = useState('produccion');
   const [modo, setModo] = useState('falta');
-  const [nombre, setNombre] = useState('');
+  const [insumo, setInsumo] = useState(null);
   const [cant, setCant] = useState('');
   const [unidad, setUnidad] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -43,55 +82,78 @@ function DialogoCambio({ item, abierto, onCerrar, onGuardar, cel }) {
   const nuevo = !item?.id;
   useEffect(() => {
     if (!abierto) return;
-    setModo(nuevo ? 'agregar' : 'falta'); setNombre(''); setCant(item?.cantidad != null ? String(item.cantidad).replace('.', ',') : '');
-    setUnidad(item?.unidad || ''); setMotivo(''); setError('');
+    setAlcance('produccion'); setModo(nuevo ? 'agregar' : 'falta'); setInsumo(null);
+    setCant(item?.cantidad != null ? String(item.cantidad).replace('.', ',') : ''); setUnidad(item?.unidad || ''); setMotivo(''); setError('');
   }, [abierto, item, nuevo]);
+  const receta = alcance === 'receta';
   const guardar = async () => {
     const c = cant === '' ? null : Number(String(cant).replace(',', '.'));
     if (!motivo.trim()) return setError('Contá por qué cambió.');
-    if ((modo === 'otro' || modo === 'agregar') && !nombre.trim()) return setError('¿Qué usaste?');
+    if (modo === 'otro' || modo === 'agregar') {
+      if (!insumo?.nombre?.trim()) return setError('¿Qué usaste?');
+      if (receta && !insumo.id) return setError('Para cambiar la receta elegí el insumo de la lista.');
+    }
     if (modo !== 'falta' && (c == null || !Number.isFinite(c))) return setError('Poné la cantidad.');
     const err = await onGuardar(modo === 'agregar'
-      ? { nombre: nombre.trim(), cantidad: c, unidad, motivo: motivo.trim() }
-      : { falta: modo === 'falta', nombre_real: modo === 'otro' ? nombre.trim() : null, cantidad_real: modo === 'falta' ? null : c, unidad_real: unidad || null, motivo: motivo.trim() });
+      ? { insumo_id: insumo.id || null, nombre: insumo.nombre.trim(), cantidad: c, unidad, motivo: motivo.trim(), alcance }
+      : { falta: modo === 'falta', insumo_real_id: modo === 'otro' ? insumo.id || null : null, nombre_real: modo === 'otro' ? insumo.nombre.trim() : null,
+        cantidad_real: modo === 'falta' ? null : c, unidad_real: unidad || null, motivo: motivo.trim(), alcance });
     if (err) setError(err); else onCerrar();
   };
+  const tarjeta = (k, titulo, sub) => (
+    <div onClick={() => setAlcance(k)} role="button"
+      style={{ flex: 1, minWidth: 180, cursor: 'pointer', borderRadius: 12, padding: '10px 12px', fontFamily: FB,
+        border: `2px solid ${alcance === k ? T.ink : T.border}`, background: alcance === k ? T.head : '#fff' }}>
+      <div style={{ fontWeight: 700, color: T.text, fontSize: 13.5 }}>{titulo}</div>
+      <div style={{ color: T.text3, fontSize: 12, marginTop: 2 }}>{sub}</div>
+    </div>
+  );
   return (
-    <Modal abierto={abierto} onCerrar={onCerrar} cel={cel} ancho={460}
+    <Modal abierto={abierto} onCerrar={onCerrar} cel={cel} ancho={500}
       titulo={nuevo ? 'Agregar un ingrediente' : `Cambio en ${item?.nombre || ''}`}
       pie={<>{error && <span style={{ color: T.bad, fontFamily: FB, fontSize: 12.5, marginRight: 'auto' }}>{error}</span>}
-        <Boton onClick={onCerrar}>Cancelar</Boton><Boton primario onClick={guardar}>Guardar cambio</Boton></>}>
+        <Boton onClick={onCerrar}>Cancelar</Boton><Boton primario onClick={guardar}>{receta ? 'Proponer cambio de receta' : 'Guardar cambio'}</Boton></>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {tarjeta('produccion', 'Solo esta producción', 'No había, o vino uno distinto y lo reemplacé hoy.')}
+          {tarjeta('receta', 'Cambio de receta', 'La receta cambió: queda así de ahora en más si se aprueba.')}
+        </div>
         {!nuevo && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Boton activo={modo === 'falta'} onClick={() => setModo('falta')}>No había</Boton>
-            <Boton activo={modo === 'otro'} onClick={() => setModo('otro')}>Usé otro</Boton>
+            <Boton activo={modo === 'falta'} onClick={() => setModo('falta')}>{receta ? 'Ya no va' : 'No había'}</Boton>
+            <Boton activo={modo === 'otro'} onClick={() => setModo('otro')}>{receta ? 'Va otro' : 'Usé otro'}</Boton>
             <Boton activo={modo === 'cantidad'} onClick={() => setModo('cantidad')}>Otra cantidad</Boton>
           </div>
         )}
-        {!nuevo && <Texto sutil>La receta pide {fmtCant(item?.cantidad, item?.unidad)}.</Texto>}
+        {!nuevo && <Texto sutil>La receta pide {fmtCant(item?.cantidad, item?.unidad)}{tandas && Number(tandas) !== 1 ? ` para ${textoTandas(tandas)}` : ''}.</Texto>}
         {(modo === 'otro' || modo === 'agregar') && (
-          <Campo label={modo === 'otro' ? 'Qué usaste en su lugar' : 'Ingrediente'}>
-            <Entrada autoFocus value={nombre} maxLength={120} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Crema de leche" />
+          <Campo label={modo === 'otro' ? (receta ? 'Qué va en su lugar' : 'Qué usaste en su lugar') : 'Ingrediente'}
+            ayuda={receta ? 'Tiene que ser un insumo de la lista, así se calcula el costo de la receta.' : null}>
+            <BuscarInsumo businessId={businessId} valor={insumo?.id ? insumo : null} obligatorio={receta}
+              onElegir={(i) => { setInsumo(i); if (i?.unidad && !unidad) setUnidad(i.unidad); }} />
           </Campo>
         )}
         {modo !== 'falta' && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <Campo label="Cantidad" style={{ flex: 1 }}><Entrada inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value)} /></Campo>
+            <Campo label={`Cantidad${tandas && Number(tandas) !== 1 ? ` (para ${textoTandas(tandas)})` : ''}`} style={{ flex: 1 }}>
+              <Entrada inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value)} />
+            </Campo>
             <Campo label="Unidad" style={{ width: 110 }}>
               <Selector value={unidad} onChange={setUnidad} opciones={['gr', 'kg', 'ml', 'lt', 'u', 'porcion'].map((u) => ({ value: u, label: unidadCorta(u) }))} vacio="—" />
             </Campo>
           </div>
         )}
-        <Campo label="Por qué" ayuda="Lo ve el dueño o el admin para aprobarlo o no. Vos seguí trabajando.">
-          <Entrada value={motivo} maxLength={300} onChange={(e) => setMotivo(e.target.value)} placeholder="Ej.: No llegó el pedido" />
+        <Campo label="Por qué" ayuda={receta
+          ? 'Va al dueño o al admin en Aprobaciones con el antes y el después. Vos seguí trabajando: hoy cuenta así.'
+          : 'Lo ve el dueño o el admin para aprobarlo o no. Vos seguí trabajando.'}>
+          <Entrada value={motivo} maxLength={300} onChange={(e) => setMotivo(e.target.value)} placeholder={receta ? 'Ej.: Ahora la hacemos con crema' : 'Ej.: No llegó el pedido'} />
         </Campo>
       </div>
     </Modal>
   );
 }
 
-function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCambiar, onDeshacer, onDecidir }) {
+function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCambiar, onDeshacer, onDecidir, onAprobaciones }) {
   const cambiado = it.cambio || it.falta || it.agregado;
   const colorCambio = it.cambio === 'aprobado' ? T.ok : it.cambio === 'rechazado' ? T.bad : T.warn;
   return (
@@ -115,14 +177,18 @@ function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCamb
             </span>
             {it.motivo && <span> · {it.motivo}</span>}
             <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              {it.alcance === 'receta' && <Pastilla color={T.violet} fondo="#F1EBFE">Cambio de receta</Pastilla>}
               <Pastilla color={colorCambio} fondo={it.cambio === 'aprobado' ? '#E4F6EC' : it.cambio === 'rechazado' ? '#FBE9E9' : '#FBF3E2'}>
-                {it.cambio === 'aprobado' ? 'Aprobado' : it.cambio === 'rechazado' ? 'Rechazado' : 'Esperando aprobación'}
+                {it.cambio === 'aprobado' ? (it.alcance === 'receta' ? 'Aprobado: la receta cambió' : 'Aprobado')
+                  : it.cambio === 'rechazado' ? (it.alcance === 'receta' ? 'Rechazado: la receta sigue igual' : 'Rechazado')
+                    : it.alcance === 'receta' ? 'En Aprobaciones' : 'Esperando aprobación'}
               </Pastilla>
               {it.nota_decision && <span style={{ fontSize: 12, color: T.text3 }}>«{it.nota_decision}»</span>}
-              {it.cambio === 'pendiente' && puedeDecidir && <>
+              {it.cambio === 'pendiente' && puedeDecidir && it.alcance !== 'receta' && <>
                 <Boton chico onClick={() => onDecidir(it, 'aprobado')}>✓ Aprobar</Boton>
                 <Boton chico peligro onClick={() => onDecidir(it, 'rechazado')}>Rechazar</Boton>
               </>}
+              {it.cambio === 'pendiente' && puedeDecidir && it.alcance === 'receta' && <Boton chico onClick={onAprobaciones}>Ver en Aprobaciones ›</Boton>}
               {it.cambio === 'pendiente' && puedeEjecutar && enCurso && <Boton chico onClick={() => onDeshacer(it)}>Deshacer</Boton>}
             </div>
           </div>
@@ -134,6 +200,7 @@ function FilaInsumo({ it, enCurso, puedeEjecutar, puedeDecidir, onTildar, onCamb
 }
 
 export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, onCambio, ctx, cel }) {
+  const navigate = useNavigate();
   const [d, setD] = useState(null);
   const [error, setError] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -232,6 +299,7 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
                   <FilaInsumo key={it.id ?? `r${i}`} it={it} enCurso={enCurso} puedeEjecutar={puede.ejecutar} puedeDecidir={puede.decidir}
                     onTildar={(x, v) => hacer(() => ProduccionAPI.insumo(businessId, t.id, x.id, { usado: v }))}
                     onCambiar={(x) => setCambio(x)}
+                    onAprobaciones={() => navigate('/configuracion?tab=6')}
                     onDeshacer={(x) => hacer(() => ProduccionAPI.insumo(businessId, t.id, x.id, { deshacer: true }))}
                     onDecidir={(x, dec) => {
                       const n = dec === 'rechazado' ? window.prompt('¿Por qué lo rechazás? (lo ve el cocinero)') : '';
@@ -241,7 +309,7 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
                 ))}
                 {enCurso && puede.ejecutar && <div style={{ marginTop: 8 }}><Boton chico onClick={() => setCambio({ nombre: '' })}>+ Agregar ingrediente</Boton></div>}
                 {pendientes > 0 && puede.decidir && (
-                  <Texto sutil style={{ fontSize: 12, marginTop: 8 }}>Aprobar vale para esta producción. Si el cambio tiene que quedar en la receta, cambiala desde Insumos.</Texto>
+                  <Texto sutil style={{ fontSize: 12, marginTop: 8 }}>Los de «solo esta producción» se aprueban acá. Los cambios de receta se aprueban en Aprobaciones, con el antes, el después y el costo.</Texto>
                 )}
               </div>
             )}
@@ -308,7 +376,7 @@ export default function TareaDetalle({ businessId, tareaId, abierto, onCerrar, o
           </div>
         )}
       </Modal>
-      <DialogoCambio abierto={!!cambio} item={cambio} cel={cel} onCerrar={() => setCambio(null)}
+      <DialogoCambio abierto={!!cambio} item={cambio} cel={cel} onCerrar={() => setCambio(null)} businessId={businessId} tandas={t?.tandas}
         onGuardar={(body) => hacer(() => (cambio?.id
           ? ProduccionAPI.insumo(businessId, t.id, cambio.id, { cambio: body })
           : ProduccionAPI.agregarInsumo(businessId, t.id, body)))} />
