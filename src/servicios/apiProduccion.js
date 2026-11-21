@@ -1,6 +1,13 @@
 // src/servicios/apiProduccion.js
 // Tareas operativas · producción de elaborados (usuaria 21/11/2026). Ver Backend/services/produccion.js.
-import { http } from '@/servicios/apiBusinesses';
+import { http as httpBase } from '@/servicios/apiBusinesses';
+
+// Sucursal (como RRHH): cada sucursal tiene sus turnos, su producción, mermas, desperdicios y
+// equipos. La página la fija con setSucursalOperacion; 'main' / null = la principal (sin parámetro).
+let sucursal = null;
+export const setSucursalOperacion = (s) => { sucursal = s == null || s === 'main' ? null : s; };
+export const conSucursal = (path) => (sucursal != null ? `${path}${path.includes('?') ? '&' : '?'}branchId=${encodeURIComponent(sucursal)}` : path);
+const http = (path, opts) => httpBase(conSucursal(path), opts);
 
 const base = (bid) => `/businesses/${bid}/produccion`;
 const sin = { cache: false };
@@ -37,5 +44,6 @@ export const ProduccionAPI = {
   crearDesperdicio: (bid, body, desde, hasta) => http(`${base(bid)}/desperdicios?desde=${desde}&hasta=${hasta}`, { method: 'POST', body }),
   borrarRegistro: (bid, tipo, id) => http(`${base(bid)}/registros/${tipo}/${id}`, { method: 'DELETE' }),
   consumos: (bid, desde, hasta) => http(`${base(bid)}/consumos?desde=${desde}&hasta=${hasta}`, sin),
+  sugerencias: (bid, semana) => http(`${base(bid)}/sugerencias?semana=${semana}`, sin),
   panel: (bid, desde, hasta) => http(`${base(bid)}/panel?desde=${desde}&hasta=${hasta}`, sin),
 };

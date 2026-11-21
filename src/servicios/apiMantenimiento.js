@@ -1,5 +1,8 @@
 // src/servicios/apiMantenimiento.js — Operación › Mantenimiento (21/11/2026). Ver Backend/services/mantenimiento.js.
-import { http } from '@/servicios/apiBusinesses';
+import { http as httpBase } from '@/servicios/apiBusinesses';
+import { conSucursal } from '@/servicios/apiProduccion';
+
+const http = (path, opts) => httpBase(conSucursal(path), opts);
 
 const base = (bid) => `/businesses/${bid}/mantenimiento`;
 const sin = { cache: false };

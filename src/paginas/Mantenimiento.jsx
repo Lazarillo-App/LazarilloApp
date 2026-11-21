@@ -7,6 +7,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
+import { useBranch } from '@/hooks/useBranch';
+import { setSucursalOperacion } from '@/servicios/apiProduccion';
 import { T, FT, FB, cargarFuentes } from '@/componentes/ui/temaDiego';
 import { MantenimientoAPI } from '@/servicios/apiMantenimiento';
 import { Boton, Pastilla, Vacio, Texto, Campo, Entrada, Selector } from '@/componentes/produccion/ui';
@@ -37,6 +39,9 @@ function Seccion({ titulo, color, children, cuenta }) {
 
 export default function Mantenimiento() {
   const { activeId: bid } = useBusiness() || {};
+  const { activeBranchId } = useBranch() || {};
+  setSucursalOperacion(activeBranchId);
+  const clave = `${bid}|${activeBranchId ?? 'main'}`;
   const cel = useCel();
   const [params, setParams] = useSearchParams();
   const [ctx, setCtx] = useState(null);
@@ -58,7 +63,7 @@ export default function Mantenimiento() {
       const [o, e, r] = await Promise.all([MantenimientoAPI.ordenes(bid), MantenimientoAPI.equipos(bid), MantenimientoAPI.registros(bid)]);
       setOrdenes(o.ordenes || []); setHoy(o.hoy || isoHoy()); setEquipos(e.equipos || []); setRegistros(r.registros || []);
     } catch (x) { setErrorCtx(textoError(x)); }
-  }, [bid]);
+  }, [bid, clave]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!bid) return;
     setCtx(null);

@@ -9,7 +9,7 @@ import { diaLargo, fmtTandas, fmtMin, unidadCorta } from './util';
 
 const TANDAS = [0.5, 1, 1.5, 2, 3];
 
-export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elaborados, dias, inicial, cel }) {
+export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elaborados, dias, inicial, cel, sugerencias }) {
   const [tipo, setTipo] = useState('produccion');
   const [buscar, setBuscar] = useState('');
   const [insumoId, setInsumoId] = useState(null);
@@ -26,7 +26,7 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
 
   useEffect(() => {
     if (!abierto) return;
-    setTipo('produccion'); setBuscar(''); setInsumoId(null); setTitulo(''); setTandas('1'); setError('');
+    setTipo('produccion'); setBuscar(''); setInsumoId(inicial?.insumo_id || null); setTitulo(''); setTandas(inicial?.tandas ? String(inicial.tandas) : '1'); setError('');
     setFechas(inicial?.fecha ? [inicial.fecha] : []);
     setTurno(inicial?.turno_id ? String(inicial.turno_id) : String(ctx?.turnos?.[0]?.id ?? ''));
     setResp(inicial?.responsable_user_id ? String(inicial.responsable_user_id) : '');
@@ -35,6 +35,7 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
   }, [abierto, inicial, ctx]);
 
   const elab = useMemo(() => elaborados.find((e) => e.insumo_id === insumoId) || null, [elaborados, insumoId]);
+  const sug = useMemo(() => (sugerencias?.items || []).find((x) => x.insumo_id === insumoId) || null, [sugerencias, insumoId]);
   const k = Number(String(tandas).replace(',', '.'));
 
   // Al elegir el elaborado: su plaza/responsable de siempre (si la celda no los fijó) y el estimado.
@@ -98,6 +99,11 @@ export default function ProgramarModal({ abierto, onCerrar, onGuardar, ctx, elab
                     {elab.rubro || 'Sin rubro'}{elab.rinde_tanda != null && ` · 1 tanda rinde ${elab.rinde_tanda} ${unidadCorta(elab.unidad)}`}
                     {elab.tandas_semana ? ` · suele hacerse ${fmtTandas(elab.tandas_semana)} por semana` : ''}
                   </div>
+                  {sug?.sugeridas != null && (
+                    <div style={{ fontSize: 12, color: T.accentTxt, marginTop: 2 }}>
+                      Según ventas: {fmtTandas(sug.sugeridas)} tandas esta semana · programado {fmtTandas(sug.programadas)}{sug.faltan > 0 ? ` · faltan ${fmtTandas(sug.faltan)}` : ' · cubierto'}
+                    </div>
+                  )}
                 </div>
                 <Boton chico onClick={() => setInsumoId(null)}>Cambiar</Boton>
               </div>
