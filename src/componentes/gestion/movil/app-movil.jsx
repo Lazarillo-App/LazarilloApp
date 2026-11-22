@@ -411,10 +411,10 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
 // Evolución de un indicador (Diego 29/10/2026, mockup_celu_pdvs_indicadores): barras de los últimos
 // 3 / 6 / 9 / 12 meses hasta el que se mira y la diferencia contra el mes anterior (puntos en los %,
 // variación % en la plata). Verde/rojo según hacia dónde conviene que vaya.
-const plataCorta = (n) => {
+const plataCorta = (n, dec = 1) => {
     const a = Math.abs(n), sg = n < 0 ? "-" : "";
     if (a >= 1e6)
-        return `${sg}${(a / 1e6).toLocaleString("es-AR", { maximumFractionDigits: a >= 1e8 ? 0 : 1 })}M`;
+        return `${sg}${(a / 1e6).toLocaleString("es-AR", { maximumFractionDigits: a >= 1e8 ? 0 : dec })}M`;
     return `${sg}${Math.round(a / 1e3).toLocaleString("es-AR")}k`;
 };
 function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
@@ -454,15 +454,15 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
         <div className="mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
           {serie.map((x) => {
             const elegido = esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x);
-            return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
+            return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
               onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
-              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{plata ? plataCorta(x.valor) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
+              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
               <div className={cn("w-full rounded-t-md", x.valor != null && x.valor < 0 ? "bg-red-400" : elegido ? "bg-sky-700" : x.proyectado ? "bg-sky-500" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
             </div>);
           })}
         </div>
         <div className="flex gap-1.5">
-          {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
+          {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("min-w-0 flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
         </div>
         {esVentas && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un mes para verlo abajo</p>}
         {esVentas && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
