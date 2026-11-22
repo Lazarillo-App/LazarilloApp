@@ -52,6 +52,9 @@ function encerrar(selector) {
   const raiz = postcss.parse(res.css);
   // Sin @layer: una regla en capa pierde contra cualquier CSS global sin capa, como el de `thead th`.
   raiz.walkAtRules('layer', (at) => { if (at.nodes) at.replaceWith(at.nodes); else at.remove(); });
+  // Las variables --color-X: var(--X) de @theme pisarían, dentro de .gestion-tw, los colores del negocio
+  // que pone la app (ej. --color-primary del header). Las utilidades usan var(--X) directo: se sacan.
+  raiz.walkDecls((d) => { if (d.prop.startsWith('--color-') && d.value.trim() === `var(--${d.prop.slice(8)})`) d.remove(); });
   const extras = [];
   raiz.walkRules((r) => {
     if (r.parent?.type === 'atrule' && /keyframes/.test(r.parent.name)) return;
