@@ -98,6 +98,7 @@
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
+    --color-primary: var(--primary);
   }
 .gestion-tw *, .gestion-tw ::after, .gestion-tw ::before, .gestion-tw ::backdrop, .gestion-tw ::file-selector-button {
     box-sizing: border-box;
@@ -248,6 +249,9 @@
 .gestion-tw .pointer-events-none {
     pointer-events: none;
   }
+.gestion-tw .visible {
+    visibility: visible;
+  }
 .gestion-tw .absolute {
     position: absolute;
   }
@@ -269,9 +273,6 @@
 .gestion-tw .inset-x-5 {
     inset-inline: calc(var(--spacing) * 5);
   }
-.gestion-tw .-top-0\.5 {
-    top: calc(var(--spacing) * -0.5);
-  }
 .gestion-tw .top-0 {
     top: 0px;
   }
@@ -289,9 +290,6 @@
   }
 .gestion-tw .top-full {
     top: 100%;
-  }
-.gestion-tw .-right-0\.5 {
-    right: calc(var(--spacing) * -0.5);
   }
 .gestion-tw .right-0 {
     right: 0px;
@@ -362,6 +360,9 @@
 .gestion-tw .mx-auto {
     margin-inline: auto;
   }
+.gestion-tw .-mt-3 {
+    margin-top: calc(var(--spacing) * -3);
+  }
 .gestion-tw .mt-0\.5 {
     margin-top: calc(var(--spacing) * 0.5);
   }
@@ -413,6 +414,9 @@
 .gestion-tw .mb-3 {
     margin-bottom: calc(var(--spacing) * 3);
   }
+.gestion-tw .mb-4 {
+    margin-bottom: calc(var(--spacing) * 4);
+  }
 .gestion-tw .-ml-2 {
     margin-left: calc(var(--spacing) * -2);
   }
@@ -424,6 +428,9 @@
   }
 .gestion-tw .ml-2 {
     margin-left: calc(var(--spacing) * 2);
+  }
+.gestion-tw .ml-3 {
+    margin-left: calc(var(--spacing) * 3);
   }
 .gestion-tw .ml-5 {
     margin-left: calc(var(--spacing) * 5);
@@ -580,14 +587,8 @@
 .gestion-tw .max-h-\[90vh\] {
     max-height: 90vh;
   }
-.gestion-tw .max-h-\[min\(560px\,70vh\)\] {
-    max-height: min(560px, 70vh);
-  }
 .gestion-tw .min-h-0 {
     min-height: 0px;
-  }
-.gestion-tw .min-h-\[10rem\] {
-    min-height: 10rem;
   }
 .gestion-tw .min-h-svh {
     min-height: 100svh;
@@ -685,9 +686,6 @@
 .gestion-tw .w-\[110px\] {
     width: 110px;
   }
-.gestion-tw .w-\[390px\] {
-    width: 390px;
-  }
 .gestion-tw .w-\[calc\(100vw-2rem\)\] {
     width: calc(100vw - 2rem);
   }
@@ -706,12 +704,6 @@
 .gestion-tw .max-w-\[32rem\] {
     max-width: 32rem;
   }
-.gestion-tw .max-w-\[60\%\] {
-    max-width: 60%;
-  }
-.gestion-tw .max-w-\[62\%\] {
-    max-width: 62%;
-  }
 .gestion-tw .max-w-\[94vw\] {
     max-width: 94vw;
   }
@@ -726,9 +718,6 @@
   }
 .gestion-tw .min-w-0 {
     min-width: 0px;
-  }
-.gestion-tw .min-w-4 {
-    min-width: calc(var(--spacing) * 4);
   }
 .gestion-tw .min-w-28 {
     min-width: calc(var(--spacing) * 28);
@@ -785,8 +774,8 @@
     --tw-pan-y: pan-y;
     touch-action: var(--tw-pan-x, ) var(--tw-pan-y, ) var(--tw-pinch-zoom, );
   }
-.gestion-tw .resize-y {
-    resize: vertical;
+.gestion-tw .resize {
+    resize: both;
   }
 .gestion-tw .\[appearance\:textfield\] {
     appearance: textfield;
@@ -808,6 +797,9 @@
   }
 .gestion-tw .grid-cols-\[12px_1fr_160px_110px_auto\] {
     grid-template-columns: 12px 1fr 160px 110px auto;
+  }
+.gestion-tw .grid-cols-\[90px_1fr_110px_auto\] {
+    grid-template-columns: 90px 1fr 110px auto;
   }
 .gestion-tw .grid-cols-\[96px_70px_1fr\] {
     grid-template-columns: 96px 70px 1fr;
@@ -1218,6 +1210,9 @@
 .gestion-tw .bg-sky-600 {
     background-color: var(--color-sky-600);
   }
+.gestion-tw .bg-sky-700 {
+    background-color: var(--color-sky-700);
+  }
 .gestion-tw .bg-transparent {
     background-color: transparent;
   }
@@ -1511,9 +1506,6 @@
     font-size: var(--text-xs);
     line-height: var(--tw-leading, var(--text-xs--line-height));
   }
-.gestion-tw .text-\[9\.5px\] {
-    font-size: 9.5px;
-  }
 .gestion-tw .text-\[10\.5px\] {
     font-size: 10.5px;
   }
@@ -1559,10 +1551,6 @@
 .gestion-tw .text-\[24px\] {
     font-size: 24px;
   }
-.gestion-tw .leading-4 {
-    --tw-leading: calc(var(--spacing) * 4);
-    line-height: calc(var(--spacing) * 4);
-  }
 .gestion-tw .leading-none {
     --tw-leading: 1;
     line-height: 1;
@@ -1603,6 +1591,9 @@
   }
 .gestion-tw .text-\[\#0e7490\] {
     color: #0e7490;
+  }
+.gestion-tw .text-\[\#0369a1\] {
+    color: #0369a1;
   }
 .gestion-tw .text-\[\#159457\] {
     color: #159457;
@@ -1789,13 +1780,6 @@
 .gestion-tw .ring-1 {
     --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
-.gestion-tw .ring-2 {
-    --tw-ring-shadow: var(--tw-ring-inset, ) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
-    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
-  }
-.gestion-tw .ring-background {
-    --tw-ring-color: var(--background);
   }
 .gestion-tw .ring-foreground\/10 {
     --tw-ring-color: var(--foreground);
@@ -2671,9 +2655,6 @@
 .gestion-tw thead th.sticky {
     position: sticky !important;
 }
-.gestion-tw thead th.-top-0\.5 {
-    top: calc(var(--spacing) * -0.5) !important;
-}
 .gestion-tw thead th.top-0 {
     top: 0px !important;
 }
@@ -2819,6 +2800,9 @@
 }
 .gestion-tw thead th.bg-sky-600 {
     background-color: var(--color-sky-600) !important;
+}
+.gestion-tw thead th.bg-sky-700 {
+    background-color: var(--color-sky-700) !important;
 }
 .gestion-tw thead th.bg-transparent {
     background-color: transparent !important;
