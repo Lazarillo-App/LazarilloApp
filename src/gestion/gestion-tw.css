@@ -98,7 +98,6 @@
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
-    --color-primary: var(--primary);
   }
 .gestion-tw *, .gestion-tw ::after, .gestion-tw ::before, .gestion-tw ::backdrop, .gestion-tw ::file-selector-button {
     box-sizing: border-box;
