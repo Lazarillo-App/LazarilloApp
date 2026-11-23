@@ -506,7 +506,7 @@ export default function ConfiguracionMain() {
   const pasosHeaderConfig = usePasosHeader();
   const sectorConfig = useSectorGuia('configuracion');
   const pasosTabs = pasosDelSector([
-    { k: 'art', t: <><b>Artículos y ventas</b>: tus artículos, las listas de precios, el redondeo y la importación de ventas y del paso a paso de las recetas.</> },
+    { k: 'art', t: <><b>Artículos y ventas</b>: tus artículos, las listas de precios (y qué lista del POS cobra cada sucursal), el redondeo y la importación de ventas y del paso a paso de las recetas.</> },
     { k: 'ins', t: <><b>Insumos y compras</b>: tus insumos, rubros y la importación de compras. También las alertas, por ejemplo cuando un insumo pasa semanas sin compra.</> },
     { k: 'gral', t: <><b>General</b>: moneda, formato de los nombres y los avisos de la app.</> },
     { k: 'org', t: <><b>Organización</b>: tus locales y sucursales.</> },
