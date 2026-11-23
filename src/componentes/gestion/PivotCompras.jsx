@@ -86,7 +86,7 @@ const Punto = ({ color, title }) => (
 );
 
 export default function PivotCompras({
-  data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort,
+  data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort, historiaPrev,
 }) {
   const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
   // Rol a medida: sin totales por rubro (fila del rubro sin números y sin "Total gastos")
@@ -162,6 +162,12 @@ export default function PivotCompras({
     };
   }, [data, porProveedor, sort, expanded, mostrar]);
 
+  const prevPorId = useMemo(() => {
+    const m = new Map();
+    const rec = (filas) => (filas || []).forEach((f) => { m.set(f.id, f.values || {}); rec(f.children); });
+    rec(historiaPrev?.rows);
+    return m;
+  }, [historiaPrev]);
   if (isLoading) return <PivotLoading />;
   if (error) return <PivotError />;
   if (!data || data.rows.length === 0) return <PivotEmpty />;
@@ -174,16 +180,39 @@ export default function PivotCompras({
     : fmtARS(valor));
   const pctDenominator = pctMode === 'ingresos' ? (ventas?.grandTotal ?? 0) : data.grandTotal;
   const fmtPct = (rowTotal) => computePctLabel(rowTotal, pctDenominator, pctMode === 'ingresos' && ventasLoading);
-  const colSpan = months.length + (sinColTotal ? 2 : 3);
-  const colsDespues = months.length + (sinColTotal ? 1 : 2); // meses + Total + %
+  const colSpan = months.length + (sinColTotal ? 2 : 3) + (months.length <= 6 && !sinTotalesRubro ? 2 : 0);
+  const colsDespues = months.length + (sinColTotal ? 1 : 2) + (months.length <= 6 && !sinTotalesRubro ? 2 : 0); // meses + Total + % (+ Prom. y vs año ant.)
 
   // Click en una celda con valor: abre el detalle de lo que suma.
   const clic = (valor, extra) => (hasValue(valor) ? { onClick: () => abrirDetalle(extra) } : {});
   const sxDe = (valor) => (hasValue(valor) ? sxClic : {});
 
-  const celdaPct = (rowTotal, sx) => (
+  // Pocos meses (Diego 23/11/2026): la tabla no se estira y, al lado del %, Prom./mes y la
+  // variación contra los mismos meses del año anterior (historiaPrev = pivot de year − 1).
+  const pocos = months.length <= 6 && !sinTotalesRubro;
+  const hoy = new Date();
+  const mesesCerrados = year < hoy.getFullYear() ? months : year > hoy.getFullYear() ? [] : months.filter((m) => m < hoy.getMonth() + 1);
+  const celdasExtra = (fila, sx = {}) => {
+    if (!pocos) return null;
+    // Solo meses cerrados (un mes a medias contra el mismo mes completo del año anterior engaña).
+    const prevVals = fila ? prevPorId.get(fila.id) : null;
+    const suma = (vals) => mesesCerrados.reduce((a, mes) => a + (Number(vals?.[mes]) || 0), 0);
+    const prev = prevVals ? suma(prevVals) : 0;
+    const act = fila ? (fila.id === '__total' ? suma(data.columnTotals) : suma(fila.values)) : 0;
+    const v = fila && prev > 0 && mesesCerrados.length ? act / prev - 1 : null;
+    // Promedio de los meses cerrados (si no hay ninguno, de todos los elegidos).
+    const prom = !fila ? null : mesesCerrados.length ? act / mesesCerrados.length : (fila.rowTotal ?? 0) / months.length;
+    return (<>
+      <TableCell sx={{ ...sxNum, px: 1.5, fontSize: 13, color: 'text.secondary', ...sx }}>{fila && prom ? fmtARS(prom) : ''}</TableCell>
+      <TableCell sx={{ ...sxNum, px: 1.5, fontSize: 12.5, fontWeight: 600, color: v == null || Math.abs(v) < 0.005 ? 'text.disabled' : v > 0 ? '#c2410c' : '#15803d', ...sx }}>
+        {fila ? (v == null ? '—' : Math.abs(v) < 0.005 ? '= 0%' : `${v > 0 ? '▲' : '▼'} ${Math.abs(v * 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}%`) : ''}
+      </TableCell>
+    </>);
+  };
+  const celdaPct = (rowTotal, sx, fila) => (<>
     <TableCell sx={{ ...sxNum, px: 1.5, fontSize: 12, color: 'text.secondary', opacity: 0.7, ...sx }}>{fmtPct(rowTotal)}</TableCell>
-  );
+    {celdasExtra(fila, { py: sx?.py })}
+  </>);
 
   // Rol sin totales por rubro: cada mes del rubro va resumido en millones con una barra de cuánto
   // se cargó contra lo habitual (ver gestion/completitud.js). Mes vacío que suele tener gastos:
@@ -247,7 +276,7 @@ export default function PivotCompras({
         </TableCell>
       ))}
       {!sinColTotal && <TableCell onClick={() => abrirDetalle({ rubroCodigo: rubro.rubroCodigo })} sx={{ ...sxNum, px: 2, py: 1.25, fontSize: 15, ...sxClic }}>{fmtARS(rubro.rowTotal)}</TableCell>}
-      {celdaPct(rubro.rowTotal, { py: 1.25 })}
+      {celdaPct(rubro.rowTotal, { py: 1.25 }, rubro)}
       </>)}
     </TableRow>
     );
@@ -305,7 +334,7 @@ export default function PivotCompras({
           );
         })}
         {!sinColTotal && <TableCell onClick={() => abrirDetalle(filtro)} sx={{ ...sxNum, px: 2, py: 1, color: 'text.secondary', fontWeight: 600, fontSize: 14, ...sxClic }}>{fmtARS(c.rowTotal)}</TableCell>}
-        {celdaPct(c.rowTotal, { py: 1, opacity: 0.5 })}
+        {celdaPct(c.rowTotal, { py: 1, opacity: 0.5 }, c)}
       </TableRow>
     );
   };
@@ -332,7 +361,7 @@ export default function PivotCompras({
         </TableCell>
       ))}
       {!sinColTotal && <TableCell onClick={() => abrirDetalle({ rowId: r.rowId, distribucionId: r.distribucionId ?? undefined })} sx={{ ...sxNum, px: 2, py: 0.75, fontSize: 12, color: 'text.secondary', ...sxClic }}>{fmtARS(r.rowTotal)}</TableCell>}
-      {celdaPct(r.rowTotal, { py: 0.75, opacity: 0.4 })}
+      {celdaPct(r.rowTotal, { py: 0.75, opacity: 0.4 }, null)}
     </TableRow>
   );
 
@@ -366,7 +395,7 @@ export default function PivotCompras({
               </ComposicionTooltip>
             ))}
             {!sinColTotal && <TableCell onClick={() => abrirDetalle(filtroFilaProveedor(d))} sx={{ ...sxNum, px: 2, py: 1.25, ...sxClic }}>{fmtARS(d.rowTotal)}</TableCell>}
-            {celdaPct(d.rowTotal, { py: 1.25 })}
+            {celdaPct(d.rowTotal, { py: 1.25 }, d)}
           </TableRow>
         );
       }
@@ -394,10 +423,10 @@ export default function PivotCompras({
 
   return (
     <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
-      <Table size="small" sx={sxTablaPanel}>
+      <Table size="small" sx={[sxTablaPanel, pocos && { width: 'auto', '& td, & th': { minWidth: 118 } }]}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 200 }, whiteSpace: 'nowrap' }}>
+            <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 200 }, ...(pocos ? { width: 300, maxWidth: 300 } : {}), whiteSpace: 'nowrap' }}>
               Operación
             </TableCell>
             {months.map((mes) => (
@@ -411,6 +440,10 @@ export default function PivotCompras({
             >
               % {pctMode === 'ingresos' ? 'ing' : 'egr'}
             </TableCell>
+            {pocos && <>
+              <TableCell title={mesesCerrados.length ? `Promedio de los meses cerrados (${mesesCerrados.length} de ${months.length})` : 'Promedio de los meses elegidos'} sx={{ ...sxNum, position: 'sticky', top: 0, zIndex: 2, bgcolor: MUTED, px: 1.5, py: 1.5, fontWeight: 500, color: 'text.secondary' }}>Prom./mes</TableCell>
+              <TableCell title={`Contra los mismos meses de ${year - 1}, solo meses cerrados${mesesCerrados.length ? ` (${mesesCerrados.length} de ${months.length})` : ''}`} sx={{ ...sxNum, position: 'sticky', top: 0, zIndex: 2, bgcolor: MUTED, px: 1.5, py: 1.5, fontWeight: 500, color: 'text.secondary' }}>vs {year - 1}</TableCell>
+            </>}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -459,6 +492,7 @@ export default function PivotCompras({
             <TableCell sx={{ ...sxNum, px: 1.5, fontSize: '12px !important', color: 'text.secondary !important' }}>
               {pctMode === 'egresos' ? '—' : fmtPct(data.grandTotal)}
             </TableCell>
+            {celdasExtra({ id: '__total', rowTotal: data.grandTotal })}
           </TableRow>
         </TableFooter>}
       </Table>
