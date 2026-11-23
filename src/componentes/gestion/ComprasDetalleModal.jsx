@@ -92,6 +92,7 @@ function sortCompras(a, b, sort) {
     concepto: (x) => String((x.conceptoCajaManual ?? x.conceptoCaja)?.nombre ?? ''),
     detalle: (x) => String(x.detalle ?? ''),
     observacion: (x) => String(x.observacManual ?? x.observac ?? ''),
+    pdv: (x) => String(x.puntoDeVenta?.nombre ?? ''),
   }[sort.key];
   if (!valor) return 0;
   const cmp = valor(a).localeCompare(valor(b), 'es', { numeric: true });
@@ -100,7 +101,7 @@ function sortCompras(a, b, sort) {
 
 const searchFields = (i) => [
   i.proveedor, i.proveedorRef?.nombre, i.proveedorRef?.razon, i.observacManual, i.observac, i.obsInsumos, i.detalle, i.concepto,
-  (i.conceptoCajaManual ?? i.conceptoCaja)?.nombre, (i.conceptoCajaManual ?? i.conceptoCaja)?.rubro?.nombre, i.local?.nombre,
+  (i.conceptoCajaManual ?? i.conceptoCaja)?.nombre, (i.conceptoCajaManual ?? i.conceptoCaja)?.rubro?.nombre, i.local?.nombre, i.puntoDeVenta?.nombre,
 ];
 
 // Fecha de pago: la del informe 80 (si hubo varios, el último) o la de la caja del gasto vario / sueldo.
@@ -186,7 +187,15 @@ function CheckFila({ seleccion }) {
 }
 
 export default function ComprasDetalleModal({ filter, onClose }) {
-  const { businessId, modo, nombreLugar } = usePanelGestion();
+  const { businessId, modo, nombreLugar, sucursal } = usePanelGestion();
+  // Con «Todas» las sucursales, cada registro dice de qué PDV es (Diego 23/11/2026).
+  const todas = sucursal === undefined;
+  // Para que Observación no quede sin lugar, la columna nueva se compensa achicando Detalle, Rubro y Concepto.
+  const cols = todas
+    ? [...COLS.slice(0, 3), { label: 'PDV', sortKey: 'pdv', width: 112 }, ...COLS.slice(3)]
+      .map((c) => ({ ...c, width: { Proveedor: 128, Detalle: 64, Rubro: 104, Concepto: 104 }[c.label] ?? c.width }))
+    : COLS;
+  const celdaPdv = (item) => (todas ? <TableCell sx={{ ...celda, color: 'text.secondary' }} title={item.puntoDeVenta?.nombre ?? undefined}>{item.puntoDeVenta?.nombre ?? '—'}</TableCell> : null);
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -440,6 +449,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
           </TableCell>
           <TableCell sx={celdaEdicion}><EdicionFechaPago editing={editing} setEditing={setEditing} item={item} /></TableCell>
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{nombreProveedor(item)}</TableCell>
+          {celdaPdv(item)}
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{normalize(item.detalle)}</TableCell>
           <TableCell sx={celdaEdicion}>
             <Box component="input" type="text" placeholder={item.observac ? normalize(item.observac) : ''} value={editing.observacManual} onChange={(e) => setEditing({ ...editing, observacManual: e.target.value })} sx={sxInput} />
@@ -498,6 +508,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
             <Box component="button" type="button" data-tour="ed-proveedor" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
           ) : prov}
         </TableCell>
+        {celdaPdv(item)}
         <TableCell sx={celda} title={item.detalle ?? undefined}>
           {item.detalle ? (
             <Box component="button" type="button" data-tour="ed-comprobante" onClick={() => setLineas({ rowId: item.rowId, detalle: item.detalle })} sx={{ all: 'unset', cursor: 'pointer', color: 'text.secondary', fontFamily: 'monospace', fontSize: 12, '&:hover': { color: 'text.primary', textDecoration: 'underline' } }}>
@@ -563,7 +574,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         onClose={cerrar}
         title="Detalle de compras"
         subtitle={nombreLugar}
-        cols={COLS}
+        cols={cols}
         queryKey={queryKey}
         queryFn={queryFn}
         resetKey={resetKey}
