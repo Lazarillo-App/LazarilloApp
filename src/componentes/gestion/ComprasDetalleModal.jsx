@@ -65,10 +65,13 @@ const COLS = [
   { label: 'Importe', right: true, sortKey: 'importe', width: 128 },
 ];
 // Lo que depende de los gastos: se recalcula después de guardar.
-const DEPENDIENTES = ['gestionPivot', 'gestionAnual', 'gestionEquilibrio', 'gestionEquilibrioVariables', 'gestionDiferenciaCaja', 'gestionCanasta'];
+const DEPENDIENTES = ['gestionDetalle', 'gestionPivot', 'gestionAnual', 'gestionEquilibrio', 'gestionEquilibrioVariables', 'gestionDiferenciaCaja', 'gestionCanasta'];
 
 // Mismo criterio que el back (fuente-compras: es_gv): sin comprobante o proveedor, o comprobante E/G.
-const esGastoVario = (c) => !c.comprobante || !c.codigoProveedor || ['E', 'G'].includes(String(c.comprobante).charAt(0).toUpperCase());
+// Gasto vario: sin comprobante o proveedor, E/G, o un ticket de Gastos Varios de MaxiRest (proveedor GV,
+// comprobante Z9999…): su fecha de pago es la de la caja y se corrige en la compra (Diego 23/11/2026).
+const esGastoVario = (c) => !c.comprobante || !c.codigoProveedor || String(c.codigoProveedor).trim().toUpperCase() === 'GV'
+  || ['E', 'G'].includes(String(c.comprobante).charAt(0).toUpperCase());
 const pagosConFechaManual = (c) => (c.estadoPago?.pagos80 ?? []).some((p) => p.manual);
 const esEditada = (c) => c.importeManual != null || c.fechaManual != null || c.conceptoCodigoManual != null || c.observacManual != null
   || c.fechaPagoManual != null || pagosConFechaManual(c);
