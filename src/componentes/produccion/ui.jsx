@@ -6,7 +6,7 @@ export function Boton({ children, onClick, activo, primario, peligro, deshabilit
   const fondo = primario ? T.ink : activo ? T.ink : T.band;
   const color = primario || activo ? '#fff' : peligro ? T.bad : T.text;
   return (
-    <button type={type} title={title} disabled={deshabilitado} onClick={deshabilitado ? undefined : onClick}
+    <button type={type} title={title} disabled={deshabilitado} onClick={deshabilitado ? undefined : onClick} aria-pressed={activo ? true : undefined}
       style={{
         fontFamily: FB, fontWeight: 600, fontSize: chico ? 12 : 13, lineHeight: 1, whiteSpace: 'nowrap',
         padding: chico ? '6px 9px' : '9px 13px', minHeight: chico ? 28 : 36, borderRadius: 10, cursor: deshabilitado ? 'default' : 'pointer',
@@ -89,6 +89,26 @@ export function Vacio({ emoji = '🍳', titulo, children }) {
       <div style={{ fontSize: 34, marginBottom: 8 }}>{emoji}</div>
       {titulo && <div style={{ fontFamily: FT, fontWeight: 700, color: T.text2, fontSize: 15, marginBottom: 4 }}>{titulo}</div>}
       <div style={{ fontSize: 13 }}>{children}</div>
+    </div>
+  );
+}
+
+/** En el celular, una fila de tabla como tarjeta: título arriba y los datos en dos columnas
+ *  (las tablas anchas se cortaban a 390 px). filas: [[etiqueta, valor, color?], …]; null se salta. */
+export function FichaMovil({ titulo, sub, filas, children }) {
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12, padding: '10px 12px', fontFamily: FB }}>
+      <div style={{ fontWeight: 600, color: T.text, fontSize: 14 }}>{titulo}</div>
+      {sub && <div style={{ fontSize: 11.5, color: T.text3 }}>{sub}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', marginTop: 8 }}>
+        {filas.filter(Boolean).map(([k, v, color]) => (
+          <div key={k} style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: T.text3 }}>{k}</div>
+            <div style={{ fontSize: 13.5, color: color || T.text, fontWeight: 600, overflowWrap: 'anywhere' }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      {children}
     </div>
   );
 }

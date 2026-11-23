@@ -5,7 +5,7 @@
 //    los estimados; ven el panel de tiempos y aprueban los cambios de ingredientes.
 //  · Staff: «Mis tareas» del día, las ejecuta con cronómetro desde el celular.
 // Reemplaza la planilla «06 - Tareas Operativas.xlsm».
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
@@ -84,6 +84,13 @@ export default function Produccion() {
     setPanel(null);
     try { setPanel(await ProduccionAPI.panel(bid, lunes, sumarDias(lunes, 6))); } catch { /* nada */ }
   }, [bid, lunes, ctx?.planifica, clave]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // En el celular la tira de pestañas se desliza: la elegida se trae a la vista (21/11, recorrida a 390 px).
+  const tiraRef = useRef(null);
+  useEffect(() => {
+    const t = tiraRef.current; const b = t?.querySelector('[aria-pressed="true"]');
+    if (b && t.scrollWidth > t.clientWidth) t.scrollTo({ left: b.offsetLeft - (t.clientWidth - b.offsetWidth) / 2, behavior: 'smooth' });
+  }, [vista, ctx]);
 
   useEffect(() => { setCtx(null); cargarCtx(); }, [cargarCtx]);
   useEffect(() => { cargarTareas(); }, [cargarTareas]);
@@ -189,7 +196,7 @@ export default function Produccion() {
       </div>
 
       {/* pestañas */}
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
+      <div ref={tiraRef} style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 12, position: 'relative' }}>
         {pestañas.map(([k, l]) => (
           <Boton key={k} activo={vista === k} onClick={() => setVista(k)} style={{ flexShrink: 0 }}>
             {l}{k === 'cambios' && cambios.length > 0 && <Pastilla color="#fff" fondo={T.warn} style={{ marginLeft: 4 }}>{cambios.length}</Pastilla>}

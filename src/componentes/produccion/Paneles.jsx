@@ -7,7 +7,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { ProduccionAPI } from '@/servicios/apiProduccion';
-import { Modal, Boton, Entrada, Selector, Texto, Vacio, Pastilla } from './ui';
+import { Modal, Boton, Entrada, Selector, Texto, Vacio, Pastilla, FichaMovil } from './ui';
 import { fmtMin, fmtTandas, textoTandas, fmtCant, diaLargo, unidadCorta, textoError } from './util';
 
 export function TurnosModal({ abierto, onCerrar, businessId, turnos, onCambio, cel }) {
@@ -60,6 +60,22 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
       onCambio();
     } finally { setGuardando(null); }
   };
+  // Lo que muestra/edita cada elaborado, igual en la tabla (compu) y en la tarjeta (celular).
+  const camposEstimado = (e) => ({
+    rinde: e.rinde_tanda != null ? `${e.rinde_tanda} ${unidadCorta(e.unidad)}` : '—',
+    real: e.minutos_reales_tanda != null ? fmtMin(e.minutos_reales_tanda) : '—',
+    colorReal: e.minutos_reales_tanda != null && e.minutos_tanda != null && e.minutos_reales_tanda > e.minutos_tanda * 1.15 ? T.warn : T.text2,
+    semana: e.tandas_semana ? `${fmtTandas(e.tandas_semana)} tandas` : '—',
+    minutos: <Entrada inputMode="numeric" defaultValue={e.minutos_tanda ?? ''} style={{ width: cel ? '100%' : 80 }} aria-label={`Minutos por tanda de ${e.nombre}`}
+      onBlur={(ev) => { const v = ev.target.value.trim() === '' ? null : Number(ev.target.value); if (v !== e.minutos_tanda) guardar(e, { minutos_tanda: v }); }} />,
+    vida: <Entrada inputMode="numeric" defaultValue={e.dias_vida ?? ''} style={{ width: cel ? '100%' : 70 }} aria-label={`Días de vida útil de ${e.nombre}`}
+      onBlur={(ev) => { const v = ev.target.value.trim() === '' ? null : Number(ev.target.value); if (v !== e.dias_vida) guardar(e, { dias_vida: v }); }} />,
+    plaza: <Selector value={e.plaza_id ? String(e.plaza_id) : ''} vacio="—" style={cel ? { width: '100%' } : { minWidth: 120 }}
+      opciones={(ctx?.plazas || []).map((p) => ({ value: String(p.id), label: p.nombre }))} onChange={(v) => guardar(e, { plaza_id: Number(v) || null })} />,
+    responsable: <Selector value={e.responsable_user_id ? String(e.responsable_user_id) : ''} vacio="—" style={cel ? { width: '100%' } : { minWidth: 130 }}
+      opciones={(ctx?.equipo || []).map((u) => ({ value: String(u.id), label: u.nombre }))} onChange={(v) => guardar(e, { responsable_user_id: Number(v) || null })} />,
+  });
+  const etq = (t) => <div style={{ fontSize: 11, color: T.text3, marginBottom: 2 }}>{t}</div>;
   if (!elaborados.length) return <Vacio titulo="No hay elaborados con receta">Cargá la receta de tus elaborados en Insumos para poder programarlos.</Vacio>;
   return (
     <div>
@@ -67,8 +83,25 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
         <Entrada value={q} onChange={(ev) => setQ(ev.target.value)} placeholder="Buscar elaborado…" style={{ maxWidth: 320 }} />
         <Texto sutil style={{ fontSize: 12 }}>El estimado es por tanda: al programar se multiplica por las tandas. «Real» sale de lo ya producido.</Texto>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13, minWidth: cel ? 640 : 0 }}>
+      {cel ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {lista.map((e) => {
+            const x = camposEstimado(e);
+            return (
+              <FichaMovil key={e.insumo_id} titulo={e.nombre} sub={e.rubro}
+                filas={[['Rinde / tanda', x.rinde], ['Real', x.real, x.colorReal], ['Por semana', x.semana]]}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10, opacity: guardando === e.insumo_id ? 0.6 : 1 }}>
+                  <div>{etq('Min / tanda')}{x.minutos}</div>
+                  <div>{etq('Vida útil (días)')}{x.vida}</div>
+                  <div>{etq('Plaza')}{x.plaza}</div>
+                  <div>{etq('Responsable')}{x.responsable}</div>
+                </div>
+              </FichaMovil>
+            );
+          })}
+        </div>
+      ) : <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: T.text3, fontSize: 11.5 }}>
               <th style={{ padding: 8 }}>Elaborado</th><th style={{ padding: 8 }}>Rinde / tanda</th><th style={{ padding: 8 }}>Min / tanda</th>
@@ -76,35 +109,24 @@ export function Estimados({ businessId, elaborados, ctx, onCambio, cel }) {
             </tr>
           </thead>
           <tbody>
-            {lista.map((e) => (
-              <tr key={e.insumo_id} style={{ borderTop: `1px solid ${T.border}`, opacity: guardando === e.insumo_id ? 0.6 : 1 }}>
-                <td style={{ padding: 8 }}><div style={{ color: T.text, fontWeight: 600 }}>{e.nombre}</div><div style={{ color: T.text3, fontSize: 11.5 }}>{e.rubro || ''}</div></td>
-                <td style={{ padding: 8, color: T.text2 }}>{e.rinde_tanda != null ? `${e.rinde_tanda} ${unidadCorta(e.unidad)}` : '—'}</td>
-                <td style={{ padding: 8 }}>
-                  <Entrada inputMode="numeric" defaultValue={e.minutos_tanda ?? ''} style={{ width: 80 }} aria-label={`Minutos por tanda de ${e.nombre}`}
-                    onBlur={(ev) => { const v = ev.target.value.trim() === '' ? null : Number(ev.target.value); if (v !== e.minutos_tanda) guardar(e, { minutos_tanda: v }); }} />
-                </td>
-                <td style={{ padding: 8, color: e.minutos_reales_tanda != null && e.minutos_tanda != null && e.minutos_reales_tanda > e.minutos_tanda * 1.15 ? T.warn : T.text2 }}>
-                  {e.minutos_reales_tanda != null ? fmtMin(e.minutos_reales_tanda) : '—'}
-                </td>
-                <td style={{ padding: 8, color: T.text2 }}>{e.tandas_semana ? `${fmtTandas(e.tandas_semana)} tandas` : '—'}</td>
-                <td style={{ padding: 8 }}>
-                  <Entrada inputMode="numeric" defaultValue={e.dias_vida ?? ''} style={{ width: 70 }} aria-label={`Días de vida útil de ${e.nombre}`}
-                    onBlur={(ev) => { const v = ev.target.value.trim() === '' ? null : Number(ev.target.value); if (v !== e.dias_vida) guardar(e, { dias_vida: v }); }} />
-                </td>
-                <td style={{ padding: 8 }}>
-                  <Selector value={e.plaza_id ? String(e.plaza_id) : ''} vacio="—" style={{ minWidth: 120 }}
-                    opciones={(ctx?.plazas || []).map((p) => ({ value: String(p.id), label: p.nombre }))} onChange={(v) => guardar(e, { plaza_id: Number(v) || null })} />
-                </td>
-                <td style={{ padding: 8 }}>
-                  <Selector value={e.responsable_user_id ? String(e.responsable_user_id) : ''} vacio="—" style={{ minWidth: 130 }}
-                    opciones={(ctx?.equipo || []).map((u) => ({ value: String(u.id), label: u.nombre }))} onChange={(v) => guardar(e, { responsable_user_id: Number(v) || null })} />
-                </td>
-              </tr>
-            ))}
+            {lista.map((e) => {
+              const x = camposEstimado(e);
+              return (
+                <tr key={e.insumo_id} style={{ borderTop: `1px solid ${T.border}`, opacity: guardando === e.insumo_id ? 0.6 : 1 }}>
+                  <td style={{ padding: 8 }}><div style={{ color: T.text, fontWeight: 600 }}>{e.nombre}</div><div style={{ color: T.text3, fontSize: 11.5 }}>{e.rubro || ''}</div></td>
+                  <td style={{ padding: 8, color: T.text2 }}>{x.rinde}</td>
+                  <td style={{ padding: 8 }}>{x.minutos}</td>
+                  <td style={{ padding: 8, color: x.colorReal }}>{x.real}</td>
+                  <td style={{ padding: 8, color: T.text2 }}>{x.semana}</td>
+                  <td style={{ padding: 8 }}>{x.vida}</td>
+                  <td style={{ padding: 8 }}>{x.plaza}</td>
+                  <td style={{ padding: 8 }}>{x.responsable}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -144,11 +166,11 @@ export function Cambios({ cambios, onAbrir, onDecidir, onAprobaciones }) {
   );
 }
 
-function Kpi({ label, valor, sub, color }) {
+function Kpi({ label, valor, sub, color, cel }) {
   return (
-    <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: '12px 14px', minWidth: 140, flex: 1 }}>
+    <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: cel ? '10px 12px' : '12px 14px', minWidth: cel ? 0 : 140, flex: 1 }}>
       <div style={{ fontFamily: FB, fontSize: 12, color: T.text3 }}>{label}</div>
-      <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 22, color: color || T.ink }}>{valor}</div>
+      <div style={{ fontFamily: FT, fontWeight: 800, fontSize: cel ? 19 : 22, color: color || T.ink }}>{valor}</div>
       {sub && <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3 }}>{sub}</div>}
     </div>
   );
@@ -165,16 +187,27 @@ export function PanelGeneral({ datos, cel }) {
   const celda = { padding: 8, borderTop: `1px solid ${T.border}` };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <Kpi label="Hechas" valor={`${total.hechas} / ${total.tareas - total.canceladas}`} sub={`${total.pendientes} pendientes · ${total.en_curso} en curso`} />
-        <Kpi label="Tiempo real" valor={fmtMin(total.minutos_reales)} sub={`estimado ${fmtMin(total.estimado_de_hechas)} para lo hecho`} />
-        <Kpi label="Contra el estimado" valor={txtDesvio(dT)} color={colorDesvio(dT)} sub="+ = tardaron más" />
-        <Kpi label="Con cambios" valor={total.cambios} sub="tareas con ingredientes cambiados" color={total.cambios ? T.warn : T.ink} />
+      <div style={cel ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } : { display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <Kpi cel={cel} label="Hechas" valor={`${total.hechas} / ${total.tareas - total.canceladas}`} sub={`${total.pendientes} pendientes · ${total.en_curso} en curso`} />
+        <Kpi cel={cel} label="Tiempo real" valor={fmtMin(total.minutos_reales)} sub={`estimado ${fmtMin(total.estimado_de_hechas)} para lo hecho`} />
+        <Kpi cel={cel} label="Contra el estimado" valor={txtDesvio(dT)} color={colorDesvio(dT)} sub="+ = tardaron más" />
+        <Kpi cel={cel} label="Con cambios" valor={total.cambios} sub="tareas con ingredientes cambiados" color={total.cambios ? T.warn : T.ink} />
       </div>
       <div>
         <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 6 }}>Por persona</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13, minWidth: cel ? 560 : 0 }}>
+        {cel ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {personas.map((p) => {
+              const d = desvio(p.minutos_reales, p.estimado_de_hechas);
+              return <FichaMovil key={p.user_id ?? 0} titulo={p.nombre} filas={[
+                ['Hechas', p.hechas], ['Pendientes', p.pendientes + p.en_curso],
+                ['Tiempo real', fmtMin(p.minutos_reales)], ['Estimado', fmtMin(p.estimado_de_hechas)],
+                ['Desvío', txtDesvio(d), colorDesvio(d)], ['Cambios', p.cambios || '—'],
+              ]} />;
+            })}
+          </div>
+        ) : <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13 }}>
             <thead><tr style={{ textAlign: 'left', color: T.text3, fontSize: 11.5 }}>
               <th style={{ padding: 8 }}>Persona</th><th style={{ padding: 8 }}>Hechas</th><th style={{ padding: 8 }}>Pendientes</th>
               <th style={{ padding: 8 }}>Tiempo real</th><th style={{ padding: 8 }}>Estimado</th><th style={{ padding: 8 }}>Desvío</th><th style={{ padding: 8 }}>Cambios</th>
@@ -192,12 +225,26 @@ export function PanelGeneral({ datos, cel }) {
               );
             })}</tbody>
           </table>
-        </div>
+        </div>}
       </div>
       <div>
         <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 6 }}>Por elaborado</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13, minWidth: cel ? 620 : 0 }}>
+        {cel ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {elaborados.map((e) => {
+              const d = desvio(e.minutos_reales, e.estimado_de_hechas);
+              const rindeMenos = e.rinde_esperado > 0 && e.rinde_real < e.rinde_esperado * 0.95;
+              const cant = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 })} ${unidadCorta(e.unidad)}`;
+              return <FichaMovil key={e.insumo_id ?? e.titulo} titulo={e.titulo} filas={[
+                ['Tandas hechas', e.hechas ? fmtTandas(e.tandas) : '—'], ['Tiempo real', e.hechas ? fmtMin(e.minutos_reales) : '—'],
+                ['Tenía que rendir', e.hechas && e.rinde_esperado ? cant(e.rinde_esperado) : '—'],
+                ['Rindió', e.hechas && e.rinde_real ? `${cant(e.rinde_real)}${rindeMenos ? ' · rindió menos' : ''}` : '—', rindeMenos ? T.warn : undefined],
+                ['Desvío tiempo', txtDesvio(d), colorDesvio(d)],
+              ]} />;
+            })}
+          </div>
+        ) : <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13 }}>
             <thead><tr style={{ textAlign: 'left', color: T.text3, fontSize: 11.5 }}>
               <th style={{ padding: 8 }}>Elaborado</th><th style={{ padding: 8 }}>Tandas hechas</th><th style={{ padding: 8 }}>Tenía que rendir</th>
               <th style={{ padding: 8 }}>Rindió</th><th style={{ padding: 8 }}>Tiempo real</th><th style={{ padding: 8 }}>Desvío tiempo</th>
@@ -220,7 +267,7 @@ export function PanelGeneral({ datos, cel }) {
               );
             })}</tbody>
           </table>
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { ProduccionAPI } from '@/servicios/apiProduccion';
-import { Boton, Campo, Entrada, Selector, Texto, Vacio, Pastilla } from './ui';
+import { Boton, Campo, Entrada, Selector, Texto, Vacio, Pastilla, FichaMovil } from './ui';
 import BuscarInsumo from './BuscarInsumo';
 import { fmtCant, textoError, unidadCorta, fmtTandas } from './util';
 
@@ -273,9 +273,20 @@ export function Consumos({ businessId, desde, hasta, cel }) {
         Todo lo que salió de lo comprado esta semana sin pasar por una venta: lo usado en producción, el mise en place de las plazas,
         lo desperdiciado y lo que se fue en merma. Es lo que el stock tiene que descontar.
       </Texto>
-      {!datos.items.length ? <Vacio emoji="📦" titulo="Sin consumos esta semana">Aparecen cuando se terminan tareas de producción o mise en place, o se cargan desperdicios y mermas.</Vacio> : (
+      {!datos.items.length ? <Vacio emoji="📦" titulo="Sin consumos esta semana">Aparecen cuando se terminan tareas de producción o mise en place, o se cargan desperdicios y mermas.</Vacio> : cel ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {datos.items.map((i) => (
+            <FichaMovil key={`${i.insumo_id || i.nombre}|${i.unidad}`} titulo={i.nombre} sub={!i.insumo_id ? 'sin vincular' : null} filas={[
+              ['Total', c(i.total, i.unidad), T.ink], conCosto ? ['Costo aprox.', i.costo != null ? pesos(i.costo) : '—'] : null,
+              ['Producción', c(i.produccion, i.unidad)], ['Mise en place', c(i.mise, i.unidad)],
+              ['Desperdicio', c(i.desperdicio, i.unidad), i.desperdicio ? T.bad : T.text2], ['Merma', c(i.merma, i.unidad), i.merma ? T.warn : T.text2],
+            ]} />
+          ))}
+          {conCosto && <div style={{ textAlign: 'right', fontFamily: FT, fontWeight: 800, color: T.ink, fontSize: 15, padding: '4px 2px' }}>Total {pesos(total)}</div>}
+        </div>
+      ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13, minWidth: cel ? 640 : 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FB, fontSize: 13 }}>
             <thead><tr style={{ textAlign: 'left', color: T.text3, fontSize: 11.5 }}>
               <th style={{ padding: 8 }}>Insumo</th><th style={{ padding: 8 }}>Producción</th><th style={{ padding: 8 }}>Mise en place</th>
               <th style={{ padding: 8 }}>Desperdicio</th><th style={{ padding: 8 }}>Merma</th><th style={{ padding: 8 }}>Total</th>
