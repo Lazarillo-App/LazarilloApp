@@ -72,7 +72,7 @@ export default function PriceListConfigModal({
       }
       if (ultimo) throw ultimo;
       setLists(Array.isArray(res?.lists) ? res.lists : []);
-    } catch (e) {
+    } catch {
       setError('No se pudieron cargar las listas. Probá de nuevo en un momento.');
     } finally {
       setLoading(false);
