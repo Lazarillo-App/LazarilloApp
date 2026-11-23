@@ -57,7 +57,7 @@ const SIN_RUBRO_NOMBRE = 'Sin Rubro';
 const COLS = [
   { label: 'F. gasto', sortKey: 'fecha', width: 112 },
   { label: 'F. pago', sortKey: 'fechaPago', width: 104 },
-  { label: 'Proveedor', sortKey: 'proveedor', width: 144 },
+  { label: 'Proveedor', sortKey: 'proveedor', width: 190 },
   { label: 'Detalle', sortKey: 'detalle', width: 96 },
   { label: 'Observación', sortKey: 'observacion' },
   { label: 'Rubro', width: 136 },
@@ -329,10 +329,9 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     setSaveError(null);
     // Repartida (Diego 20/11/2026): fecha, concepto e importe TOTAL se editan en el negocio donde se
     // carga; el servidor la vuelve a repartir según la regla (reevaluarCompra). Si se carga en otro
-    // negocio, desde acá solo la observación.
-    const base = state.ajena
-      ? { observacManual: state.observacManual !== '' ? state.observacManual : null }
-      : {
+    // negocio de la organización, se edita igual: el pedido va a ese negocio (Diego 23/11/2026: «no me
+    // deja editarlo»).
+    const base = {
         ...(imp.incluir ? { importeManual: imp.value } : {}),
         // La fecha viaja solo si la cambiaste: guardar otra cosa no fija la fecha de carga
         // por encima del período del sueldo (Diego 23/11/2026).
@@ -347,7 +346,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       ? { ...base, fechaPagoManual: state.fechaPago || null }
       : base;
     try {
-      await GestionAPI.editarCompra(state.rowId, cuerpo);
+      await GestionAPI.editarCompra(state.rowId, cuerpo, state.ajena ? state.negocioOrigen : undefined);
       // Pagos del 80 con la fecha cambiada (la del informe o vacía = se borra la corrección).
       for (const pg of state.pagos.filter((x) => x.fecha !== x.inicial)) {
         await GestionAPI.editarPago(pg.rowId, { negocio: pg.negocio, fechaPagoManual: pg.fecha && pg.fecha !== pg.original ? pg.fecha : null });
@@ -449,6 +448,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       distribucionId: item.distribucionId,
       esDistribuida,
       ajena,
+      negocioOrigen: ajena ? Number(item.localIdOrigen) : null,
       importeManual: importeInicial,
       importeInicial,
       // F. gasto que cuenta: la corregida, si no el PERÍODO (sueldos, mes vencido), si no la de carga.
@@ -473,7 +473,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     const seleccion = conSeleccion ? { tildado: tildadas.has(item.rowId), onToggle: () => cambiarTildadas([item], !tildadas.has(item.rowId)) } : null;
     const enEdicion = editing?.rowId === item.rowId && editing.distribucionId === item.distribucionId;
     if (enEdicion) {
-      const bloqueada = editing.ajena;
+      const bloqueada = false;
       const opciones = editing.rubroFiltro === SIN_RUBRO_CODE ? conceptos.filter((o) => !o.rubroCodigo) : conceptos.filter((o) => o.rubroCodigo === editing.rubroFiltro);
       return (
         <TableRow key={key} sx={{ bgcolor: 'grey.50' }}>
@@ -537,8 +537,12 @@ export default function ComprasDetalleModal({ filter, onClose }) {
           <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>{esEditada(item) && <EditedDot />}{fmtDate(fecha)}</Box>
         </TableCell>
         <TableCell data-tour="ed-pago" sx={{ ...celda, color: 'text.secondary' }}><FechaPago item={item} /></TableCell>
-        <TableCell sx={celda} title={prov}>
-          {origenDe(item) ? (
+        <TableCell sx={celda} title={item.cajaPago && esGastoVario(item) ? `${prov} · pagado con ${item.cajaPago}` : prov}>
+          {/* Gasto vario (Diego 23/11/2026: «quería ver la forma de pago»): no tiene cuenta corriente; en su
+              lugar se ve con qué se pagó (la caja del POS o el medio cargado). */}
+          {esGastoVario(item) ? (
+            <>{prov}{item.cajaPago && <Box component="span" sx={{ color: 'text.secondary' }}> · {String(item.cajaPago).toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase())}</Box>}</>
+          ) : origenDe(item) ? (
             <Box component="button" type="button" data-tour="ed-proveedor" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
           ) : prov}
         </TableCell>
@@ -598,7 +602,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
     ? `Fecha de gasto, fecha de pago, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
-    : editing?.ajena ? 'Esta compra se carga en otro negocio: fecha, importe y concepto se cambian desde ese negocio'
+    : editing?.ajena ? 'Se carga en otro negocio y se reparte: el importe es el total; al guardar se corrige allá y se vuelve a repartir'
       : editing?.esDistribuida ? 'Repartida entre negocios: el importe es el total; al guardar se vuelve a repartir según la regla' : null;
 
   return (
