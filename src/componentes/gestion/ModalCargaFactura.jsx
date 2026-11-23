@@ -1198,6 +1198,7 @@ function ModalNuevaCarga(props) {
       })
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
   };
+
   const guardar = (opc) => {
     const forzarAvisos = opc === true; // "Guardar igual" del aviso de precios
     if (modo === "vario") { guardarVario(false, forzarAvisos); return; }
