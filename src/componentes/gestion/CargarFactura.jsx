@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Box, CircularProgress, Dialog, Snackbar } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { GestionAPI } from '@/servicios/apiGestion';
+import { GestionAPI, gestionFetch } from '@/servicios/apiGestion';
 import { usePanelGestion } from '@/gestion/panelContext';
 import { refrescarCompras, useMaestrosFactura } from '@/gestion/hooksPanel';
 import { ctxDesdeCelda } from '@/gestion/cargaUtils';
@@ -66,15 +66,22 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
     // Espera los maestros: con ellos se sabe si el concepto es un sueldo (va a Empleados).
     if (!pedido || !maestros) return undefined;
     let vivo = true;
-    const abrir = (fechaPagoPrev, aprendido = null) => {
+    // ¿Es un empleado? Solo si su código está en la nómina de este PDV (gestion_empleados). Un
+    // proveedor del POS con código pero sin legajo (personal eventual, cumpleaños, alquileres) no lo es.
+    const esEmpleado = pedido.empleadoCodigo && lugar?.id != null
+      ? gestionFetch(`/api/empleados?pdvId=${lugar.id}`).then((r) => (r.ok ? r.json() : null))
+        .then((n) => (n?.empleados ?? []).some((e) => String(e.codigo) === String(pedido.empleadoCodigo))).catch(() => false)
+      : Promise.resolve(false);
+    const abrir = (fechaPagoPrev, aprendido = null) => esEmpleado.then((emp) => {
       if (!vivo) return;
-      // Concepto de sueldo (rubro de personal: liquidación o adelanto) → Empleados, no Gastos Varios.
+      // Concepto de sueldo (rubro de personal: liquidación, adelanto, SAC) → Empleados, no Gastos Varios.
       const con = (maestros?.conceptos ?? []).find((c) => String(c.codigo) === String(pedido.conceptoCodigo));
-      const esSueldo = !!con && /personal/i.test(con.rubro ?? '') && /sueldo|adelanto/i.test(con.nombre ?? '');
-      setCtx(ctxDesdeCelda(pedido, fechaPagoPrev, aprendido, esSueldo));
+      const esSueldo = !!con && /personal/i.test(con.rubro ?? '') && /sueldo|adelanto|\bsac\b/i.test(con.nombre ?? '');
+      const p = emp ? pedido : { ...pedido, empleadoCodigo: undefined };
+      setCtx(ctxDesdeCelda(p, fechaPagoPrev, aprendido, esSueldo));
       setAbierto(true);
       onPedidoAtendido?.();
-    };
+    });
     if (!pedido.prev) { abrir(null); return () => { vivo = false; }; }
     // Del mes anterior se trae la fecha de pago; si no llega, la carga abre igual.
     GestionAPI.detalle({ year: pedido.anio, sucursal, conceptoCodigo: pedido.conceptoCodigo, mes: pedido.prev.mes })
@@ -87,7 +94,7 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
         abrir(filas[0]?.fechaPago ? String(filas[0].fechaPago) : null, conProv ? { proveedorId: conProv.proveedorRef.id } : null);
       });
     return () => { vivo = false; };
-  }, [pedido, sucursal, onPedidoAtendido, maestros]);
+  }, [pedido, sucursal, onPedidoAtendido, maestros, lugar?.id]);
   const cerrar = () => { setAbierto(false); setCtx(null); };
 
   return (
