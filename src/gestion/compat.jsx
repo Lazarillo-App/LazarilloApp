@@ -95,7 +95,7 @@ export function Dialog({ open, onOpenChange, children }) {
   return <DialogCtx.Provider value={{ open: !!open, onOpenChange }}>{children}</DialogCtx.Provider>;
 }
 
-export function DialogContent({ className, children, showCloseButton = true }) {
+export function DialogContent({ className, children, showCloseButton = true, style }) {
   const { open, onOpenChange } = useContext(DialogCtx);
   return (
     <Modal open={open} onClose={() => onOpenChange?.(false)} disableEnforceFocus>
@@ -103,7 +103,7 @@ export function DialogContent({ className, children, showCloseButton = true }) {
         <div className={cn(
           'fixed top-1/2 z-[1350] grid gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none inset-x-5 -translate-y-1/2 sm:inset-x-auto sm:left-1/2 sm:w-full sm:-translate-x-1/2 sm:max-w-sm',
           className,
-        )}>
+        )} style={style}>
           {children}
           {showCloseButton && (
             <button type="button" onClick={() => onOpenChange?.(false)} aria-label="Cerrar" className="absolute top-2.5 right-2.5 inline-flex size-7 items-center justify-center rounded-lg hover:bg-muted">
@@ -209,4 +209,3 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
     </Dialog>
   );
 }
-
