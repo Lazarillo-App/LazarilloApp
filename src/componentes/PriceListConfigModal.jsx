@@ -62,11 +62,18 @@ export default function PriceListConfigModal({
     if (!bizId) return;
     setLoading(true);
     setError(null);
+    // Hasta 3 intentos (Diego 23/11/2026: «las listas fallan»): si el servidor está reiniciando o
+    // despertando, el primer pedido se cae; no se muestra error por eso.
     try {
-      const res = await PriceListsAPI.list(bizId);
+      let res = null, ultimo = null;
+      for (let i = 0; i < 3; i++) {
+        try { res = await PriceListsAPI.list(bizId); ultimo = null; break; }
+        catch (e) { ultimo = e; await new Promise((r) => setTimeout(r, 1500 * (i + 1))); }
+      }
+      if (ultimo) throw ultimo;
       setLists(Array.isArray(res?.lists) ? res.lists : []);
     } catch (e) {
-      setError(e.message || 'Error cargando listas');
+      setError('No se pudieron cargar las listas. Probá de nuevo en un momento.');
     } finally {
       setLoading(false);
     }
@@ -223,7 +230,8 @@ export default function PriceListConfigModal({
           </Box>
         )}
         {error && (
-          <Alert severity="error" sx={{ mb: 2, py: 0.5 }} onClose={() => setError(null)}>
+          <Alert severity="error" sx={{ mb: 2, py: 0.5 }} onClose={() => setError(null)}
+            action={<Button color="inherit" size="small" onClick={reload}>Reintentar</Button>}>
             {error}
           </Alert>
         )}
