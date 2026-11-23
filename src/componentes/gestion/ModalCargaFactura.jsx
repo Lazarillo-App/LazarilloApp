@@ -14,6 +14,7 @@ import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gesti
 import { gestionFetch } from "@/servicios/apiGestion";
 import { C, $fmt } from "./cargaEstilos";
 import HistorialConcepto from "./HistorialConcepto";
+import { textoAFecha, textoMientrasEscribe } from "@/componentes/CampoFecha";
 import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
 import { insumoCreate } from "@/servicios/apiInsumos";
 import EnvasesEditor, { conCambios } from "@/componentes/gestion/EnvasesEditor";
@@ -99,39 +100,35 @@ const fechaValida = (s) => {
 const MESES12 = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const pad2 = (n) => String(n).padStart(2, "0");
 const dmy4 = (iso) => { const [y, m, d] = String(iso).split("-"); return `${d}/${m}/${y}`; };
+// Fecha tipeada con las reglas de CampoFecha (Guía «Fechas», Diego 23/11/2026): barra sola, día+mes =
+// año actual, año de 2 dígitos; al entrar se selecciona todo (se escribe encima sin borrar) y el
+// ícono abre el calendario. Mismo estilo que los demás campos del modal.
 function FechaInput({ iso, onISO, style: st, title, inputRef, tabIndex }) {
   const [txt, setTxt] = useState(iso ? dmy4(iso) : "");
   useEffect(() => { setTxt(iso ? dmy4(iso) : ""); }, [iso]);
+  const nativo = useRef(null);
   const commit = () => {
-    let s = txt.trim();
-    if (/^\d{6,8}$/.test(s)) s = s.slice(0, 2) + "/" + s.slice(2, 4) + "/" + s.slice(4);
-    else if (/^\d{4}$/.test(s)) s = s.slice(0, 2) + "/" + s.slice(2);
-    // Solo día y mes (Diego 23/11/2026): es del año actual.
-    const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4})?)?$/);
-    if (!m) { setTxt(iso ? dmy4(iso) : ""); return; }
-    let d = Number(m[1]), mo = Math.min(Math.max(Number(m[2]), 1), 12), y = m[3] ? Number(m[3]) : new Date().getFullYear();
-    if (y < 100) y += 2000;
-    const ult = new Date(y, mo, 0).getDate();
-    d = Math.min(Math.max(d, 1), ult);
-    setTxt(`${pad2(d)}/${pad2(mo)}/${y}`);
-    onISO(`${y}-${pad2(mo)}-${pad2(d)}`);
+    const nuevo = textoAFecha(txt);
+    if (!nuevo) { setTxt(iso ? dmy4(iso) : ""); return; }
+    setTxt(dmy4(nuevo));
+    onISO(nuevo);
   };
+  const abrirCalendario = () => { const el = nativo.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
   return (
-    <input ref={inputRef} style={st} value={txt} placeholder="dd/mm/aaaa" title={title} tabIndex={tabIndex}
-      onChange={(e) => {
-        // Si escribe la barra justo después de la que se puso sola, no se duplica.
-        let v = e.target.value.replace(/[^\d\/\-.]/g, "").replace(/[\/\-.]{2,}/g, "/");
-        if (/^\d+$/.test(v)) {
-          const d = v.slice(0, 8);
-          v = d.length > 4 ? d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4) : d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d;
-        }
-        // Al completar el día o el mes aparece la barra sola, para seguir con lo que viene (Diego
-        // 23/11/2026). Solo mientras se escribe: al borrar no se vuelve a poner.
-        if (v.length > txt.length && /^(\d{2}|\d{2}\/\d{2})$/.test(v)) v += "/";
-        setTxt(v);
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+    <span style={{ position: "relative", display: "block", width: (st && st.width) || "100%" }}>
+      <input ref={inputRef} style={{ ...st, width: "100%", paddingRight: 30 }} value={txt} placeholder="dd/mm/aaaa" title={title} tabIndex={tabIndex} inputMode="numeric"
+        onFocus={(e) => { const el = e.target; setTimeout(() => { if (document.activeElement === el) el.select(); }, 0); }}
+        onChange={(e) => setTxt(textoMientrasEscribe(e.target.value, txt))}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+      <button type="button" tabIndex={-1} aria-label="Elegir en el calendario" onClick={abrirCalendario}
+        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", padding: 4, cursor: "pointer", color: C.gris, display: "flex" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9.5h18M8 3v3M16 3v3" /></svg>
+      </button>
+      <input ref={nativo} type="date" tabIndex={-1} aria-hidden value={iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : ""}
+        onChange={(e) => { if (e.target.value) { setTxt(dmy4(e.target.value)); onISO(e.target.value); } }}
+        style={{ position: "absolute", right: 0, bottom: 0, width: 1, height: 1, opacity: 0, border: 0, padding: 0, pointerEvents: "none" }} />
+    </span>
   );
 }
 function FechaTriple({ iso, onISO, error, inputRef }) {
