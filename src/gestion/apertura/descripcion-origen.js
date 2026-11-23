@@ -8,9 +8,9 @@
  * cargó o no incluye el ID (no queremos romper el render por eso).
  */
 export function describirOrigen(locales, localId, puntoDeVentaId) {
-    const local = locales.find((l) => l.id === localId);
+    const local = locales.find((l) => Number(l.id) === Number(localId));
     if (puntoDeVentaId != null) {
-        const pv = local?.puntosDeVenta.find((p) => p.id === puntoDeVentaId);
+        const pv = local?.puntosDeVenta.find((p) => Number(p.id) === Number(puntoDeVentaId));
         if (local && pv)
             return `${local.nombre} — ${pv.nombre}`;
         return "Punto de venta";
