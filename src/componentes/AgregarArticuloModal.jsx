@@ -1,8 +1,9 @@
 // src/componentes/AgregarArticuloModal.jsx
+import CampoImporte from './CampoImporte';
 import React, { useState, useMemo } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, MenuItem, InputAdornment,
+  Button, TextField, MenuItem,
 } from '@mui/material';
 import { BusinessesAPI } from '../servicios/apiBusinesses';
 import { BASE } from '../servicios/apiBase';
@@ -90,16 +91,13 @@ export default function AgregarArticuloModal({ open, onClose, onCreated, busines
             placeholder="Ej: Milanesa napolitana"
           />
 
-          <TextField
+          {/* Miles mientras se escribe (Guía «Importes»): CampoImporte devuelve el número limpio. */}
+          <CampoImporte
             label="Precio"
             size="small"
             fullWidth
-            type="number"
             value={precio}
-            onChange={e => setPrecio(e.target.value)}
-            InputProps={{
-              startAdornment: <InputAdornment position="start">$</InputAdornment>,
-            }}
+            onChange={(v) => setPrecio(v)}
             placeholder="0"
           />
 
