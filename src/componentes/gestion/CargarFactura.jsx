@@ -66,11 +66,12 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
     // Espera los maestros: con ellos se sabe si el concepto es un sueldo (va a Empleados).
     if (!pedido || !maestros) return undefined;
     let vivo = true;
-    // ¿Es un empleado? Solo si su código está en la nómina de este PDV (gestion_empleados). Un
-    // proveedor del POS con código pero sin legajo (personal eventual, cumpleaños, alquileres) no lo es.
-    const esEmpleado = pedido.empleadoCodigo && lugar?.id != null
-      ? gestionFetch(`/api/empleados?pdvId=${lugar.id}`).then((r) => (r.ok ? r.json() : null))
-        .then((n) => (n?.empleados ?? []).some((e) => String(e.codigo) === String(pedido.empleadoCodigo))).catch(() => false)
+    // ¿Es un empleado? Lo decide el servidor: ese proveedor tiene liquidaciones (filas con período) y su
+    // código está en la nómina del PDV. El código solo no alcanza: el POS numera proveedores y legajos
+    // por separado (ej. «Gastos Varios» 681 y el legajo 681) (Diego 23/11/2026).
+    const esEmpleado = pedido.empleadoCodigo && pedido.proveedorTexto && lugar?.id != null
+      ? gestionFetch(`/api/empleados/es-empleado?pdvId=${lugar.id}&codigo=${encodeURIComponent(pedido.empleadoCodigo)}&proveedor=${encodeURIComponent(pedido.proveedorTexto)}`)
+        .then((r) => (r.ok ? r.json() : null)).then((d) => !!d?.empleado).catch(() => false)
       : Promise.resolve(false);
     const abrir = (fechaPagoPrev, aprendido = null) => esEmpleado.then((emp) => {
       if (!vivo) return;
