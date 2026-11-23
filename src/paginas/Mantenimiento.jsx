@@ -15,6 +15,9 @@ import { Boton, Pastilla, Vacio, Texto, Campo, Entrada, Selector } from '@/compo
 import { diaLargo, isoHoy, textoError } from '@/componentes/produccion/util';
 import { RUBRO, ESTADO_EQUIPO, TIPOS_POR_RUBRO } from '@/componentes/mantenimiento/datos';
 import { TarjetaOrden, OrdenModal, FallaModal, EquipoModal, NuevaOrdenModal } from '@/componentes/mantenimiento/Modales';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosPresentes } from '@/componentes/asistente/pasosHeader';
+import { useRecorrido } from '@/hooks/useRecorrido';
 
 function useCel() {
   const [cel, setCel] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
@@ -45,6 +48,7 @@ export default function Mantenimiento() {
   const cel = useCel();
   const [params, setParams] = useSearchParams();
   const [ctx, setCtx] = useState(null);
+  const [cargado, setCargado] = useState(false);
   const [errorCtx, setErrorCtx] = useState('');
   const [vista, setVista] = useState('agenda');
   const [ordenes, setOrdenes] = useState([]);
@@ -62,11 +66,12 @@ export default function Mantenimiento() {
     try {
       const [o, e, r] = await Promise.all([MantenimientoAPI.ordenes(bid), MantenimientoAPI.equipos(bid), MantenimientoAPI.registros(bid)]);
       setOrdenes(o.ordenes || []); setHoy(o.hoy || isoHoy()); setEquipos(e.equipos || []); setRegistros(r.registros || []);
+      setCargado(true);
     } catch (x) { setErrorCtx(textoError(x)); }
   }, [bid, clave]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!bid) return;
-    setCtx(null);
+    setCtx(null); setCargado(false);
     MantenimientoAPI.contexto(bid).then(setCtx).catch((e) => setErrorCtx(textoError(e)));
     cargarTodo();
   }, [bid, cargarTodo]);
@@ -90,6 +95,24 @@ export default function Mantenimiento() {
     };
   }, [ordenes, hoy]);
 
+  const pasosMant = usePasosPresentes([
+    { k: 'mant-equipo', t: <>Con <b>+ Equipo</b> cargás cada heladera, freidora, horno o máquina del local y le armás los mantenimientos preventivos que se repiten.</> },
+    { k: 'mant-agenda', t: ctx?.planifica
+      ? <>En <b>Agenda</b> ves las fallas abiertas, los mantenimientos vencidos, los de hoy y los próximos días. Las órdenes preventivas aparecen solas cuando se acerca la fecha.</>
+      : <>En <b>Mis órdenes</b> ves los mantenimientos y fallas que tenés asignados o pendientes para resolver hoy y en los próximos días.</> },
+    { k: 'mant-equipos', t: <>En <b>Equipos</b> tenés la ficha de cada equipo con su estado, sus planes preventivos y todo el historial de arreglos y controles.</> },
+    { k: 'mant-falla', t: <>Si algo se rompe o no anda bien, cualquiera del equipo puede tocar <b>⚠ Reportar falla</b>: abre una orden correctiva y le avisa al jefe de cocina y al dueño.</> },
+    { k: 'mant-registros', t: <>En <b>Registros</b> anotás los controles rápidos del día a día: temperatura de heladeras, limpieza y filtrado o cambio de aceite de las freidoras (también los podés cargar con un toque desde la tarjeta del equipo).</> },
+  ], `${clave}:${!!ctx}:${cargado}:${equipos.length}:${vista}`);
+  const recMant = useRecorrido('mantenimiento', pasosMant.length,
+    !!bid && !!ctx && cargado && !errorCtx && !orden && !equipo && !falla && !nuevaOrden && pasosMant.length > 0,
+    { sinDatos: cargado && !equipos.length });
+  const pasoMant = pasosMant[recMant.paso - 1];
+  const guiaMant = recMant.visible && pasoMant ? (
+    <SpotlightTour key={pasoMant.k} targetRef={pasoMant.ref} pose={recMant.paso === 1 ? 'presenta' : 'senala'}
+      placement="bottom" text={pasoMant.t} {...recMant.props(recMant.paso)} />
+  ) : null;
+
   if (errorCtx) return <div style={{ padding: 24 }}><Vacio emoji="🔒" titulo="Mantenimiento">{errorCtx}</Vacio></div>;
   if (!ctx) return <div style={{ padding: 24, fontFamily: FB, color: T.text3 }}>Cargando…</div>;
 
@@ -102,18 +125,21 @@ export default function Mantenimiento() {
 
   return (
     <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: cel ? '10px 10px 40px' : '16px 20px 48px', boxSizing: 'border-box', fontFamily: FB }}>
+      {guiaMant}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={{ fontFamily: FT, fontWeight: 800, fontSize: cel ? 19 : 22, color: T.ink, marginRight: 6 }}>Mantenimiento</div>
         <div style={{ flex: 1 }} />
-        <Boton peligro onClick={() => setFalla({})}>⚠ Reportar falla</Boton>
+        <span data-tour="mant-falla" style={{ display: 'inline-flex' }}><Boton peligro onClick={() => setFalla({})}>⚠ Reportar falla</Boton></span>
         {ctx.planifica && <Boton onClick={() => setNuevaOrden({})}>+ Orden</Boton>}
-        {ctx.planifica && <Boton primario onClick={() => setEquipo({ nuevo: true })}>+ Equipo</Boton>}
+        {ctx.planifica && <span data-tour="mant-equipo" style={{ display: 'inline-flex' }}><Boton primario onClick={() => setEquipo({ nuevo: true })}>+ Equipo</Boton></span>}
       </div>
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
         {[['agenda', ctx.planifica ? 'Agenda' : 'Mis órdenes'], ['equipos', 'Equipos'], ['registros', 'Registros']].map(([k, l]) => (
-          <Boton key={k} activo={vista === k} onClick={() => setVista(k)} style={{ flexShrink: 0 }}>
-            {l}{k === 'agenda' && abiertas > 0 && vista !== 'agenda' && <Pastilla style={{ marginLeft: 4 }}>{abiertas}</Pastilla>}
-          </Boton>
+          <span key={k} data-tour={`mant-${k}`} style={{ display: 'inline-flex', flexShrink: 0 }}>
+            <Boton activo={vista === k} onClick={() => setVista(k)} style={{ flexShrink: 0 }}>
+              {l}{k === 'agenda' && abiertas > 0 && vista !== 'agenda' && <Pastilla style={{ marginLeft: 4 }}>{abiertas}</Pastilla>}
+            </Boton>
+          </span>
         ))}
       </div>
 
