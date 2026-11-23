@@ -2263,6 +2263,7 @@ export default function ArticulosMain(props) {
           window.dispatchEvent(new CustomEvent('articulos:include-back', { detail: { ids: [id] } }));
         } catch { /* */ }
       }
+
       if (isNowDiscontinuado) {
         showMiss(`Artículo discontinuado correctamente`);
       } else {
@@ -2867,6 +2868,7 @@ export default function ArticulosMain(props) {
         }
       }
     }
+
     // Top 20 vacío (todavía no hay ventas) y ya hay artículos: se muestra "Todos" (negocio nuevo, 10/11).
     if (currentSel && esTop20Group(currentSel) && !ventasLoading && top20Ids.size === 0 && !todoEmpty && todoId) {
       setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
