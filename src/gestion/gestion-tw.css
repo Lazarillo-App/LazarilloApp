@@ -386,6 +386,9 @@
 .gestion-tw .mt-5 {
     margin-top: calc(var(--spacing) * 5);
   }
+.gestion-tw .mt-6 {
+    margin-top: calc(var(--spacing) * 6);
+  }
 .gestion-tw .mr-1\.5 {
     margin-right: calc(var(--spacing) * 1.5);
   }
@@ -547,6 +550,12 @@
 .gestion-tw .h-12 {
     height: calc(var(--spacing) * 12);
   }
+.gestion-tw .h-36 {
+    height: calc(var(--spacing) * 36);
+  }
+.gestion-tw .h-40 {
+    height: calc(var(--spacing) * 40);
+  }
 .gestion-tw .h-44 {
     height: calc(var(--spacing) * 44);
   }
@@ -588,6 +597,9 @@
   }
 .gestion-tw .min-h-0 {
     min-height: 0px;
+  }
+.gestion-tw .min-h-\[36px\] {
+    min-height: 36px;
   }
 .gestion-tw .min-h-svh {
     min-height: 100svh;
