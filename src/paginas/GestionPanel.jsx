@@ -43,10 +43,7 @@ import { SinCargaBoton } from '@/componentes/gestion/pagos/sin-carga-boton';
 import { ScopeGestion, lugarDe, useFetchQuery } from '@/gestion/compat';
 import { CtaCteModal } from '@/componentes/gestion/pagos/cta-cte-proveedor';
 import { Toaster } from 'sonner';
-import { NotasSidebar } from '@/componentes/gestion/pagos/notas-sidebar';
-import { TareasSidebar, useTareasPendientes } from '@/componentes/gestion/pagos/tareas-sidebar';
-import { Badge, Button, Drawer } from '@mui/material';
-import StickyNote2OutlinedIcon from '@mui/icons-material/StickyNote2Outlined';
+import { Button } from '@mui/material';
 import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
@@ -116,9 +113,6 @@ function GestionPanelContenido() {
   const [ventasFilter, setVentasFilter] = useState(null);
   // Celda vacía tocada en la tabla: la atiende CargarFactura.
   const [pedidoCarga, setPedidoCarga] = useState(null);
-  const [anclaNotas, setAnclaNotas] = useState(null);
-  // Tareas pendientes (to-do del cajón de Notas): el número va en el botón (Diego 12/11/2026).
-  const tareasPendientes = useTareasPendientes();
   const limpiarPedido = useCallback(() => setPedidoCarga(null), []);
   // Desde la home ("Carga de gastos"): /gestion?cargar=1 abre el modal de carga y se limpia la URL.
   const [params, setParams] = useSearchParams();
@@ -296,7 +290,7 @@ function GestionPanelContenido() {
   const sinTotalesRubro = oculto('tabla.totales_rubro');
   const paramsComprasPrev = useMemo(() => ({ ...paramsCompras, year: estado.year - 1, months: [] }), [paramsCompras, estado.year]);
   const comprasPrev = useQuery({
-    enabled: !!activeBusinessId && verPanel && estado.tab === 'compras' && sinTotalesRubro && !busquedaActiva,
+    enabled: !!activeBusinessId && verPanel && estado.tab === 'compras' && (sinTotalesRubro || columnas.length <= 6) && !busquedaActiva,
     queryKey: ['gestionPivot', activeBusinessId, paramsComprasPrev],
     queryFn: () => GestionAPI.pivot(paramsComprasPrev),
     staleTime: 10 * 60 * 1000,
@@ -348,7 +342,7 @@ function GestionPanelContenido() {
   const [barraPanel, setBarraPanel] = useState([]);
   useEffect(() => {
     const medir = () => {
-      const ok = ['panel-notas', 'panel-verpor', 'panel-rubros', 'panel-buscar', 'panel-completa'].filter((k) => {
+      const ok = ['panel-verpor', 'panel-rubros', 'panel-buscar', 'panel-completa'].filter((k) => {
         const r = document.querySelector(`[data-tour="${k}"]`)?.getBoundingClientRect();
         return r && r.width > 0;
       });
@@ -359,7 +353,6 @@ function GestionPanelContenido() {
     return () => clearTimeout(t);
   }, [estado.tab, panelVacio, verPanel]);
   const TEXTOS_BARRA_PANEL = {
-    'panel-notas': <><b>Notas y tareas</b>: anotaciones rápidas y tus tareas. El número son las que tenés pendientes.</>,
     'panel-verpor': <>Ves los gastos por <b>concepto</b>, por <b>proveedor</b> o por <b>insumo</b>. Con <b>$ / % ing</b> cada celda pasa a ser el % de lo que vendiste ese mes.</>,
     'panel-rubros': <>Elegís qué <b>rubros</b> se ven en la tabla (y en Resultados, cuáles suman a la ganancia).</>,
     'panel-buscar': <><b>Buscar</b> por rubro, concepto, proveedor, observación o importe: la tabla queda filtrada en lo que elegiste.</>,
@@ -368,7 +361,7 @@ function GestionPanelContenido() {
   const pasosBarraPanel = barraPanel.map((k) => ({ k, ref: refTour(k), t: TEXTOS_BARRA_PANEL[k] }));
   const sectorPanel = useSectorGuia('gestion_panel');
   // Sectores (Diego 15/11/2026): Filtros (arriba), Tabla (pestañas, tarjetas y su barra) y Header.
-  const SECTOR_PANEL = { periodo: 'filtros', ecofin: 'filtros', 'panel-notas': 'filtros', cargar: 'filtros', tabs: 'tabla', tarjetas: 'tabla', 'panel-verpor': 'tabla', 'panel-rubros': 'tabla', 'panel-buscar': 'tabla', 'panel-completa': 'tabla' };
+  const SECTOR_PANEL = { periodo: 'filtros', ecofin: 'filtros', cargar: 'filtros', tabs: 'tabla', tarjetas: 'tabla', 'panel-verpor': 'tabla', 'panel-rubros': 'tabla', 'panel-buscar': 'tabla', 'panel-completa': 'tabla' };
   const pasosTour = pasosDelSector([
     ...(panelVacio ? [] : [{ k: 'periodo', t: <>Elegí el <b>año</b> y los <b>meses</b> que querés ver. Todo el panel se calcula con ese período.</> }]),
     ...(!sinEcoFin && !panelVacio ? [{ k: 'ecofin', t: <><b>Económica</b> pone cada gasto en el mes de la factura; <b>Financiera</b>, en el mes en que lo pagaste. Sirve para ver la rentabilidad o la caja.</> }] : []),
@@ -388,7 +381,7 @@ function GestionPanelContenido() {
   ].map((p) => ({ ...p, s: p.s || SECTOR_PANEL[p.k] || 'tabla' })), sectorPanel);
   // Arranca solo mientras el panel no tenga datos propios (Diego 14/11/2026); si no, desde Guías.
   const recPanel = useRecorrido('gestion_panel', pasosTour.length,
-    verPanel && !!rango.data && !cargarAlEntrar && !cargaAbierta && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !anclaNotas && !verProveedores,
+    verPanel && !!rango.data && !cargarAlEntrar && !cargaAbierta && !buscadorAbierto && !detalleFilter && !ventasFilter && !pedidoCarga && !verProveedores,
     // Al final ofrece cargar la primera factura con la ayuda de Anthony (Diego 14/11/2026).
     { sinDatos: sinDatosPanel, siguiente: verCarga && pasosTour[pasosTour.length - 1]?.k === 'cargar' ? { id: 'carga_gastos', label: 'Cargar una factura ahora' } : undefined });
   const pasoTour = pasosTour[recPanel.paso - 1];
@@ -431,29 +424,7 @@ function GestionPanelContenido() {
         />
         </Box>}
         <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
-          <Tooltip title={tareasPendientes ? `Notas · ${tareasPendientes} tarea${tareasPendientes === 1 ? '' : 's'} pendiente${tareasPendientes === 1 ? '' : 's'}` : 'Notas y tareas'}>
-            <IconButton size="small" data-tour="panel-notas" onClick={(e) => setAnclaNotas(e.currentTarget)} sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: 'divider' }}>
-              <Badge badgeContent={tareasPendientes} color="error" max={99}
-                sx={{ '& .MuiBadge-badge': { top: -5, right: -7, height: 16, minWidth: 16, px: 0.5, fontSize: 10, fontWeight: 700 } }}>
-                <StickyNote2OutlinedIcon sx={{ fontSize: 17 }} />
-              </Badge>
-            </IconButton>
-          </Tooltip>
-          {/* Notas en un cajón a la derecha, igual que «corregir» de Sin rubro (Diego 11/11/2026). zIndex de
-              modal para que se vea también con el panel maximizado. */}
-          <Drawer anchor="right" open={!!anclaNotas} onClose={() => setAnclaNotas(null)} sx={{ zIndex: 1300 }} slotProps={{ paper: { sx: { width: 'min(480px, 100vw)', display: 'flex', flexDirection: 'column' } } }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1.5, borderBottom: '1px solid #e8e8e6' }}>
-              <Box sx={{ fontWeight: 700, fontSize: 15 }}>Notas y tareas</Box>
-              <IconButton size="small" onClick={() => setAnclaNotas(null)} aria-label="Cerrar" sx={{ ml: 'auto' }}><CloseIcon fontSize="small" /></IconButton>
-            </Box>
-            {/* Media pantalla cada uno (Diego 12/11/2026): notas arriba, tareas abajo. */}
-            <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', pt: 1 }}>
-              <ScopeGestion><Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}><NotasSidebar /></Box></ScopeGestion>
-            </Box>
-            <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #e8e8e6' }}>
-              <TareasSidebar />
-            </Box>
-          </Drawer>
+          {/* Notas y tareas: viven en el menú del perfil (Diego 23/11/2026: «ya está en el perfil»). */}
           {/* Switch Económica / Financiera, arriba, a la altura del título. */}
           {verPanel && !sinEcoFin && !panelVacio && (
           <Tooltip title="Económica: cada gasto en el mes de la factura (o del período, en sueldos). Financiera: en el mes en que se pagó.">
@@ -564,7 +535,7 @@ function GestionPanelContenido() {
             modoCelda={estado.modoCelda}
             sort={estado.sort}
             onSort={ordenar}
-            historiaPrev={sinTotalesRubro && !busquedaActiva ? comprasPrev.data : null}
+            historiaPrev={(sinTotalesRubro || columnas.length <= 6) && !busquedaActiva ? comprasPrev.data : null}
           />
           </BloqueSeguro>
         )}
@@ -640,7 +611,7 @@ function ZoomPanel({ zoom, onCambiar }) {
         sx={{ border: 0, borderLeft: 1, borderRight: 1, borderColor: 'divider', bgcolor: 'transparent', height: 30, width: 52, px: 0, font: 'inherit', fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums', color: 'text.secondary', cursor: 'pointer' }}>
         {Math.round(zoom * 100)}%
       </Box>
-      <Tooltip title="Agrandar"><span><Button onClick={() => onCambiar(1)} disabled={zoom === ZOOMS_PANEL[ZOOMS_PANEL.length - 1]} aria-label="Agrandar el panel" sx={{ ...b, fontSize: '0.9rem' }}>A+</Button></span></Tooltip>
+      <Tooltip title="Agrandar"><span><Button onClick={() => onCambiar(1)} disabled={zoom === ZOOMS_PANEL[0]} aria-label="Agrandar el panel" sx={{ ...b, fontSize: '0.9rem' }}>A+</Button></span></Tooltip>
     </Stack>
   );
 }
