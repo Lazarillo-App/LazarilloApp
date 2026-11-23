@@ -350,10 +350,12 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     }
     const lote = loteDe(state);
     let fallidas = 0;
-    if (lote) {
-      for (const f of lote.otras) {
-        try { await GestionAPI.editarCompra(f.rowId, lote.cuerpo); } catch { fallidas += 1; }
-      }
+    // Las otras tildadas van en UN pedido (todo o nada): así queda un solo aviso en la Actividad
+    // con la cantidad, no uno por registro (regla «todo ABM queda en Notificaciones», 23/11/2026).
+    if (lote && lote.otras.length) {
+      try {
+        await GestionAPI.editarComprasLote(lote.otras.map((f) => ({ rowId: f.rowId, ...lote.cuerpo })), `Mismo cambio de ${describirCambios(lote.cuerpo)} en las tildadas`);
+      } catch { fallidas = lote.otras.length; }
     }
     // Ya guardó: un fallo del refresco no es "no se guardó". El resto se refresca de fondo.
     DEPENDIENTES.forEach((k) => { queryClient.invalidateQueries({ queryKey: [k] }); });

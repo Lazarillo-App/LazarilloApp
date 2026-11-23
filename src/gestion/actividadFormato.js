@@ -31,6 +31,8 @@ export function agruparPorDia(items, ahora = new Date()) {
 }
 export const TITULO_ACCION = {
     factura: { creada: "Factura cargada", editada: "Factura editada", eliminada: "Factura eliminada", restaurada: "Factura restaurada" },
+    // Edición de un gasto o compra desde el detalle, y correcciones en lote (Diego 23/11/2026).
+    compra: { editada: "Compra editada" },
 };
 // descripcion = "<nombre>\n<detalle>" (las viejas sin salto: todo es detalle).
 export function partesDescripcion(descripcion) {
