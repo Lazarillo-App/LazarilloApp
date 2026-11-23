@@ -75,6 +75,8 @@ export default function PieCostos({
   onObjetivoMovido = null,
   // Para cuántos comensales es el plato (Diego 20/11/2026): «te queda» por comensal. onComensales null = solo lectura.
   comensales = 1,
+  // Servicio (Diego 23/11/2026): sin «Para N comensales» ni «te queda por comensal».
+  esServicio = false,
   onComensales = null,
 }) {
   // Staff: lo que ve depende de su rol (Diego 11/11/2026).
@@ -132,9 +134,9 @@ export default function PieCostos({
         const conObjetivo = !modoInsumo && !isStaff && !etiquetaRegla;
         const titulo = { variant: 'caption', color: 'text.secondary', fontWeight: 600, sx: { display: 'block', whiteSpace: 'nowrap' } };
         // Te queda (precio − costo) por comensal (Diego 20/11/2026).
-        const nCom = Math.min(10, Math.max(1, Number(comensales) || 1));
+        const nCom = esServicio ? 1 : Math.min(10, Math.max(1, Number(comensales) || 1));
         const queda = Number(precioActual) > 0 ? Number(precioActual) - Number(costoXRendimiento || 0) : null;
-        const selectorComensales = onComensales ? (
+        const selectorComensales = esServicio ? null : onComensales ? (
           <TextField select size="small" value={nCom} onChange={(e) => onComensales(Number(e.target.value))}
             title="Para cuántos comensales es el plato"
             SelectProps={{ renderValue: (v) => `Para ${v} comensal${v > 1 ? 'es' : ''}` }}
