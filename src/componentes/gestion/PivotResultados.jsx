@@ -6,6 +6,7 @@
 //   registro de los conceptos visibles en Resultados).
 // Todavía no: apertura de gastos.
 
+import { tipearImporte, importeATexto } from '../CampoImporte';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box, Table, TableHead, TableBody, TableRow, TableCell, CircularProgress, IconButton, Popover,
@@ -300,7 +301,7 @@ function CajaRows({ months, isEmpty, colSpan }) {
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.25 }}>
                   <Box
                     component="input" type="text" inputMode="decimal" autoFocus aria-label={`Disponible en caja ${MESES[mes - 1]}`}
-                    value={draft} onChange={(e) => setDraft(e.target.value)} aria-invalid={ceroExplicito}
+                    value={draft} onChange={(e) => setDraft(tipearImporte(e))} aria-invalid={ceroExplicito}
                     onKeyDown={(e) => { if (e.key === 'Enter') guardar(mes); if (e.key === 'Escape') setEditando(null); }}
                     sx={{ height: 24, width: 84, borderRadius: 1, border: 1, borderColor: ceroExplicito ? 'error.main' : 'divider', px: 0.5, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
                   />
@@ -322,7 +323,7 @@ function CajaRows({ months, isEmpty, colSpan }) {
                 {puedeEditar && (
                   <IconButton
                     className="editar" size="small" title="Editar"
-                    onClick={() => { setEditando(mes); setDraft(value != null ? String(value) : ''); }}
+                    onClick={() => { setEditando(mes); setDraft(value != null ? importeATexto(value) : ''); }}
                     sx={{ p: 0.25, opacity: 0, transition: 'opacity .15s' }}
                   >
                     <EditIcon sx={{ fontSize: 13 }} />
