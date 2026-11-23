@@ -22,6 +22,10 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import PriceChangeIcon from '@mui/icons-material/PriceChange';
 import PriceListConfigModal from '../PriceListConfigModal';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import { Select, MenuItem } from '@mui/material';
+import { useQueryClient } from '@tanstack/react-query';
+import { getListasSucursales, setListaSucursal } from '@/servicios/apiMaxiPriceLists';
 
 function Card({ children, accent }) {
   const tc = 'var(--color-primary, #3b82f6)';
@@ -129,12 +133,62 @@ function PrimaryBtn({ icon, label, onClick, tc }) {
   );
 }
 
+// Lista del POS por sucursal (Diego 23/11/2026: «uso la lista 1 para San Justo y la 2 para Ramos»).
+// Se guarda al elegir (sin botón Guardar). Solo aparece si el POS trae listas y hay sucursales.
+function ListaPosSucursales({ businessId }) {
+  const qc = useQueryClient();
+  const [cfg, setCfg] = React.useState(null);
+  const [error, setError] = React.useState('');
+  React.useEffect(() => {
+    if (!businessId) return;
+    let cancel = false;
+    getListasSucursales(businessId).then((r) => { if (!cancel) setCfg(r); }).catch(() => { if (!cancel) setCfg(null); });
+    return () => { cancel = true; };
+  }, [businessId]);
+  if (!cfg?.disponible || !cfg.sucursales?.length) return null;
+  const elegir = async (branchId, listNumber) => {
+    const antes = cfg;
+    setError('');
+    setCfg({ ...cfg, sucursales: cfg.sucursales.map((s) => (s.branchId === branchId ? { ...s, listNumber } : s)) });
+    try {
+      const r = await setListaSucursal(businessId, branchId, listNumber);
+      if (r?.ok) setCfg(r); else throw new Error(r?.error || 'No se pudo guardar');
+      qc.invalidateQueries({ queryKey: ['preciosSucursal', Number(businessId)] });
+    } catch (e) { setCfg(antes); setError(e.message || 'No se pudo guardar'); }
+  };
+  return (
+    <ActionRow icon={<StorefrontIcon />} title="Lista del POS por sucursal"
+      desc={<>Qué lista de tu POS cobra cada sucursal. El <b>Precio</b> de Artículos y el costo % salen de esa lista según la sucursal que mirás; con «Todas», ponderado por lo que vendió cada una.{error && <span style={{ color: '#C0392B', display: 'block' }}>{error}</span>}</>}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr) 190px', sm: 'auto 190px' }, alignItems: 'center', columnGap: 1, rowGap: 1 }}>
+        {cfg.sucursales.map((s) => (
+          <React.Fragment key={s.branchId}>
+            <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', textAlign: { xs: 'left', sm: 'right' } }}>{s.nombre}</Typography>
+            <Select size="small" value={s.listNumber ?? ''} displayEmpty
+              onChange={(e) => elegir(s.branchId, Number(e.target.value))}
+              sx={{ height: 44, width: 190, fontSize: '0.82rem' }}>
+              <MenuItem value="" disabled>Elegí una lista</MenuItem>
+              {cfg.listas.map((l) => (
+                <MenuItem key={l.listNumber} value={l.listNumber}>
+                  Lista {l.listNumber}{l.alias && l.alias !== `Lista ${l.listNumber}` ? ` · ${l.alias}` : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </React.Fragment>
+        ))}
+      </Box>
+    </ActionRow>
+  );
+}
+
 function ActionRow({ icon, title, desc, children }) {
   const tc = 'var(--color-primary, #3b82f6)';
   return (
     <Box sx={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: 2, py: 1.75, '& + &': { borderTop: '1px solid #f3f4f6' },
+      // En el celular el texto arriba y la acción abajo, a lo ancho (antes el texto quedaba en una
+      // columna de una palabra por renglón al lado del botón).
+      display: 'flex', flexDirection: { xs: 'column', sm: 'row' },
+      alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+      gap: { xs: 1.25, sm: 2 }, py: 1.75, '& + &': { borderTop: '1px solid #f3f4f6' },
     }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{
@@ -367,6 +421,7 @@ export default function ConfigArticulosTab({
                   desc="Gestioná las listas de precios del negocio (Lista 1, Lista 2, etc.). La favorita define el precio base; las otras aplican un % de ajuste sobre esa.">
                   <PrimaryBtn icon={<PriceChangeIcon />} label="Configurar listas" onClick={() => setPricelistsModalOpen(true)} tc={tc} />
                 </ActionRow>
+                <ListaPosSucursales businessId={businessId} />
                 <ActionRow icon={<DeleteForeverIcon />} title="Borrar recetas masivas"
                   desc="Borrá todas las recetas de artículos o las de una agrupación específica. Acción irreversible.">
                   <Button
