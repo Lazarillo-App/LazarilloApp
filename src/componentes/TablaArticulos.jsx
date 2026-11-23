@@ -319,6 +319,9 @@ function textoAlertaReceta(recetaData) {
 }
 
 export default function TablaArticulos({
+  // { etiqueta, precios: { [codigo]: precio } } — precio de la lista del POS de la sucursal que se
+  // mira (ArticulosMain → /price-list/por-sucursal). null = precio de siempre.
+  preciosSucursal = null,
   // Letra A/B/C por artículo según el ingreso del período (A = hasta el 80 % del ingreso,
   // B = 80–95 %, C = último 5 %) y % acumulado, calculados en ArticulosMain.
   abcVentas = null,
@@ -728,10 +731,32 @@ export default function TablaArticulos({
   // y recién después llegaba el árbol real — ese doble pintado era el
   // "pestañeo" al navegar entre Artículos/Insumos o al volver con el buscador
   // global, incluso con el árbol ya en caché (React Query).
-  const categorias = useMemo(
+  const categoriasArbol = useMemo(
     () => (activeBizId ? (articlesTreeData || []) : []),
     [activeBizId, articlesTreeData]
   );
+  // Lista del POS por sucursal (Diego 23/11/2026): el precio de cada artículo pasa a ser el de la
+  // lista que cobra la sucursal elegida (o el ponderado con «Todas»). Lo de Lazarillo (precio
+  // manual, nuevo precio) no se toca: solo cambia el precio que llega del POS.
+  const categorias = useMemo(() => {
+    const pr = preciosSucursal?.precios;
+    if (!pr) return categoriasArbol;
+    return categoriasArbol.map((sub) => ({
+      ...sub,
+      categorias: (sub?.categorias || []).map((cat) => ({
+        ...cat,
+        articulos: (cat?.articulos || []).map((a) => {
+          const p = pr[String(a?.id ?? a?.articulo_id)];
+          return p > 0 ? { ...a, precio: p, precioPos: a?.precio } : a;
+        }),
+      })),
+    }));
+  }, [categoriasArbol, preciosSucursal]);
+  // Las agrupaciones traen su propia copia del precio: con listas por sucursal manda la del POS.
+  const pSuc = useCallback((id, fallback) => {
+    const v = preciosSucursal?.precios?.[String(id)];
+    return v > 0 ? v : fallback;
+  }, [preciosSucursal]);
 
   useEffect(() => {
     if (!activeBizId) {
@@ -1103,14 +1128,14 @@ export default function TablaArticulos({
       base = (categoriaSeleccionada.categorias || [])
         .flatMap((c) => (c.articulos || []).map((a) => {
           const id = getId(a); const b = baseById.get(id) || {};
-          return { ...b, ...a, id, nombre: a?.nombre ?? b?.nombre ?? `#${id}`, categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría", subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro", precio: num(a?.precio ?? b?.precio), costo: num(a?.costo ?? b?.costo) };
+          return { ...b, ...a, id, nombre: a?.nombre ?? b?.nombre ?? `#${id}`, categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría", subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro", precio: num(pSuc(id, a?.precio ?? b?.precio)), costo: num(a?.costo ?? b?.costo) };
         }))
         .filter((a) => !filterIds || filterIds.has(getId(a)));
     } else if (categoriaSeleccionada) {
       base = (categoriaSeleccionada.categorias || []).flatMap((c) =>
         (c.articulos || []).map((a) => {
           const id = getId(a); const b = baseById.get(id) || {};
-          return { ...b, ...a, id, nombre: a?.nombre ?? b?.nombre ?? `#${id}`, categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría", subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro", precio: num(a?.precio ?? b?.precio), costo: num(a?.costo ?? b?.costo) };
+          return { ...b, ...a, id, nombre: a?.nombre ?? b?.nombre ?? `#${id}`, categoria: a?.categoria ?? b?.categoria ?? c?.categoria ?? "Sin categoría", subrubro: a?.subrubro ?? b?.subrubro ?? categoriaSeleccionada?.subrubro ?? "Sin subrubro", precio: num(pSuc(id, a?.precio ?? b?.precio)), costo: num(a?.costo ?? b?.costo) };
         })
       );
     } else if (agrupacionSeleccionada) {
@@ -1125,7 +1150,7 @@ export default function TablaArticulos({
         const arr = Array.isArray(agrupacionSeleccionada.articulos) ? agrupacionSeleccionada.articulos : [];
         base = arr.length > 0 ? arr.map((x) => {
           const id = getId(x); const b = baseById.get(id) || {};
-          return { id, nombre: x?.nombre ?? b?.nombre ?? `#${id}`, categoria: x?.categoria ?? b?.categoria ?? "Sin categoría", subrubro: x?.subrubro ?? b?.subrubro ?? "Sin subrubro", precio: num(x?.precio ?? b?.precio ?? 0), costo: num(x?.costo ?? b?.costo ?? 0) };
+          return { id, nombre: x?.nombre ?? b?.nombre ?? `#${id}`, categoria: x?.categoria ?? b?.categoria ?? "Sin categoría", subrubro: x?.subrubro ?? b?.subrubro ?? "Sin subrubro", precio: num(pSuc(id, x?.precio ?? b?.precio ?? 0)), costo: num(x?.costo ?? b?.costo ?? 0) };
         }) : [];
       }
     } else {
@@ -1133,7 +1158,7 @@ export default function TablaArticulos({
     }
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
     return base;
-  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds, estaEnPromociones]);
+  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds, estaEnPromociones, pSuc]);
 
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {
@@ -3398,9 +3423,9 @@ export default function TablaArticulos({
                     // precio (pedido de Diego, 02/11).
                     <div key="precio" data-tour="art-col-precio" {...dragProps} onClick={() => toggleSort('precio')} className="col-sortable" style={{ ...dragIndicatorStyle, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'rgba(148,163,184,0.06)' }}>
                       <span>Precio{sortBy === 'precio' ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
-                      {currentPriceList?.name && (
+                      {(preciosSucursal?.etiqueta || currentPriceList?.name) && (
                         <span style={{ fontSize: '0.6rem', fontWeight: 500, color: TABLE_MUTED, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          lista: {currentPriceList.name}
+                          {preciosSucursal?.etiqueta ? preciosSucursal.etiqueta : `lista: ${currentPriceList.name}`}
                         </span>
                       )}
                     </div>
