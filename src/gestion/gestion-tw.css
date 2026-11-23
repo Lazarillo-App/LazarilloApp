@@ -274,6 +274,9 @@
 .gestion-tw .top-0 {
     top: 0px;
   }
+.gestion-tw .top-0\.5 {
+    top: calc(var(--spacing) * 0.5);
+  }
 .gestion-tw .top-1\/2 {
     top: calc(1 / 2 * 100%);
   }
@@ -2664,6 +2667,9 @@
 }
 .gestion-tw thead th.top-0 {
     top: 0px !important;
+}
+.gestion-tw thead th.top-0\.5 {
+    top: calc(var(--spacing) * 0.5) !important;
 }
 .gestion-tw thead th.top-1\/2 {
     top: calc(1 / 2 * 100%) !important;
