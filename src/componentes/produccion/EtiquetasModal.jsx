@@ -3,10 +3,15 @@
 // vencimiento (elaboración + días de vida útil del elaborado), lote, quién lo hizo y cómo se
 // conserva. Se imprimen desde el navegador: varias por hoja, del tamaño de una etiqueta común.
 import React, { useEffect, useState } from 'react';
+import CampoFecha from '../CampoFecha';
 import { T, FB } from '@/componentes/ui/temaDiego';
 import { Modal, Boton, Campo, Entrada, Texto } from './ui';
 import { isoHoy, sumarDias, fmtCant } from './util';
 
+const sxFecha = {
+  '& .MuiInputBase-root': { height: 40, fontFamily: FB, fontSize: 14, color: T.text, bgcolor: '#fff', borderRadius: '10px' },
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: T.border2 },
+};
 const ddmm = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -68,12 +73,12 @@ export default function EtiquetasModal({ abierto, onCerrar, tarea, etiqueta, cel
       pie={<><Boton onClick={onCerrar}>Cerrar</Boton><Boton primario onClick={imprimir}>🖨 Imprimir {Number(copias) > 1 ? `${copias} etiquetas` : 'etiqueta'}</Boton></>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr 1fr' : '1fr 1fr 1fr', gap: 10 }}>
-          <Campo label="Elaboración"><Entrada type="date" value={elab} onChange={(e) => {
-            setElab(e.target.value);
-            if (etiqueta?.dias_vida != null && e.target.value) setVenc(sumarDias(e.target.value, etiqueta.dias_vida));
+          <Campo label="Elaboración"><CampoFecha sx={sxFecha} value={elab} onChange={(v) => {
+            setElab(v);
+            if (etiqueta?.dias_vida != null && v) setVenc(sumarDias(v, etiqueta.dias_vida));
           }} /></Campo>
           <Campo label="Vencimiento" ayuda={etiqueta?.dias_vida != null ? `${etiqueta.dias_vida} días de vida útil` : 'Cargá la vida útil en Estimados'}>
-            <Entrada type="date" value={venc} onChange={(e) => setVenc(e.target.value)} />
+            <CampoFecha sx={sxFecha} value={venc} onChange={setVenc} />
           </Campo>
           <Campo label="Cuántas"><Entrada inputMode="numeric" value={copias} onChange={(e) => setCopias(e.target.value.replace(/[^\d]/g, ''))} /></Campo>
         </div>
