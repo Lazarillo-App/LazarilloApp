@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksPanel";
 import { useAbmMediosPago } from "./MediosPagoAbm";
 import ReglaAperturaGasto from "./apertura/ReglaAperturaGasto";
-import { MEDIO_ADELANTOS, mediosParaElegir, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
+import { MEDIO_ADELANTOS, mediosParaElegir, medioPorDefecto, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 import { gestionFetch } from "@/servicios/apiGestion";
 import { C, $fmt } from "./cargaEstilos";
@@ -927,7 +927,7 @@ function ModalNuevaCarga(props) {
   const mediosPago = mediosParaElegir(mediosData);
   const abmMedios = useAbmMediosPago();
   const [medioPagoSel, setMedioPago] = useState("");
-  const medioPago = medioPagoSel || (mediosPago[0] && mediosPago[0].nombre) || "";
+  const medioPago = medioPagoSel || (medioPorDefecto(mediosPago) || {}).nombre || "";
   // Gastos Varios: el medio de pago arranca en el HABITUAL del concepto (el más usado en sus últimas 6 cargas)
   // hasta que se lo cambie a mano (Diego 23/11/2026: «no pierdo tanto tiempo eligiendo»).
   const medioManualV = useRef(false);
@@ -1198,7 +1198,6 @@ function ModalNuevaCarga(props) {
       })
       .catch(() => { setGuardando(false); setErrores(["Error de red: no se guardó."]); });
   };
-
   const guardar = (opc) => {
     const forzarAvisos = opc === true; // "Guardar igual" del aviso de precios
     if (modo === "vario") { guardarVario(false, forzarAvisos); return; }
@@ -2038,7 +2037,7 @@ function ModalNuevaCarga(props) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 1fr" + (pidePagoId ? " 160px" : ""), gap: 10, marginTop: 10, alignItems: "end" }}>
                 <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", gap: 6 }}>Medio
                     {medioHabV && medioPago === medioHabV && <span title="Es el medio que más se usó en las últimas cargas de este concepto" style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>el habitual</span>}</span>
-                  <select style={sel} value={medioPago} onChange={(e) => { medioManualV.current = true; abmMedios.alElegir(setMedioPago)(e); }}>{abmMedios.opcion}
+                  <select style={sel} value={medioPago} onChange={(e) => { medioManualV.current = true; abmMedios.alElegir(setMedioPago)(e); }}>{!medioPago && <option value="">Elegí el medio…</option>}{abmMedios.opcion}
                     {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                   </select></div>
                 <div><span style={lab}>Fecha de pago</span>
@@ -2143,7 +2142,7 @@ function ModalNuevaCarga(props) {
                     <input style={{ ...inp, textAlign: "right" }} value={importePago} placeholder={fmtNum(Math.round(totalFactura * 100) / 100)}
                       title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value, e.nativeEvent))} /></div>
                   <div><span style={lab}>Medio</span>
-                    <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{abmMedios.opcion}
+                    <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{!medioPago && <option value="">Elegí el medio…</option>}{abmMedios.opcion}
                       {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                     </select></div>
                   <div><span style={lab}>Fecha de pago</span>
@@ -2266,8 +2265,13 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   const movs = cuenta ? cuenta.periodos.slice(0, 6).flatMap((p) => p.movimientos || []) : [];
   const habSueldo = medioHabitual(movs.filter((m) => m.cod !== cuenta.codigoAdelanto).map((m) => m.medio), mediosPago);
   const habAdel = medioHabitual(movs.filter((m) => m.cod === cuenta.codigoAdelanto).map((m) => m.medio), mediosPago);
-  const medioDef = habSueldo || medios[0] || "Efectivo";
+  const medioDef = habSueldo || (medioPorDefecto(mediosPago) || {}).nombre || "Efectivo";
   const medioDefA = habAdel || medioDef;
+  // Cada concepto con SU forma habitual (Diego 23/11/2026: «usamos 2 conceptos diferentes, uno para cada
+  // forma» — p. ej. Liquidación Sueldo en Caja Mayor y B. Liquidación de Sueldo por banco). Sin historia
+  // de ese concepto en el empleado, la habitual de su sueldo.
+  const habDeConcepto = (nombre) => { const cod = codDe(nombre); return cod ? medioHabitual(movs.filter((m) => m.cod === cod).map((m) => m.medio), mediosPago) : null; };
+  const medioDeConcepto = (nombre) => habDeConcepto(nombre) || medioDef;
   // Conceptos de personal (rubros de personal), sin el de adelantos que es fijo.
   const codAdel = nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.codigo : null;
   const opcCon = conceptos.filter((c) => /personal/i.test(c.rubro) && c.codigo !== codAdel);
@@ -2277,7 +2281,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   // Mientras no se toque la apertura, sale sola del total: un concepto, adelantos + el resto en el medio por defecto.
   const auto = () => [{ concepto: conceptoDef, importe: totalTxt, pagos: [
     ...(adelantos > 0 ? [{ medio: ADEL, importe: fmtNum(adelantos) }] : []),
-    ...(totalN - adelantos > 0.004 ? [{ medio: medioDef, importe: fmtNum(Math.round((totalN - adelantos) * 100) / 100) }] : []),
+    ...(totalN - adelantos > 0.004 ? [{ medio: medioDeConcepto(conceptoDef), importe: fmtNum(Math.round((totalN - adelantos) * 100) / 100) }] : []),
   ] }];
   const ls = lineas || auto();
   const tocar = (f) => setLineas(f(ls.map((l) => ({ ...l, pagos: l.pagos.map((p) => ({ ...p })) }))));
@@ -2412,16 +2416,16 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             </div>
             {yaSueldo > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: "#8a5a00" }}>⚠ {nombrePeriodo(periodo)} ya tiene sueldo cargado ({$fmt(yaSueldo)}). Mirá la cuenta a la derecha antes de cargar.</div>}
             <span style={{ ...lab, marginTop: 14, display: "flex", justifyContent: "space-between", gap: 8 }}>Apertura por concepto y forma de pago
-              {habSueldo && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>forma de pago: la habitual de su sueldo ({habSueldo})</span>}</span>
+              {habSueldo && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>forma de pago: la habitual de cada concepto en su cuenta</span>}</span>
             <div style={{ border: `1px solid ${C.borde}`, borderRadius: 11, padding: "6px 10px" }}>
               {ls.map((l, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) 130px minmax(0, 2fr) 24px", gap: 8, alignItems: "start", padding: "6px 0", borderBottom: i < ls.length - 1 ? "1px solid #f2f2f0" : "none" }}>
-                  <Combo opciones={opcCon.map((c) => c.nombre)} valor={l.concepto} placeholder="Concepto..." onElegir={(v) => tocar((x) => { x[i].concepto = v; return x; })} />
+                  <Combo opciones={opcCon.map((c) => c.nombre)} valor={l.concepto} placeholder="Concepto..." onElegir={(v) => tocar((x) => { x[i].concepto = v; x[i].pagos.forEach((p) => { if (p.medio !== ADEL && !p.aMano) p.medio = medioDeConcepto(v); }); return x; })} />
                   <input style={{ ...inp, textAlign: "right" }} value={l.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => { x[i].importe = v; if (x[i].pagos.length === 1 && x[i].pagos[0].medio !== ADEL) x[i].pagos[0].importe = v; return x; }); }} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {l.pagos.map((p, k) => (
                       <div key={k} style={{ display: "flex", gap: 6 }}>
-                        <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={abmMedios.alElegir((v) => tocar((x) => { x[i].pagos[k].medio = v; return x; }))}>
+                        <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={abmMedios.alElegir((v) => tocar((x) => { x[i].pagos[k].medio = v; x[i].pagos[k].aMano = true; return x; }))}>
                           {abmMedios.opcion}{[...(adelantos > 0 ? [ADEL] : []), ...medios].map((m) => <option key={m}>{m}</option>)}</select>
                         <input style={{ ...inp, width: 130, textAlign: "right" }} value={p.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => {
                           x[i].pagos[k].importe = v;
@@ -2436,7 +2440,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
                           return x; }); }} />
                         <span onClick={() => tocar((x) => { x[i].pagos.splice(k, 1); return x; })} style={{ cursor: "pointer", color: C.gris, alignSelf: "center", width: 14, textAlign: "center" }}>×</span>
                       </div>))}
-                    <span onClick={() => tocar((x) => { const rest = parseImp(x[i].importe) - x[i].pagos.reduce((a, p) => a + parseImp(p.importe), 0); x[i].pagos.push({ medio: medioDef, importe: rest > 0 ? fmtNum(Math.round(rest * 100) / 100) : "" }); return x; })}
+                    <span onClick={() => tocar((x) => { const rest = parseImp(x[i].importe) - x[i].pagos.reduce((a, p) => a + parseImp(p.importe), 0); x[i].pagos.push({ medio: medioDeConcepto(x[i].concepto), importe: rest > 0 ? fmtNum(Math.round(rest * 100) / 100) : "" }); return x; })}
                       style={{ fontSize: 12, fontWeight: 600, color: "#2a88ad", cursor: "pointer" }}>+ forma de pago</span>
                   </div>
                   <span onClick={() => tocar((x) => (x.length > 1 ? x.filter((_, j) => j !== i) : x))} title="Quitar concepto" style={{ cursor: "pointer", color: C.gris, paddingTop: 9 }}>×</span>
