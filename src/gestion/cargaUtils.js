@@ -17,6 +17,10 @@ export function mediosParaElegir(medios, actual) {
   const lista = (medios ?? []).filter((m) => m.activo || (actual != null && m.nombre === actual));
   return [...lista].sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'));
 }
+// El medio que arranca elegido: el primero de la lista que no sea un Descuento (Diego 23/11/2026: un
+// descuento no mueve plata, nunca va por defecto). Si solo hay descuentos, ninguno: el desplegable
+// dice «Elegí el medio…» y hay que elegirlo a mano.
+export const medioPorDefecto = (lista) => (lista ?? []).find((m) => m.tipo !== 'descuento');
 
 // ── Conceptos propios (desde el 1000: MaxiRest llega al 999) ──
 export const CODIGO_MIN_LAZARILLO = 1000;
