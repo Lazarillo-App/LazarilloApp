@@ -1,8 +1,8 @@
 // src/componentes/CampoFecha.jsx
 // Campo de FECHA de la app (Diego 23/11/2026). Toda fecha que se carga de ahora en más usa este
 // componente, igual que los importes usan CampoImporte:
-//  - Se tipea dd/mm/aaaa y la barra aparece sola al completar el día y el mes («25» → «25/»,
-//    «2510» → «25/10/»). Al borrar no se vuelve a poner; una barra tipeada de más no se duplica.
+//  - Se tipea dd/mm/aaaa y la barra la pone el campo (ver textoMientrasEscribe). Al entrar se
+//    selecciona todo.
 //  - Solo día y mes («25/10» o «2510») = año actual.
 //  - Año de 2 dígitos sin fallas: «25» → 2025. Pivote: hasta el año actual + 20 es 20xx, más es
 //    19xx («85» → 1985, para fechas de nacimiento).
@@ -46,18 +46,42 @@ export function textoAFecha(texto, hoy = new Date()) {
   return `${y}-${pad2(mo)}-${pad2(d)}`;
 }
 
-/** Mientras se escribe: barra automática al completar día y mes. */
+/**
+ * Mientras se escribe (Diego 23/11/2026): la barra la pone el campo, nunca hace falta tipearla.
+ *  - Día o mes completos (2 dígitos) → barra: «25» → «25/», «25/10» → «25/10/».
+ *  - Un dígito que no puede tener otro detrás se completa con 0: día 4–9 → «06/»; mes 2–9 → «06/».
+ *  - Un dígito seguido de barra o punto se completa con 0: «6/» → «06/», «25/6/» → «25/06/».
+ *  - Solo números de corrido también arma la fecha: «25102026» → «25/10/2026».
+ * Al borrar no vuelve a poner nada.
+ */
 export function textoMientrasEscribe(nuevo, anterior) {
-  let v = String(nuevo ?? '').replace(/[^\d/\-.]/g, '').replace(/[/\-.]{2,}/g, '/');
-  if (/^\d+$/.test(v)) {
-    const d = v.slice(0, 8);
-    v = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+  const v = String(nuevo ?? '').replace(/[^\d/\-.]/g, '').replace(/[-.]/g, '/').replace(/\/{2,}/g, '/');
+  // Borrando (lo nuevo es el principio de lo que había) no se agrega nada. Escribir encima de una fecha
+  // seleccionada sí cuenta como escribir.
+  const ant = String(anterior ?? '');
+  if (v.length <= ant.length && ant.startsWith(v)) return v.slice(0, 10);
+  const partes = v.split('/');
+  // Números de corrido en el primer tramo (pegado o tipeado sin barras): se reparten en día/mes/año.
+  if (partes.length === 1 && partes[0].length > 2) {
+    const d = partes[0].slice(0, 8);
+    partes.splice(0, 1, d.slice(0, 2), ...(d.length > 2 ? [d.slice(2, 4)] : []), ...(d.length > 4 ? [d.slice(4)] : []));
+  } else if (partes.length === 2 && partes[1].length > 2) {
+    const m = partes[1].slice(0, 6);
+    partes.splice(1, 1, m.slice(0, 2), m.slice(2));
   }
-  if (v.length > String(anterior ?? '').length && /^(\d{2}|\d{2}\/\d{2})$/.test(v)) v += '/';
-  return v.slice(0, 10);
+  const [dia = '', mes, anio] = partes;
+  const tramo = (t, max, cerrado) => (t.length === 1 && (cerrado || Number(t) > max) ? `0${t}` : t.slice(0, 2));
+  // Día: 4–9 no admite segundo dígito (máx. 31).
+  let out = tramo(dia, 3, mes !== undefined);
+  if (mes === undefined) return out.length === 2 ? `${out}/` : out;
+  // Mes: 2–9 no admite segundo dígito (máx. 12).
+  const m = tramo(mes, 1, anio !== undefined);
+  out += `/${m}`;
+  if (anio === undefined) return m.length === 2 ? `${out}/` : out;
+  return `${out}/${anio.slice(0, 4)}`;
 }
 
-export default function CampoFecha({ value, onChange, onBlur, onKeyDown, inputRef, placeholder = 'dd/mm/aaaa', disabled, InputProps, inputProps, ...props }) {
+export default function CampoFecha({ value, onChange, onBlur, onFocus, onKeyDown, inputRef, placeholder = 'dd/mm/aaaa', disabled, InputProps, inputProps, ...props }) {
   const [txt, setTxt] = useState(isoATexto(value));
   const nativo = useRef(null);
   useEffect(() => { setTxt(isoATexto(value)); }, [value]);
@@ -83,6 +107,8 @@ export default function CampoFecha({ value, onChange, onBlur, onKeyDown, inputRe
       placeholder={placeholder}
       inputRef={inputRef}
       onChange={(e) => setTxt(textoMientrasEscribe(e.target.value, txt))}
+      // Al entrar se selecciona todo: se escribe encima, sin mezclarse con la fecha que estaba.
+      onFocus={(e) => { const el = e.target; setTimeout(() => { if (document.activeElement === el) el.select(); }, 0); onFocus?.(e); }}
       onBlur={(e) => { confirmar(); onBlur?.(e); }}
       onKeyDown={(e) => { if (e.key === 'Enter') confirmar(); onKeyDown?.(e); }}
       inputProps={{ inputMode: 'numeric', autoComplete: 'off', ...inputProps }}
