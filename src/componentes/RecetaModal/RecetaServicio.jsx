@@ -20,6 +20,15 @@ const mesesTxt = (ms = []) => {
 };
 const num = (s) => Number(String(s ?? '').replace(/\./g, '').replace(',', '.'));
 
+// Horas y % de la hora de un servicio atado (Diego 23/11/2026: «hay que agregar cantidad: el colegio son
+// 40 horas y se cobra el total»). Las configs viejas solo tienen factor: ≥ 1,5 eran horas, si no un %.
+const horasYPct = (cfg) => {
+  if (cfg?.horas > 0 && cfg?.pctHora > 0) return { horas: cfg.horas, pct: cfg.pctHora };
+  const f = Number(cfg?.factor) || 0;
+  return f >= 1.5 ? { horas: f, pct: 100 } : { horas: 1, pct: Math.round(f * 1000) / 10 };
+};
+const numTxt = (x) => String(Math.round((Number(x) || 0) * 10) / 10).replace('.', ',');
+
 const th = { fontSize: '0.68rem', fontWeight: 700, color: 'text.secondary', textAlign: 'center' };
 const gris = { fontSize: 12, color: 'text.secondary' };
 const valor = { height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontSize: 14, fontVariantNumeric: 'tabular-nums' };
@@ -149,28 +158,31 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
 
   // ── Servicio atado a una ancla ──
   if (config.tipo === 'derivado') {
-    const esHoras = config.factor >= 1.5;
+    const { horas, pct } = horasYPct(config);
     const ancla = anclas.find((a) => a.articleId === config.ancla);
     const costoHora = calculo?.costoHora ?? ancla?.costoHora ?? 0;
+    const nomAncla = String(ancla?.nombre || 'la ancla').trim().replace(/\.$/, '');
+    const nom = String(articulo?.nombre || 'este artículo').trim().replace(/\.$/, '');
+    const guardarHP = (h, p) => guardar({ tipo: 'derivado', ancla: config.ancla, horas: h, pctHora: p });
     return (
       <Box sx={{ mb: 2.5 }}>
-        <Titulo>Costo del servicio · atado a una ancla</Titulo>
+        <Titulo>Costo de {nom} · sale de la hora de {nomAncla}</Titulo>
         {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'minmax(0,1fr) 150px 150px' }, gap: '4px 12px', alignItems: 'center', px: 0.5 }}>
-          <Typography sx={{ ...th, textAlign: 'left' }}>Ancla</Typography>
-          <Typography sx={th}>Usa de la ancla</Typography>
-          <Typography sx={th}>Costo</Typography>
-          <Select size="small" value={config.ancla} disabled={soloLectura || guardando} sx={{ height: 40, fontSize: 14 }}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'minmax(0,1fr) 130px 130px 150px' }, gap: '4px 12px', alignItems: 'center', px: 0.5 }}>
+          <Typography sx={{ ...th, textAlign: 'left', gridColumn: { xs: '1 / -1', sm: 'auto' } }}>Sale de</Typography>
+          <Typography sx={{ ...th, display: { xs: 'none', sm: 'block' } }}>Horas</Typography>
+          <Typography sx={{ ...th, display: { xs: 'none', sm: 'block' } }}>De cada hora</Typography>
+          <Typography sx={{ ...th, display: { xs: 'none', sm: 'block' } }}>Costo</Typography>
+          <Select size="small" value={config.ancla} disabled={soloLectura || guardando} sx={{ height: 40, fontSize: 14, gridColumn: { xs: '1 / -1', sm: 'auto' } }}
             onChange={(e) => guardar({ ...config, ancla: Number(e.target.value) })}>
             {anclas.filter((a) => a.articleId !== articleId).map((a) => <MenuItem key={a.articleId} value={a.articleId}>{a.nombre}</MenuItem>)}
           </Select>
-          <CampoNumero value={esHoras ? config.factor : config.factor * 100} sufijo={esHoras ? 'h' : '%'} deshabilitado={soloLectura || guardando}
-            onCommit={(n) => n > 0 && guardar({ ...config, factor: esHoras ? n : n / 100 })} />
-          <Box sx={{ ...valor, justifyContent: 'center', fontWeight: 700 }}>{pesos(costoPropio ?? costoHora * config.factor)}</Box>
+          <CampoNumero value={horas} sufijo="h" deshabilitado={soloLectura || guardando} onCommit={(n) => n > 0 && guardarHP(n, pct)} />
+          <CampoNumero value={pct} sufijo="%" deshabilitado={soloLectura || guardando} onCommit={(n) => n > 0 && guardarHP(horas, n)} />
+          <Box sx={{ ...valor, justifyContent: 'center', fontWeight: 700, gridColumn: { xs: '1 / -1', sm: 'auto' } }}>{pesos(costoPropio ?? costoHora * horas * pct / 100)}</Box>
         </Box>
         <Typography sx={{ ...gris, mt: 1, px: 0.5 }}>
-          Una hora de {ancla?.nombre || 'la ancla'} cuesta {pesos(costoHora)}. Este servicio usa {esHoras ? `${String(config.factor).replace('.', ',')} horas` : pctTxt(config.factor * 100)} de esa hora: el costo y el precio sugerido salen de ahí.
-          {' '}Para cargarlo en horas, escribí un número mayor a 150 % (ej. 370 % = 3,7 horas).
+          Una hora de {nomAncla} cuesta {pesos(costoHora)}. {nom} {horas === 1 ? 'es 1 hora' : `son ${numTxt(horas)} horas`}{pct !== 100 ? ` y cada una vale el ${numTxt(pct)} % de la de ${nomAncla}` : ''}: {pesos(costoHora)} × {numTxt(horas)}{pct !== 100 ? ` × ${numTxt(pct)} %` : ''} = {pesos(costoHora * horas * pct / 100)}. El precio sugerido sale de ahí.
         </Typography>
       </Box>
     );
@@ -337,19 +349,23 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
 
       <Box sx={{ mt: 2.5 }}><Titulo>Artículos que salen de {nom} ({familiaSinAncla.length})</Titulo></Box>
       {familiaSinAncla.length > 0 && (
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr) 100px 32px', md: 'minmax(160px,1fr) 130px 140px 140px 32px' }, gap: '6px 8px', alignItems: 'center', px: 0.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr) 160px 32px', md: 'minmax(160px,1fr) 170px 140px 140px 32px' }, gap: '6px 8px', alignItems: 'center', px: 0.5 }}>
           <Typography sx={{ ...th, textAlign: 'left' }}>Artículo</Typography>
-          <Typography sx={th}>De la hora de {nom}</Typography>
+          <Typography sx={th}>Horas × % de la hora</Typography>
           <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Costo</Typography>
           <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Sugerido ({pctTxt(objetivoPct, 1)} costo)</Typography>
           <span />
           {familiaSinAncla.map((f) => {
-            const esHoras = f.factor >= 1.5;
+            const hp = horasYPct(f);
             return (
               <React.Fragment key={f.articleId}>
                 <Typography sx={{ fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombreDe(f.articleId) || f.nombre}</Typography>
-                <CampoNumero value={esHoras ? f.factor : f.factor * 100} sufijo={esHoras ? 'h' : '%'} ancho={100} deshabilitado={soloLectura || guardando}
-                  onCommit={(n) => n > 0 && guardar({ tipo: 'derivado', ancla: articleId, factor: esHoras ? n : n / 100 }, f.articleId)} />
+                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                  <CampoNumero value={hp.horas} sufijo="h" ancho={72} deshabilitado={soloLectura || guardando}
+                    onCommit={(n) => n > 0 && guardar({ tipo: 'derivado', ancla: articleId, horas: n, pctHora: hp.pct }, f.articleId)} />
+                  <CampoNumero value={hp.pct} sufijo="%" ancho={80} deshabilitado={soloLectura || guardando}
+                    onCommit={(n) => n > 0 && guardar({ tipo: 'derivado', ancla: articleId, horas: hp.horas, pctHora: n }, f.articleId)} />
+                </Box>
                 <Box sx={{ ...valor, display: { xs: 'none', md: 'flex' } }}>{pesos(f.costo)}</Box>
                 <Box sx={{ ...valor, display: { xs: 'none', md: 'flex' }, fontWeight: 700 }}>{sugerido(f.costo) != null ? pesos(sugerido(f.costo)) : '—'}</Box>
                 {soloLectura ? <span /> : (
@@ -379,7 +395,7 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         </Typography>
       )}
       <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.75, px: 0.5 }}>
-        Cada uno vale un % de la hora de {nom} (más de 150 % se toma como horas: 370 % = 3,7 horas). Cuando suben tus costos, sube la hora y todos se recalculan solos.
+        Cada uno es una cantidad de horas (el colegio, 40 h) por el % que vale cada hora contra la de {nom} (una promo, 80 %). Cuando suben tus costos, sube la hora y todos se recalculan solos.
       </Typography>
     </Box>
   );
