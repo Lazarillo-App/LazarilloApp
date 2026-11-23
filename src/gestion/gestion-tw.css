@@ -1596,6 +1596,9 @@
     --tw-tracking: var(--tracking-wide);
     letter-spacing: var(--tracking-wide);
   }
+.gestion-tw .break-words {
+    overflow-wrap: break-word;
+  }
 .gestion-tw .whitespace-nowrap {
     white-space: nowrap;
   }

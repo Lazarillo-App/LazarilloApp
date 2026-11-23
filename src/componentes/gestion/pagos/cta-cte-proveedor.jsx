@@ -532,7 +532,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                             : null;
             if (!modo)
                 return null;
-            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : form.tipo} modo={modo} proveedor={data.proveedor} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (form.tipo === "facturas")
+            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : form.tipo} modo={modo} proveedor={data.proveedor} proveedorCuit={data.cuit} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (form.tipo === "facturas")
                 setTildadas(new Set()); setForm(null); setLeido(null); }} onConfirm={confirmarPago}/>);
         })()}
 
