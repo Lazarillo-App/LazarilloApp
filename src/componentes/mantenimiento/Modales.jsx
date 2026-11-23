@@ -1,5 +1,6 @@
 // src/componentes/mantenimiento/Modales.jsx — equipo (datos, planes, historial), orden y falla.
 import { tipearImporte, numeroDeImporte, importeATexto } from '../CampoImporte';
+import CampoFecha from '../CampoFecha';
 import React, { useCallback, useEffect, useState } from 'react';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { MantenimientoAPI } from '@/servicios/apiMantenimiento';
@@ -8,6 +9,10 @@ import { diaLargo, isoHoy, textoError } from '@/componentes/produccion/util';
 import { RUBRO, ESTADO_EQUIPO } from './datos';
 
 const DIAS = [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D']];
+const sxFecha = {
+  '& .MuiInputBase-root': { height: 40, fontFamily: FB, fontSize: 14, color: T.text, bgcolor: '#fff', borderRadius: '10px' },
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: T.border2 },
+};
 const pesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-AR')}`;
 const fechaHora = (s) => new Date(s).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -82,7 +87,7 @@ export function OrdenModal({ businessId, orden, abierto, onCerrar, onCambio, ctx
                 if (await hacer('hacer', { nota, costo: costo === '' ? null : numeroDeImporte(costo), proveedor })) onCerrar();
               }} style={{ minHeight: 42 }}>✓ Hecho</Boton>
               <span style={{ flex: 1 }} />
-              <Campo label="Pasarlo a" style={{ width: 160 }}><Entrada type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></Campo>
+              <Campo label="Pasarlo a" style={{ width: 160 }}><CampoFecha sx={sxFecha} value={fecha} onChange={setFecha} /></Campo>
               <Boton deshabilitado={!fecha || fecha === o.fecha} onClick={() => hacer('reprogramar', { fecha })}>Reprogramar</Boton>
             </div>
           </div>
@@ -163,7 +168,7 @@ function FormPlan({ plan, ctx, onGuardar, onCancelar }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <Campo label="Cada" style={{ width: 80 }}><Entrada inputMode="numeric" value={v.cada_n} onChange={(e) => set('cada_n')(e.target.value.replace(/[^\d]/g, ''))} /></Campo>
         <Campo label=" " style={{ width: 130 }}><Selector value={v.unidad} onChange={set('unidad')} opciones={[{ value: 'dias', label: 'días' }, { value: 'semanas', label: 'semanas' }, { value: 'meses', label: 'meses' }]} /></Campo>
-        <Campo label={plan ? 'Próxima vez' : 'Primera vez'} style={{ width: 160 }}><Entrada type="date" value={v.proxima} onChange={(e) => set('proxima')(e.target.value)} /></Campo>
+        <Campo label={plan ? 'Próxima vez' : 'Primera vez'} style={{ width: 160 }}><CampoFecha sx={sxFecha} value={v.proxima} onChange={set('proxima')} /></Campo>
       </div>
       <Campo label="Días en que se puede hacer" ayuda={v.dias_semana.length ? 'Si la fecha cae otro día, pasa al siguiente permitido.' : 'Cualquier día.'}>
         <div style={{ display: 'flex', gap: 4 }}>{DIAS.map(([d, l]) => <Boton key={d} chico activo={v.dias_semana.includes(d)} onClick={() => toggleDia(d)} style={{ minWidth: 34 }}>{l}</Boton>)}</div>
@@ -247,8 +252,8 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
           <Campo label="Proveedor / service"><Entrada disabled={!puede} value={v.proveedor || ''} onChange={(x) => set('proveedor')(x.target.value)} /></Campo>
           <Campo label="Código interno"><Entrada disabled={!puede} value={v.codigo || ''} onChange={(x) => set('codigo')(x.target.value)} /></Campo>
           <Campo label="Estado"><Selector value={v.estado} onChange={set('estado')} opciones={Object.entries(ESTADO_EQUIPO).map(([k, s]) => ({ value: k, label: s.label }))} /></Campo>
-          <Campo label="Fecha de compra"><Entrada type="date" disabled={!puede} value={v.fecha_compra || ''} onChange={(x) => set('fecha_compra')(x.target.value)} /></Campo>
-          <Campo label="Instalación"><Entrada type="date" disabled={!puede} value={v.fecha_instalacion || ''} onChange={(x) => set('fecha_instalacion')(x.target.value)} /></Campo>
+          <Campo label="Fecha de compra"><CampoFecha sx={sxFecha} disabled={!puede} value={v.fecha_compra || ''} onChange={set('fecha_compra')} /></Campo>
+          <Campo label="Instalación"><CampoFecha sx={sxFecha} disabled={!puede} value={v.fecha_instalacion || ''} onChange={set('fecha_instalacion')} /></Campo>
           {ctx?.gestor && <Campo label="Precio de compra"><Entrada inputMode="decimal" placeholder="$ 0" value={typeof v.precio === 'number' ? importeATexto(v.precio) : (v.precio ?? '')} onChange={(x) => set('precio')(tipearImporte(x))} /></Campo>}
           <Campo label="Notas" style={{ gridColumn: '1 / -1' }}><Entrada disabled={!puede} value={v.notas || ''} onChange={(x) => set('notas')(x.target.value)} /></Campo>
           {puede && (
@@ -331,7 +336,7 @@ export function NuevaOrdenModal({ businessId, abierto, onCerrar, onListo, equipo
         <Campo label="Qué hay que hacer"><Entrada value={v.titulo || ''} maxLength={140} onChange={(e) => set('titulo')(e.target.value)} /></Campo>
         <Campo label="Detalle (opcional)"><Entrada value={v.descripcion || ''} maxLength={1000} onChange={(e) => set('descripcion')(e.target.value)} /></Campo>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Campo label="Para el" style={{ flex: 1 }}><Entrada type="date" value={v.fecha || ''} onChange={(e) => set('fecha')(e.target.value)} /></Campo>
+          <Campo label="Para el" style={{ flex: 1 }}><CampoFecha sx={sxFecha} value={v.fecha || ''} onChange={set('fecha')} /></Campo>
           <Campo label="Responsable" style={{ flex: 1 }}><Selector value={v.responsable_user_id} onChange={set('responsable_user_id')} vacio="Sin asignar" opciones={(ctx?.equipo || []).map((u) => ({ value: String(u.id), label: u.nombre }))} /></Campo>
         </div>
       </div>
