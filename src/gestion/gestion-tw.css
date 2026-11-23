@@ -8,7 +8,6 @@
     --color-red-50: oklch(97.1% 0.013 17.38);
     --color-red-200: oklch(88.5% 0.062 18.334);
     --color-red-300: oklch(80.8% 0.114 19.571);
-    --color-red-400: oklch(70.4% 0.191 22.216);
     --color-red-500: oklch(63.7% 0.237 25.331);
     --color-red-600: oklch(57.7% 0.245 27.325);
     --color-red-700: oklch(50.5% 0.213 27.518);
@@ -649,9 +648,6 @@
 .gestion-tw .w-24 {
     width: calc(var(--spacing) * 24);
   }
-.gestion-tw .w-28 {
-    width: calc(var(--spacing) * 28);
-  }
 .gestion-tw .w-32 {
     width: calc(var(--spacing) * 32);
   }
@@ -1185,9 +1181,6 @@
 .gestion-tw .bg-red-50 {
     background-color: var(--color-red-50);
   }
-.gestion-tw .bg-red-400 {
-    background-color: var(--color-red-400);
-  }
 .gestion-tw .bg-red-500 {
     background-color: var(--color-red-500);
   }
@@ -1220,9 +1213,6 @@
   }
 .gestion-tw .bg-sky-600 {
     background-color: var(--color-sky-600);
-  }
-.gestion-tw .bg-sky-700 {
-    background-color: var(--color-sky-700);
   }
 .gestion-tw .bg-transparent {
     background-color: transparent;
@@ -1380,6 +1370,9 @@
 .gestion-tw .py-px {
     padding-block: 1px;
   }
+.gestion-tw .pt-0\.5 {
+    padding-top: calc(var(--spacing) * 0.5);
+  }
 .gestion-tw .pt-1 {
     padding-top: var(--spacing);
   }
@@ -1516,6 +1509,9 @@
 .gestion-tw .text-xs {
     font-size: var(--text-xs);
     line-height: var(--tw-leading, var(--text-xs--line-height));
+  }
+.gestion-tw .text-\[9px\] {
+    font-size: 9px;
   }
 .gestion-tw .text-\[10\.5px\] {
     font-size: 10.5px;
@@ -2780,9 +2776,6 @@
 .gestion-tw thead th.bg-red-50 {
     background-color: var(--color-red-50) !important;
 }
-.gestion-tw thead th.bg-red-400 {
-    background-color: var(--color-red-400) !important;
-}
 .gestion-tw thead th.bg-red-500 {
     background-color: var(--color-red-500) !important;
 }
@@ -2811,9 +2804,6 @@
 }
 .gestion-tw thead th.bg-sky-600 {
     background-color: var(--color-sky-600) !important;
-}
-.gestion-tw thead th.bg-sky-700 {
-    background-color: var(--color-sky-700) !important;
 }
 .gestion-tw thead th.bg-transparent {
     background-color: transparent !important;
