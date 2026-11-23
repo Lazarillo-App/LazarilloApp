@@ -550,14 +550,11 @@
 .gestion-tw .h-12 {
     height: calc(var(--spacing) * 12);
   }
-.gestion-tw .h-36 {
-    height: calc(var(--spacing) * 36);
-  }
-.gestion-tw .h-40 {
-    height: calc(var(--spacing) * 40);
-  }
 .gestion-tw .h-44 {
     height: calc(var(--spacing) * 44);
+  }
+.gestion-tw .h-52 {
+    height: calc(var(--spacing) * 52);
   }
 .gestion-tw .h-\[13px\] {
     height: 13px;
@@ -633,6 +630,9 @@
   }
 .gestion-tw .w-8 {
     width: calc(var(--spacing) * 8);
+  }
+.gestion-tw .w-9 {
+    width: calc(var(--spacing) * 9);
   }
 .gestion-tw .w-10 {
     width: calc(var(--spacing) * 10);
