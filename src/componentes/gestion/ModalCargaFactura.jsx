@@ -2277,10 +2277,43 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   const conceptoDef = (opcCon.find((c) => /^liquidaci[oó]n sueldo$/i.test(c.nombre)) || opcCon[0] || {}).nombre || "";
   const totalN = parseImp(totalTxt);
   // Mientras no se toque la apertura, sale sola del total: un concepto, adelantos + el resto en el medio por defecto.
-  const auto = () => [{ concepto: conceptoDef, importe: totalTxt, pagos: [
+  const autoUno = () => [{ concepto: conceptoDef, importe: totalTxt, pagos: [
     ...(adelantos > 0 ? [{ medio: ADEL, importe: fmtNum(adelantos) }] : []),
     ...(totalN - adelantos > 0.004 ? [{ medio: medioDeConcepto(conceptoDef), importe: fmtNum(Math.round((totalN - adelantos) * 100) / 100) }] : []),
   ] }];
+  // La apertura arranca con los MISMOS conceptos que su último sueldo y en las mismas proporciones
+  // (Diego 23/11/2026: cobran parte por banco y parte en efectivo con dos conceptos distintos), cada uno
+  // con su forma habitual. El aguinaldo (SAC) no se copia: no es de todos los meses. Los adelantos se
+  // descuentan del concepto que se paga como ellos (si no, del primero). Sin historia, un solo concepto.
+  const estructura = (() => {
+    if (!ultimo) return null;
+    const suma = new Map();
+    (ultimo.movimientos || []).forEach((m) => {
+      if (!m.cod || m.cod === (cuenta && cuenta.codigoAdelanto)) return;
+      const c = opcCon.find((x) => String(x.codigo) === String(m.cod));
+      if (!c || /\bsac\b|aguinaldo/i.test(c.nombre)) return;
+      suma.set(c.nombre, (suma.get(c.nombre) || 0) + (Number(m.importe) || 0));
+    });
+    const tot = [...suma.values()].reduce((a, v) => a + v, 0);
+    return tot > 0 ? [...suma.entries()].sort((x, y) => y[1] - x[1]).map(([nombre, v]) => ({ nombre, prop: v / tot })) : null;
+  })();
+  const auto = () => {
+    // Lo que se reparte es lo que se paga (total − adelantos); los adelantos se suman enteros al concepto
+    // que los descuenta. Con el mismo total que el mes pasado, quedan los mismos importes.
+    const base = Math.round((totalN - adelantos) * 100) / 100;
+    if (!estructura || !(base > 0)) return autoUno();
+    let resto = base;
+    const ls0 = estructura.map((e, i) => {
+      const imp = i === estructura.length - 1 ? resto : Math.round(base * e.prop * 100) / 100;
+      resto = Math.round((resto - imp) * 100) / 100;
+      return { concepto: e.nombre, imp, medio: medioDeConcepto(e.nombre) };
+    });
+    const j = adelantos > 0 ? Math.max(0, ls0.findIndex((l) => l.medio === medioDefA)) : -1;
+    return ls0.map((l, i) => ({ concepto: l.concepto, importe: fmtNum(Math.round((l.imp + (i === j ? adelantos : 0)) * 100) / 100), pagos: [
+      ...(i === j ? [{ medio: ADEL, importe: fmtNum(adelantos) }] : []),
+      ...(l.imp > 0.004 ? [{ medio: l.medio, importe: fmtNum(l.imp) }] : []),
+    ] }));
+  };
   const ls = lineas || auto();
   const tocar = (f) => setLineas(f(ls.map((l) => ({ ...l, pagos: l.pagos.map((p) => ({ ...p })) }))));
   const regla = emp ? reglaEmpleadoDe(emp.nombre, emp.codigo, fechaPago) : null;
@@ -2414,7 +2447,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
             </div>
             {yaSueldo > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: "#8a5a00" }}>⚠ {nombrePeriodo(periodo)} ya tiene sueldo cargado ({$fmt(yaSueldo)}). Mirá la cuenta a la derecha antes de cargar.</div>}
             <span style={{ ...lab, marginTop: 14, display: "flex", justifyContent: "space-between", gap: 8 }}>Apertura por concepto y forma de pago
-              {habSueldo && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>forma de pago: la habitual de cada concepto en su cuenta</span>}</span>
+              {habSueldo && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>{!lineas && estructura && estructura.length > 1 ? `conceptos y proporciones como su sueldo de ${nombrePeriodo(ultimo.periodo)} · ` : ""}forma de pago: la habitual de cada concepto</span>}</span>
             <div style={{ border: `1px solid ${C.borde}`, borderRadius: 11, padding: "6px 10px" }}>
               {ls.map((l, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) 130px minmax(0, 2fr) 24px", gap: 8, alignItems: "start", padding: "6px 0", borderBottom: i < ls.length - 1 ? "1px solid #f2f2f0" : "none" }}>
