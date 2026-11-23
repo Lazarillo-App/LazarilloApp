@@ -105,9 +105,11 @@ function FechaInput({ iso, onISO, style: st, title, inputRef, tabIndex }) {
   const commit = () => {
     let s = txt.trim();
     if (/^\d{6,8}$/.test(s)) s = s.slice(0, 2) + "/" + s.slice(2, 4) + "/" + s.slice(4);
-    const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    else if (/^\d{4}$/.test(s)) s = s.slice(0, 2) + "/" + s.slice(2);
+    // Solo día y mes (Diego 23/11/2026): es del año actual.
+    const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4})?)?$/);
     if (!m) { setTxt(iso ? dmy4(iso) : ""); return; }
-    let d = Number(m[1]), mo = Math.min(Math.max(Number(m[2]), 1), 12), y = Number(m[3]);
+    let d = Number(m[1]), mo = Math.min(Math.max(Number(m[2]), 1), 12), y = m[3] ? Number(m[3]) : new Date().getFullYear();
     if (y < 100) y += 2000;
     const ult = new Date(y, mo, 0).getDate();
     d = Math.min(Math.max(d, 1), ult);
@@ -117,11 +119,15 @@ function FechaInput({ iso, onISO, style: st, title, inputRef, tabIndex }) {
   return (
     <input ref={inputRef} style={st} value={txt} placeholder="dd/mm/aaaa" title={title} tabIndex={tabIndex}
       onChange={(e) => {
-        let v = e.target.value.replace(/[^\d\/\-.]/g, "");
+        // Si escribe la barra justo después de la que se puso sola, no se duplica.
+        let v = e.target.value.replace(/[^\d\/\-.]/g, "").replace(/[\/\-.]{2,}/g, "/");
         if (/^\d+$/.test(v)) {
           const d = v.slice(0, 8);
           v = d.length > 4 ? d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4) : d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d;
         }
+        // Al completar el día o el mes aparece la barra sola, para seguir con lo que viene (Diego
+        // 23/11/2026). Solo mientras se escribe: al borrar no se vuelve a poner.
+        if (v.length > txt.length && /^(\d{2}|\d{2}\/\d{2})$/.test(v)) v += "/";
         setTxt(v);
       }}
       onBlur={commit}
