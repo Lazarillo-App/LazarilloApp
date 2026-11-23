@@ -63,11 +63,15 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
   const reglasCarga = useReglasCarga(lugar?.id ?? null, maestros?.lugares ?? []);
 
   useEffect(() => {
-    if (!pedido) return undefined;
+    // Espera los maestros: con ellos se sabe si el concepto es un sueldo (va a Empleados).
+    if (!pedido || !maestros) return undefined;
     let vivo = true;
     const abrir = (fechaPagoPrev, aprendido = null) => {
       if (!vivo) return;
-      setCtx(ctxDesdeCelda(pedido, fechaPagoPrev, aprendido));
+      // Concepto de sueldo (rubro de personal: liquidación o adelanto) → Empleados, no Gastos Varios.
+      const con = (maestros?.conceptos ?? []).find((c) => String(c.codigo) === String(pedido.conceptoCodigo));
+      const esSueldo = !!con && /personal/i.test(con.rubro ?? '') && /sueldo|adelanto/i.test(con.nombre ?? '');
+      setCtx(ctxDesdeCelda(pedido, fechaPagoPrev, aprendido, esSueldo));
       setAbierto(true);
       onPedidoAtendido?.();
     };
@@ -83,7 +87,7 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
         abrir(filas[0]?.fechaPago ? String(filas[0].fechaPago) : null, conProv ? { proveedorId: conProv.proveedorRef.id } : null);
       });
     return () => { vivo = false; };
-  }, [pedido, sucursal, onPedidoAtendido]);
+  }, [pedido, sucursal, onPedidoAtendido, maestros]);
   const cerrar = () => { setAbierto(false); setCtx(null); };
 
   return (

@@ -66,7 +66,12 @@ export function correrFecha(iso, meses) {
   return `${y}-${p2(mo)}-${p2(Math.min(Number(m[3]), ult))}`;
 }
 // aprendido: { proveedorId } de la última carga del concepto (mes anterior con valor), si tenía proveedor.
-export function ctxDesdeCelda(p, fechaPagoPrev, aprendido = null) {
+export function ctxDesdeCelda(p, fechaPagoPrev, aprendido = null, esSueldo = false) {
+  // Sueldos: a la pestaña Empleados, en ese período y con la persona elegida si vino de su fila
+  // (Diego 23/11/2026: «no se dio cuenta que es empleados»).
+  if (esSueldo || p.empleadoCodigo) {
+    return { modo: 'empleado', periodo: `${p.anio}-${p2(p.mes)}`, empleadoCodigo: p.empleadoCodigo ?? null };
+  }
   // Con proveedor (el de la fila en la vista Proveedor, o el que se usó la última vez) va directo a
   // Factura, precargada como la última de ese proveedor; Gastos Varios es para lo que no tiene
   // proveedor (Diego 20/11/2026: «aprendé de la carga»).
