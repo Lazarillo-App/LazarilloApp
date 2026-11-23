@@ -13,7 +13,11 @@ import { TIPOS_COMPROBANTE, abrirComprobante, subirComprobante } from "@/gestion
 // Comprobante adjunto (Diego 23/11/2026): «Adjuntar comprobante» (o soltarlo sobre la barra) lo sube,
 // lo lee y completa importe, fecha, medio e ID; queda guardado con el pago. `leido` viene del padre
 // para no perderlo si la barra se vuelve a armar (p. ej. al tildar solas las facturas que suman).
-export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, guardando, onCancel, onConfirm, leido, onLeido }) {
+// Cuenta de un comprobante: titular · banco · CBU/CVU · alias · CUIT (Diego 23/11/2026: «cuenta receptor e
+// ID de cuenta o CVU, ídem emisor», solo cuando se adjunta el comprobante).
+const fmtCuit = (c) => (c && c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : c);
+const textoCuenta = (c) => [c.titular, c.banco, c.cbu && `${c.tipoCuenta || "CBU"} ${c.cbu}`, c.alias && `alias ${c.alias}`, c.cuit && `CUIT ${fmtCuit(c.cuit)}`].filter(Boolean).join(" · ");
+export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDefault, aCuenta, guardando, onCancel, onConfirm, leido, onLeido }) {
     const editando = modo.tipo === "editar";
     const base = modo.tipo === "facturas" ? modo.saldo : editando ? modo.pago.importe : 0;
     const dl = !editando && leido?.datos ? leido.datos : {};
@@ -201,6 +205,13 @@ export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, 
               {comp.error && <span className="text-[#b45309]">{comp.error}</span>}
               {comp.nota && <span className="font-semibold text-[#0e7490]">{comp.nota}</span>}
               {Math.abs(difComp) > 1 && !comp.nota && <span className="font-semibold text-[#b45309]">El comprobante es de {fmtPesos(dc.importe)} y las facturas tildadas suman {fmtPesos(modo.saldo)}{difComp > 0 ? `: ${fmtPesos(difComp)} quedan a cuenta.` : "."}</span>}
+            </div>)}
+          {comp && !leyendo && (dc.emisor || dc.receptor) && (<div className="mt-1 grid gap-0.5 text-[11.5px] text-muted-foreground">
+              {dc.emisor && <div className="min-w-0 break-words"><b className="font-semibold text-zinc-600 dark:text-zinc-300">De:</b> {textoCuenta(dc.emisor)}</div>}
+              {dc.receptor && <div className="min-w-0 break-words"><b className="font-semibold text-zinc-600 dark:text-zinc-300">Para:</b> {textoCuenta(dc.receptor)}</div>}
+              {proveedorCuit && dc.receptor?.cuit && String(proveedorCuit).replace(/\D/g, "") !== dc.receptor.cuit && (<div className="font-semibold text-[#b45309]">
+                  ⚠ El comprobante es para CUIT {fmtCuit(dc.receptor.cuit)} y {proveedor} tiene CUIT {fmtCuit(String(proveedorCuit).replace(/\D/g, ""))}. Revisá que sea el pago de este proveedor.
+                </div>)}
             </div>)}
           {error && <div className="mt-1.5 text-xs text-destructive">{error}</div>}
         </div>
