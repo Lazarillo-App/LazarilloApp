@@ -1498,7 +1498,7 @@ export default function ArticulosMain(props) {
       : activeBranchFilter?.mode === 'main' ? 'none'
       : 'all';
     purchasesFoodCost(activeBizId, { from: periodo.from, to: periodo.to, branch_id: branchParam })
-      .then((items) => { if (vivo) setItemsCompraFoodCost((items || []).filter((i) => i.importe > 0)); })
+      .then((items) => { if (vivo) setItemsCompraFoodCost((items || []).filter((i) => Math.abs(i.importe) >= 0.5)); })
       .catch(() => { if (vivo) setItemsCompraFoodCost([]); });
     return () => { vivo = false; };
   }, [activeBizId, periodo?.from, periodo?.to, activeBranchFilter]);
