@@ -1498,7 +1498,7 @@ export default function ArticulosMain(props) {
       : activeBranchFilter?.mode === 'main' ? 'none'
       : 'all';
     purchasesFoodCost(activeBizId, { from: periodo.from, to: periodo.to, branch_id: branchParam })
-      .then((items) => { if (vivo) setItemsCompraFoodCost((items || []).filter((i) => i.importe > 0)); })
+      .then((items) => { if (vivo) setItemsCompraFoodCost((items || []).filter((i) => Math.abs(i.importe) >= 0.5)); })
       .catch(() => { if (vivo) setItemsCompraFoodCost([]); });
     return () => { vivo = false; };
   }, [activeBizId, periodo?.from, periodo?.to, activeBranchFilter]);
@@ -2263,7 +2263,6 @@ export default function ArticulosMain(props) {
           window.dispatchEvent(new CustomEvent('articulos:include-back', { detail: { ids: [id] } }));
         } catch { /* */ }
       }
-
       if (isNowDiscontinuado) {
         showMiss(`Artículo discontinuado correctamente`);
       } else {
@@ -2868,7 +2867,6 @@ export default function ArticulosMain(props) {
         }
       }
     }
-
     // Top 20 vacío (todavía no hay ventas) y ya hay artículos: se muestra "Todos" (negocio nuevo, 10/11).
     if (currentSel && esTop20Group(currentSel) && !ventasLoading && top20Ids.size === 0 && !todoEmpty && todoId) {
       setAgrupacionSeleccionada({ id: Number(todoId), nombre: 'TODO', articulos: [] });
