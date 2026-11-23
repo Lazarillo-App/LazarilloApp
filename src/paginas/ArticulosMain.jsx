@@ -58,6 +58,7 @@ import LinkAddMembersModal from '../componentes/LinkAddMembersModal';
 import { useGlobalSearchOptions } from '@/hooks/useGlobalSearchOptions';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { getPreciosPorSucursal } from '@/servicios/apiMaxiPriceLists';
 import { qk, STALE } from '@/lib/reactQueryClient';
 import { useArticleCostsAndConfig } from '@/hooks/useArticleCostsAndConfig';
 import { useAgrupacionesQuery } from '@/hooks/useAgrupacionesQuery';
@@ -257,6 +258,19 @@ export default function ArticulosMain(props) {
     clearSelection();
     toggleMode(null);
   }, [activeBizId]);
+
+  // Precio según la lista del POS de cada sucursal (Diego 23/11/2026): con una sucursal, su lista;
+  // con «Todas», ponderado por las unidades vendidas en el período. null = el negocio no tiene
+  // listas por sucursal y queda el precio de siempre.
+  const sucursalPrecios = activeBranchFilter?.mode === 'main' ? 'main'
+    : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId : 'all';
+  const { data: preciosSucursal = null } = useQuery({
+    enabled: Number(activeBizId) > 0,
+    queryKey: ['preciosSucursal', Number(activeBizId), String(sucursalPrecios), sucursalPrecios === 'all' ? periodo.from : null, sucursalPrecios === 'all' ? periodo.to : null],
+    queryFn: () => getPreciosPorSucursal(Number(activeBizId), { sucursal: sucursalPrecios, from: periodo.from, to: periodo.to }),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
 
   useEffect(() => {
   }, [activeBranchFilter]);
@@ -3338,6 +3352,7 @@ export default function ArticulosMain(props) {
           id="tabla-scroll"
           style={{ background: '#fff', height: '100%', overflow: 'hidden' }}>
           <TablaArticulos
+            preciosSucursal={preciosSucursal}
             celular={celular}
             arribaCelular={celular ? renderSidebar(true) : null}
             unidadesModo={unidadesModo}
