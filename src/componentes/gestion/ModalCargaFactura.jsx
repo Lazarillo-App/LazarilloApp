@@ -449,14 +449,27 @@ export function edeDesdeFactura(rowId, f, { maestros, pdvsRef }) {
   };
 }
 
-// Período: el mismo control, en el mismo lugar (arriba a la derecha, en la barra del título) en Factura,
-// Gastos Varios y Empleados (Diego 06/11/2026). ‹ › mueven de a un mes; el desplegable muestra 2 adelante y 12 atrás.
-function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo }) {
+// Período: en Factura va arriba a la derecha, en la barra del título (Diego 06/11/2026). En Gastos Varios y
+// Empleados va como un campo más del formulario (enCampo), en el primer renglón (Diego 23/11/2026).
+// ‹ › mueven de a un mes; el desplegable muestra 2 adelante y 12 atrás.
+function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo, enCampo = false, refCampo }) {
   const hoyP = periodoDe(hoyISO());
   const base = Array.from({ length: 15 }, (_, i) => moverPeriodo(hoyP, 2 - i));
   const opciones = base.includes(valor) ? base : [valor, ...base];
-  const alto = 34;
+  const alto = enCampo ? 38 : 34;
   const flecha = { height: alto, width: 32, border: `1px solid ${C.borde}`, borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 15, color: "#555", padding: 0, boxSizing: "border-box" };
+  if (enCampo) return (
+    <div ref={refCampo} title={titulo} style={{ minWidth: 0 }}><span style={lab}>Período</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button type="button" tabIndex={-1} title="Mes anterior" onClick={() => onCambio(moverPeriodo(valor, -1))} style={{ ...flecha, flexShrink: 0 }}>‹</button>
+        <select tabIndex={-1} value={valor} onChange={(e) => onCambio(e.target.value)}
+          style={{ height: alto, flex: 1, minWidth: 0, boxSizing: "border-box", border: "1px solid #ccc", borderRadius: 9, padding: "0 8px", fontSize: 13.5, fontWeight: 700, background: "#fff", color: C.neg, textAlign: "center" }}>
+          {opciones.map((x) => <option key={x} value={x}>{nombrePeriodo(x)}</option>)}
+        </select>
+        <button type="button" tabIndex={-1} title="Mes siguiente" onClick={() => onCambio(moverPeriodo(valor, 1))} style={{ ...flecha, flexShrink: 0 }}>›</button>
+      </div>
+    </div>
+  );
   return (
     <div title={titulo} style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: C.gris, letterSpacing: ".04em", textTransform: "uppercase" }}>Período</span>
@@ -1312,13 +1325,11 @@ function ModalNuevaCarga(props) {
               </div>
             </>) : <h2 style={{ fontSize: 17, margin: 0 }}>{titulo}</h2>}
             <span style={{ flex: 1 }} />
-            <span ref={refsT.periodo} style={{ display: "inline-flex" }}>
-            {modo === "factura"
-              ? <SelectorPeriodo valor={perF} soloVer={soloVer} onCambio={(x) => setPeriodoF(fechaValida(fecha) && x === periodoDe(fecha) ? null : x)}
+            {/* En Gastos Varios y Empleados el período va adentro del formulario (Diego 23/11/2026). */}
+            {modo === "factura" && <span ref={refsT.periodo} style={{ display: "inline-flex" }}>
+              <SelectorPeriodo valor={perF} soloVer={soloVer} onCambio={(x) => setPeriodoF(fechaValida(fecha) && x === periodoDe(fecha) ? null : x)}
                   nota={periodoF ? "distinto al de la fecha" : null} titulo="Mes en el que cuenta toda la factura en la vista Económica. Sigue la fecha salvo que lo cambies." />
-              : modo === "vario" ? <SelectorPeriodo valor={periodoV} onCambio={elegirPeriodo} titulo="Mes del gasto" />
-              : <SelectorPeriodo valor={periodoE} onCambio={setPeriodoE} titulo="Período del sueldo o del adelanto" />}
-            </span>
+            </span>}
             <button type="button" tabIndex={-1} onClick={onCerrar} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer", marginLeft: 6 }}>×</button>
           </div>
         {recCarga.visible && pasoT && (
@@ -1427,7 +1438,7 @@ function ModalNuevaCarga(props) {
         <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? { marginBottom: 16 } : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
-            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} />
+            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} periodoRef={refsT.periodo} />
         ) : (
         <fieldset disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
@@ -1910,14 +1921,12 @@ function ModalNuevaCarga(props) {
           <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 40%)", gap: 14, alignItems: "start" }}>
           <div style={{ minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {/* El período está arriba, en la barra del título (mismo lugar en las 3 pestañas, Diego 06/11/2026). */}
-            <div style={{ gridColumn: "1 / -1", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ width: 150 }}><span style={lab}>Fecha del gasto</span>
-                <FechaInput tabIndex={-1} style={{ ...inp, color: fechaV === fechaDelPeriodo(periodoV) ? C.gris : C.neg, border: errFecha ? `1.6px solid ${C.rojo}` : inp.border }} iso={fechaV}
-                  onISO={(v) => { setFechaV(v); setErrFecha(false); }} /></div>
-              <span style={{ fontSize: 11.5, color: C.gris, paddingBottom: 10 }}>va al 15, cambiala si querés</span>
-              {errFecha && <div style={{ fontSize: 11, color: C.rojo, fontWeight: 700, paddingBottom: 10 }}>Falta una fecha válida.</div>}
-            </div>
+            {/* Primer renglón: el período donde estaba la fecha y la fecha del gasto arriba del rubro (Diego 23/11/2026). */}
+            <SelectorPeriodo enCampo refCampo={refsT.periodo} valor={periodoV} onCambio={elegirPeriodo} titulo="Mes del gasto" />
+            <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", gap: 8 }}>Fecha del gasto
+                <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400, color: errFecha ? C.rojo : C.gris }}>{errFecha ? "Falta una fecha válida." : "va al 15, cambiala si querés"}</span></span>
+              <FechaInput tabIndex={-1} style={{ ...inp, color: fechaV === fechaDelPeriodo(periodoV) ? C.gris : C.neg, border: errFecha ? `1.6px solid ${C.rojo}` : inp.border }} iso={fechaV}
+                onISO={(v) => { setFechaV(v); setErrFecha(false); }} /></div>
             {/* Primero el concepto (el rubro se completa solo), después el rubro (Diego, 28/10/2026). */}
             <div><span style={lab}>Concepto</span>
               <Combo opciones={conceptosDe(rubroV)} fuera={rubroV ? conceptosDe(null) : undefined} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
@@ -2183,7 +2192,7 @@ function ModalNuevaCarga(props) {
 // "Adelantos"). Adelanto: concepto fijo. PDV: la regla del empleado; si se cambia, aplica al total.
 const ADEL = MEDIO_ADELANTOS;
 const periodoHoy = (n = 0) => moverPeriodo(hoyISO().slice(0, 7), n);
-function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe, onGuardado, onCerrar, periodo, setPeriodo }) {
+function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe, onGuardado, onCerrar, periodo, setPeriodo, periodoRef }) {
   const queryClient = useQueryClient();
   const [sub, setSub] = useState("sueldo");
   const [codigo, setCodigo] = useState("");
@@ -2307,10 +2316,12 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 16, alignItems: "start" }}>
       <div>
         {tabsSub}
-        <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr", gap: 10 }}>
-          <div><span style={lab}>Empleado</span>
+        {/* Empleado más angosto y el período en el medio, entre el nombre y la fecha de pago (Diego 23/11/2026). */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.1fr 1fr", gap: 10 }}>
+          <div style={{ minWidth: 0 }}><span style={lab}>Empleado</span>
             <Combo opciones={empleados.map(etiqueta)} valor={emp ? etiqueta(emp) : ""} placeholder={nomina ? "Buscar empleado..." : "Cargando nómina…"} autoFocus
               onElegir={(t) => { const e = empleados.find((x) => etiqueta(x) === t); setCodigo(e ? e.codigo : ""); setTotal(null); setLineas(null); setReparto(null); setEditRep(false); setParecido(null); }} /></div>
+          <SelectorPeriodo enCampo refCampo={periodoRef} valor={periodo} onCambio={setPeriodo} titulo="Período del sueldo o del adelanto" />
           <div><span style={lab}>Fecha de pago</span><FechaInput style={inp} iso={fechaPago} onISO={setFechaPago} /></div>
         </div>
 
