@@ -314,7 +314,10 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     if (!tildadas.has(state.rowId) || tildadas.size < 2) return null;
     const imp = resolverImporteParaPatch({ esDistribuida: state.esDistribuida, importeInput: state.importeManual, importeInicial: state.importeInicial });
     const enCero = imp.ok && imp.incluir && imp.value === 0;
-    const cuerpo = cambiosLote(state.inicial, { fecha: state.fechaManual, concepto: state.conceptoCodigoManual, observac: state.observacManual }, enCero);
+    const cuerpo = cambiosLote(
+      { ...state.inicial, fechaPago: state.fechaPagoInicial },
+      { fecha: state.fechaManual, concepto: state.conceptoCodigoManual, observac: state.observacManual, ...(state.esGastoVario ? { fechaPago: state.fechaPago } : {}) },
+      enCero);
     if (Object.keys(cuerpo).length === 0) return null;
     return { otras: [...tildadas.values()].filter((f) => f.rowId !== state.rowId), cuerpo };
   };
@@ -594,7 +597,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
 
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
-    ? `Fecha, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
+    ? `Fecha de gasto, fecha de pago, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
     : editing?.ajena ? 'Esta compra se carga en otro negocio: fecha, importe y concepto se cambian desde ese negocio'
       : editing?.esDistribuida ? 'Repartida entre negocios: el importe es el total; al guardar se vuelve a repartir según la regla' : null;
 
