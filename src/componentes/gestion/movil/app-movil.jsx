@@ -216,7 +216,10 @@ export function AppMovil() {
         }}>
         {!actual ? <p className="py-10 text-center text-zinc-500">Cargando…</p>
             : tab === "inicio" ? <Inicio reinicio={reinicio} sel={elegidos.map((p) => ({ localId: p.localId, pdvId: p.pdvId }))} irImpagas={() => setTab("impagas")} irSinCarga={(mes) => { setMesSc(mes); setTab("sincarga"); }}/>
-                : tab === "sincarga" ? <SinCarga pdvId={actual.pdvId} mesInicial={mesSc} nombrePdv={(id) => pdvs.find((p) => p.pdvId === id)?.label ?? "otro PDV"} onCargar={(sc, mes) => ir("cargar", { sc, mes })}/>
+                : tab === "sincarga" ? <SinCarga pdvId={actual.pdvId} mesInicial={mesSc} nombrePdv={(id) => pdvs.find((p) => p.pdvId === id)?.label ?? "otro PDV"} onCargar={(sc, mes) => (sc.empleadoCodigo
+                    // Los sueldos se cargan en Carga › Empleados, que todavía no está en el celular.
+                    ? toast("Los sueldos se cargan desde la compu", { description: "Panel › Cargar › Empleados" })
+                    : ir("cargar", { sc, mes }))}/>
                     : tab === "impagas" ? <Impagas pdvId={actual.pdvId} volverLocalRef={volverLocalRef}/>
                         : carga && "sc" in carga ? (() => {
                             // Lo que llega por apertura se carga en su PDV de origen, por el importe entero.
