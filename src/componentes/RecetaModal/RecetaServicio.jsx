@@ -9,6 +9,7 @@ import { Box, Typography, Checkbox, Select, MenuItem, ListSubheader, Chip, Divid
 import CloseIcon from '@mui/icons-material/Close';
 import { BASE } from '@/servicios/apiBase';
 import SelectorBuscable from '@/componentes/SelectorBuscable';
+import { useBranch } from '@/hooks/useBranch';
 
 const CELESTE = '#5BC2EA';
 const pesos = (x) => `$ ${Math.round(Number(x) || 0).toLocaleString('es-AR')}`;
@@ -69,16 +70,21 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
   const onCostoRef = useRef(onCosto);
   onCostoRef.current = onCosto;
 
+  // Sucursal del chip del header (Diego 23/11/2026): cada sucursal con sus gastos y ventas; «Todas» suma.
+  const { activeBranchFilter } = useBranch() || {};
+  const sucursal = activeBranchFilter?.mode === 'main' ? 'main'
+    : activeBranchFilter?.mode === 'branch' ? String(activeBranchFilter.branchId) : 'all';
   const pedir = useCallback(async (ruta, opts = {}) => {
     const token = localStorage.getItem('token') || '';
-    const res = await fetch(`${BASE}/businesses/${businessId}/servicios${ruta}`, {
+    const conSuc = ruta === '/anclas' ? ruta : `${ruta}${ruta.includes('?') ? '&' : '?'}sucursal=${encodeURIComponent(sucursal)}`;
+    const res = await fetch(`${BASE}/businesses/${businessId}/servicios${conSuc}`, {
       ...opts,
       headers: { Authorization: `Bearer ${token}`, 'X-Business-Id': String(businessId), 'Content-Type': 'application/json', ...(opts.headers || {}) },
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || json?.error || `Error ${res.status}`);
     return json;
-  }, [businessId]);
+  }, [businessId, sucursal]);
 
   // Costo de ESTE artículo dentro de su familia (lo que va al pie de la receta).
   const costoPropio = useMemo(() => {
@@ -226,7 +232,7 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         </Typography>
       )}
 
-      <Titulo>Costo de {nom} · sale de Tu canasta del local</Titulo>
+      <Titulo>Costo de {nom} · {c?.sucursal === 'all' && (c?.sucursales?.length || 0) > 1 ? `todas las sucursales (${c.sucursales.map((x) => x.nombre).join(' + ')})` : (c?.sucursalNombre || 'sale de Tu canasta del local')}</Titulo>
       {/* Diego 23/11/2026: «no entiendo "para el servicio 10,4 %" ni el total por mes». Cada fila dice
           cuánto gasta el local, qué parte le toca a este servicio y cuánto es; el total va adentro de
           la tabla, abajo de su columna, y la frase de abajo explica de dónde sale el %. */}
@@ -241,7 +247,26 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
               onChange={(e) => guardar({ ...config, incluir: { ...config.incluir, [r.clave]: e.target.checked } })}
               sx={{ p: 0.5, color: CELESTE, '&.Mui-checked': { color: CELESTE } }} />
             <Box sx={{ minWidth: 0, color: r.incluido ? 'text.primary' : 'text.disabled' }}>
-              <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{r.nombre}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{r.nombre}</Typography>
+                {/* Alquiler de otro PDV (Diego 23/11/2026): una sucursal puede tomar el alquiler de otra
+                    (San Justo cobra como si pagara el de Ramos). */}
+                {r.clave === 'alquiler' && c?.sucursal !== 'all' && (c?.sucursales?.length || 0) > 1 && (
+                  <Select size="small" value={c.alquilerDe || c.sucursal} disabled={soloLectura || guardando}
+                    renderValue={(v) => (v === c.sucursal ? 'de esta sucursal' : `de ${c.sucursales.find((x) => x.key === v)?.nombre || v}`)}
+                    onChange={(e) => {
+                      const v = String(e.target.value);
+                      const alq = { ...(config.alquilerDe || {}) };
+                      if (v === c.sucursal) delete alq[c.sucursal]; else alq[c.sucursal] = v;
+                      guardar({ ...config, alquilerDe: alq });
+                    }}
+                    sx={{ height: 30, fontSize: 12, color: '#2492C8', '& .MuiSelect-select': { py: 0.25 } }}>
+                    {c.sucursales.map((x) => (
+                      <MenuItem key={x.key} value={x.key} sx={{ fontSize: 13 }}>{x.key === c.sucursal ? 'De esta sucursal' : `Usar el de ${x.nombre}`}</MenuItem>
+                    ))}
+                  </Select>
+                )}
+              </Box>
               {r.propios.length > 0 && r.incluido && (
                 <Typography sx={{ ...gris, fontSize: 11.5 }}>incluye {r.propios.map((p) => p.nombre).join(', ')} entero</Typography>
               )}
@@ -261,6 +286,11 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         <Typography sx={{ fontSize: 14, fontWeight: 700, gridColumn: { xs: '2 / 3', md: '2 / 5' } }}>Costo de {nom} por mes</Typography>
         <Box sx={{ ...valor, fontWeight: 800, fontSize: 15 }}>{pesos(c?.costoMes)}</Box>
       </Box>
+      {c?.sucursal === 'all' && (c?.porSucursal?.length || 0) > 1 && (
+        <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.5, px: 0.5 }}>
+          {c.porSucursal.map((p) => `${p.nombre}: ${pesos(p.costoMes)} (${Math.round(p.horas)} h, ${pesos(p.costoHora)} la hora)`).join(' · ')}. Elegí una sucursal arriba para ver o cambiar la suya.
+        </Typography>
+      )}
 
       {/* Dos filas con la misma grilla (Diego 23/11/2026: alinear «según lo que vende» y «+ Agregar
           gasto»): título a la izquierda en una columna fija y el desplegable del mismo ancho. */}
