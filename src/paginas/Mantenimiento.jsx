@@ -122,6 +122,7 @@ export default function Mantenimiento() {
           !equipos.length ? (
             <Vacio emoji="🧰" titulo="Todavía no hay equipos">
               {ctx.planifica ? <>Cargá tus equipos (heladeras, freidoras, hornos…) con <b>+ Equipo</b> y armales los mantenimientos que se repiten.</> : 'Cuando el jefe cargue los equipos, acá ves lo que te toca.'}
+              <div style={{ marginTop: 4 }}>Empezá cargando tu primer equipo con + Equipo</div>
             </Vacio>
           ) : !ordenes.length ? <Vacio emoji="✅" titulo="Nada pendiente">No hay mantenimientos para las próximas dos semanas.</Vacio> : (
             <>
@@ -135,7 +136,12 @@ export default function Mantenimiento() {
         )}
 
         {vista === 'equipos' && (
-          !equipos.length ? <Vacio emoji="🧰" titulo="Todavía no hay equipos">{ctx.planifica ? 'Tocá + Equipo para cargar el primero.' : 'Todavía no se cargaron equipos.'}</Vacio> : (
+          !equipos.length ? (
+            <Vacio emoji="🧰" titulo="Todavía no hay equipos">
+              {ctx.planifica ? 'Tocá + Equipo para cargar el primero.' : 'Todavía no se cargaron equipos.'}
+              <div style={{ marginTop: 4 }}>Empezá cargando tu primer equipo con + Equipo</div>
+            </Vacio>
+          ) : (
             <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
               {equipos.map((e) => {
                 const est = ESTADO_EQUIPO[e.estado] || ESTADO_EQUIPO.activo;
