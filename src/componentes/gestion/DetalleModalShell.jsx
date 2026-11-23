@@ -182,6 +182,7 @@ export default function DetalleModalShell({
               <>
                 {' · '}<Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>{seleccion.ids.size} tildado{seleccion.ids.size !== 1 ? 's' : ''}</Box>{' · '}
                 <Box component="button" type="button" onClick={seleccion.onLimpiar} sx={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline', '&:hover': { color: 'text.primary' } }}>destildar</Box>
+                {seleccion.accion || null}
               </>
             )}
           </Box>
