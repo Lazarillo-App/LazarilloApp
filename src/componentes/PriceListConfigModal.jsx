@@ -1,4 +1,4 @@
-/* eslint-disable no-empty */
+﻿/* eslint-disable no-empty */
 // src/componentes/PriceListConfigModal.jsx
 // Modal de gestión de listas de precios (modelo nuevo).
 // Cada cambio guarda inmediato al onBlur — no hay "Guardar" final.
