@@ -14,7 +14,15 @@ export default function ListaPosSucursales({ businessId }) {
   React.useEffect(() => {
     if (!businessId) return undefined;
     let cancel = false;
-    getListasSucursales(businessId).then((r) => { if (!cancel) setCfg(r); }).catch(() => { if (!cancel) setCfg(null); });
+    // Reintenta si el servidor no respondió (reinicio o arranque en frío): getListasSucursales
+    // devuelve disponible:false cuando el pedido falla.
+    (async () => {
+      for (let i = 0; i < 3 && !cancel; i++) {
+        const r = await getListasSucursales(businessId).catch(() => null);
+        if (r?.ok) { if (!cancel) setCfg(r); return; }
+        await new Promise((res) => setTimeout(res, 1500 * (i + 1)));
+      }
+    })();
     return () => { cancel = true; };
   }, [businessId]);
   if (!cfg?.disponible || !cfg.sucursales?.length) return null;
