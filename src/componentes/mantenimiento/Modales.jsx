@@ -1,5 +1,5 @@
 // src/componentes/mantenimiento/Modales.jsx — equipo (datos, planes, historial), orden y falla.
-import { tipearImporte, numeroDeImporte, importeATexto } from '../CampoImporte';
+import CampoImporte from '../CampoImporte';
 import CampoFecha from '../CampoFecha';
 import React, { useCallback, useEffect, useState } from 'react';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
@@ -78,13 +78,13 @@ export function OrdenModal({ businessId, orden, abierto, onCerrar, onCambio, ctx
             </Campo>
             {ctx?.gestor && (
               <div style={{ display: 'flex', gap: 8 }}>
-                <Campo label="Costo (opcional)" style={{ flex: 1 }}><Entrada inputMode="decimal" placeholder="$ 0" value={costo} onChange={(e) => setCosto(tipearImporte(e))} /></Campo>
+                <Campo label="Costo (opcional)" style={{ flex: 1 }}><CampoImporte size="small" sx={sxFecha} placeholder="0" value={costo} onChange={setCosto} /></Campo>
                 <Campo label="Lo hizo (técnico / proveedor)" style={{ flex: 2 }}><Entrada value={proveedor} maxLength={80} onChange={(e) => setProveedor(e.target.value)} /></Campo>
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <Boton primario deshabilitado={o.nota_obligatoria && !nota.trim()} onClick={async () => {
-                if (await hacer('hacer', { nota, costo: costo === '' ? null : numeroDeImporte(costo), proveedor })) onCerrar();
+                if (await hacer('hacer', { nota, costo: costo === '' ? null : costo, proveedor })) onCerrar();
               }} style={{ minHeight: 42 }}>✓ Hecho</Boton>
               <span style={{ flex: 1 }} />
               <Campo label="Pasarlo a" style={{ width: 160 }}><CampoFecha sx={sxFecha} value={fecha} onChange={setFecha} /></Campo>
@@ -214,7 +214,7 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
   const guardar = async () => {
     setError('');
     try {
-      const r = await MantenimientoAPI.guardarEquipo(businessId, { ...v, precio: v.precio === '' || v.precio == null ? null : (typeof v.precio === 'number' ? v.precio : numeroDeImporte(v.precio)) });
+      const r = await MantenimientoAPI.guardarEquipo(businessId, { ...v, precio: v.precio === '' || v.precio == null ? null : v.precio });
       setD(r); setV({ ...r.equipo }); onCambio?.();
       if (nuevo) setSolapa('mant');
     } catch (e) { setError(textoError(e)); }
@@ -254,7 +254,7 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
           <Campo label="Estado"><Selector value={v.estado} onChange={set('estado')} opciones={Object.entries(ESTADO_EQUIPO).map(([k, s]) => ({ value: k, label: s.label }))} /></Campo>
           <Campo label="Fecha de compra"><CampoFecha sx={sxFecha} disabled={!puede} value={v.fecha_compra || ''} onChange={set('fecha_compra')} /></Campo>
           <Campo label="Instalación"><CampoFecha sx={sxFecha} disabled={!puede} value={v.fecha_instalacion || ''} onChange={set('fecha_instalacion')} /></Campo>
-          {ctx?.gestor && <Campo label="Precio de compra"><Entrada inputMode="decimal" placeholder="$ 0" value={typeof v.precio === 'number' ? importeATexto(v.precio) : (v.precio ?? '')} onChange={(x) => set('precio')(tipearImporte(x))} /></Campo>}
+          {ctx?.gestor && <Campo label="Precio de compra"><CampoImporte size="small" sx={sxFecha} placeholder="0" value={v.precio ?? ''} onChange={set('precio')} /></Campo>}
           <Campo label="Notas" style={{ gridColumn: '1 / -1' }}><Entrada disabled={!puede} value={v.notas || ''} onChange={(x) => set('notas')(x.target.value)} /></Campo>
           {puede && (
             <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
