@@ -421,12 +421,14 @@ const plataCorta = (n, dec = 1) => {
 // proyectada va rayada y con borde punteado; adentro, la parte maciza es lo real a hoy, con su valor
 // si entra. Sin real conocido (indicadores en %), toda la barra va rayada.
 const AZUL = "#5BC2EA", AZUL_ELEGIDO = "#0369a1";
-function Barra({ alto, proyectada, real, valor, elegido, negativo, etiquetaReal }) {
+function Barra({ alto, proyectada, real, valor, elegido, negativo, etiquetaReal, etiquetaFalta }) {
     if (!proyectada) return <div className="w-full rounded-t-md" style={{ height: alto, background: negativo ? "#f87171" : elegido ? AZUL_ELEGIDO : AZUL }}/>;
     const color = elegido ? AZUL_ELEGIDO : AZUL;
     const pct = real != null && valor > 0 ? Math.max(0, Math.min(100, (real / valor) * 100)) : 0;
     return (<div className="relative w-full overflow-hidden rounded-t-md" style={{ height: alto, border: `1.5px dashed ${color}`, borderBottom: 0,
         background: `repeating-linear-gradient(135deg, ${color}33 0 5px, ${color}14 5px 10px)` }}>
+        {/* Lo que falta facturar hasta la proyección (Diego 23/11/2026), arriba en la parte rayada. */}
+        {etiquetaFalta && pct > 0 && pct < 85 && <span className="absolute inset-x-0 top-0.5 whitespace-nowrap text-center text-[9px] font-semibold tabular-nums" style={{ color: elegido ? AZUL_ELEGIDO : "#0369a1" }}>{etiquetaFalta}</span>}
         {pct > 0 && <div className="absolute inset-x-0 bottom-0 flex items-start justify-center overflow-hidden" style={{ height: `${pct}%`, background: color }}>
             {etiquetaReal && <span className="whitespace-nowrap pt-0.5 text-[9px] font-semibold tabular-nums text-white">{etiquetaReal}</span>}
           </div>}
@@ -507,7 +509,8 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
               onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
               {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{cant ? cantCorta(x.valor, n > 6) : plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
               <Barra alto={x.valor != null ? `${alto(x.valor) * 0.8}%` : 0} proyectada={x.proyectado} valor={x.valor} elegido={elegido} negativo={x.valor != null && x.valor < 0}
-                real={x.proyectado ? realDelMes : null} etiquetaReal={x.proyectado && realDelMes != null && n <= 6 ? (cant ? cantCorta(realDelMes, true) : plataCorta(realDelMes, 0)) : null}/>
+                real={x.proyectado ? realDelMes : null} etiquetaReal={x.proyectado && realDelMes != null && n <= 6 ? (cant ? cantCorta(realDelMes, true) : plataCorta(realDelMes, 0)) : null}
+                etiquetaFalta={x.proyectado && realDelMes != null && n <= 6 && x.valor > realDelMes ? `+${cant ? cantCorta(x.valor - realDelMes, true) : plataCorta(x.valor - realDelMes, 0)}` : null}/>
             </div>);
           })}
         </div>
@@ -596,7 +599,8 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
               onClick={modo === "hist" && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: `${x.anio}-${String(mes).padStart(2, "0")}` }) : undefined}>
               <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{x.valor != null ? fmt(x.valor) : "—"}</span>
               <Barra alto={x.valor != null ? `${alto(x.valor) * 0.8}%` : 0} proyectada={x.proyectado} valor={x.valor} real={x.real} elegido={x.anio === elegido}
-                etiquetaReal={x.proyectado && x.real != null && vista.length <= 6 ? fmt(x.real) : null}/>
+                etiquetaReal={x.proyectado && x.real != null && vista.length <= 6 ? fmt(x.real) : null}
+                etiquetaFalta={x.proyectado && x.real != null && vista.length <= 6 && x.valor > x.real ? `+${fmt(x.valor - x.real)}` : null}/>
             </div>))}
         </div>
         <div className="flex gap-1.5">
