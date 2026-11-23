@@ -611,7 +611,7 @@ function ZoomPanel({ zoom, onCambiar }) {
         sx={{ border: 0, borderLeft: 1, borderRight: 1, borderColor: 'divider', bgcolor: 'transparent', height: 30, width: 52, px: 0, font: 'inherit', fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums', color: 'text.secondary', cursor: 'pointer' }}>
         {Math.round(zoom * 100)}%
       </Box>
-      <Tooltip title="Agrandar"><span><Button onClick={() => onCambiar(1)} disabled={zoom === ZOOMS_PANEL[0]} aria-label="Agrandar el panel" sx={{ ...b, fontSize: '0.9rem' }}>A+</Button></span></Tooltip>
+      <Tooltip title="Agrandar"><span><Button onClick={() => onCambiar(1)} disabled={zoom === ZOOMS_PANEL[ZOOMS_PANEL.length - 1]} aria-label="Agrandar el panel" sx={{ ...b, fontSize: '0.9rem' }}>A+</Button></span></Tooltip>
     </Stack>
   );
 }
