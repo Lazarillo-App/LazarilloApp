@@ -52,6 +52,13 @@ function leerPdvs() {
 }
 // Una misma consulta para cada PDV elegido (misma clave que con uno solo: comparte caché). `list`
 // llega cuando están todas (Diego 29/10: ver varios PDV juntos).
+// Mercaderías del mes en curso con la proyección del servidor (la misma que Artículos, Diego 23/11/2026):
+// lo cargado de cada PDV × su factor de compras. Sin factor en algún PDV, la proyección de siempre.
+function mercaderiaProy(lista) {
+    if (!lista?.length || lista.some((r) => !(r?.foodCostProy?.factorCompras > 0)))
+        return undefined;
+    return lista.reduce((s, r) => s + (r.rubros || []).filter((x) => /mercader/i.test(x.rubro)).reduce((a, x) => a + x.total, 0) * r.foodCostProy.factorCompras, 0);
+}
 function useMulti(sel, key, url, staleTime = 30_000) {
     const qs = useQueries({
         queries: sel.map((s) => {
@@ -296,7 +303,7 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
         if (!data)
             return null;
         if (proy && scMes) {
-            const g = proyectarGastos({ cargado: data.rubros, sinCargar: scMes.items, historia, ventasProy: proy.proyeccion });
+            const g = proyectarGastos({ cargado: data.rubros, sinCargar: scMes.items, historia, ventasProy: proy.proyeccion, mercaderiaProy: mercaderiaProy(res.list) });
             return { modo: "proy", ventas: proy.proyeccion, rubros: g.rubros.map((r) => ({ rubro: r.rubro, total: r.total, variable: r.variable })), gastosReal: data.gastos, faltan: sinCargarMes?.n ?? 0 };
         }
         if (sinCargarMes && sinCargarMes.total > 0.5) {
