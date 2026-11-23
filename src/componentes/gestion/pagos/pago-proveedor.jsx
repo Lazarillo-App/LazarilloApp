@@ -16,6 +16,13 @@ import { TIPOS_COMPROBANTE, abrirComprobante, subirComprobante } from "@/gestion
 // Cuenta de un comprobante: titular · banco · CBU/CVU · alias · CUIT (Diego 23/11/2026: «cuenta receptor e
 // ID de cuenta o CVU, ídem emisor», solo cuando se adjunta el comprobante).
 const fmtCuit = (c) => (c && c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10)}-${c.slice(10)}` : c);
+// Más de un comprobante (Diego 23/11/2026: «se paga de 2 bancos distintos»): cada comprobante es un pago
+// aparte, con su importe, medio, fecha, ID y quién paga; se imputan uno detrás del otro a las facturas
+// tildadas, de la más vieja a la más nueva.
+const filaDeComprobante = (r, pdvDefault) => {
+    const d = r?.datos || {};
+    return { comp: r, importe: d.importe > 0 ? importeAInput(d.importe) : "", fecha: d.fecha || hoyISO(), medio: r?.medio || "", referencia: d.operacion || "", pdvPaga: pdvDefault, fechaVer: 0 };
+};
 const textoCuenta = (c) => [c.titular, c.banco, c.cbu && `${c.tipoCuenta || "CBU"} ${c.cbu}`, c.alias && `alias ${c.alias}`, c.cuit && `CUIT ${fmtCuit(c.cuit)}`].filter(Boolean).join(" · ");
 export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDefault, aCuenta, guardando, onCancel, onConfirm, leido, onLeido }) {
     const editando = modo.tipo === "editar";
@@ -32,9 +39,20 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
     const [referencia, setReferencia] = useState(editando ? modo.pago.referencia ?? "" : dl.operacion || "");
     const [comp, setComp] = useState(editando ? (modo.pago.comprobanteId ? { comprobanteId: modo.pago.comprobanteId, nombre: "comprobante" } : null) : leido ?? null);
     const [leyendo, setLeyendo] = useState(false);
+    const [extras, setExtras] = useState(() => (!editando && Array.isArray(leido?.extras) ? leido.extras.map((r) => filaDeComprobante(r, null)) : []));
+    // Lo leído hasta ahora (principal + otros), para el padre: tilda las facturas que suma el total.
+    const leidosRef = useRef({ main: !editando ? leido ?? null : null, extras: !editando && Array.isArray(leido?.extras) ? leido.extras : [] });
     const [arrastrando, setArrastrando] = useState(false);
     const archivoRef = useRef(null);
-    const [pdvPaga, setPdvPaga] = useState(editando ? modo.pago.pdvPagaId : pdvDefault ?? pdvs[0]?.id ?? null);
+    const [pdvPaga, setPdvPagaSel] = useState(editando ? modo.pago.pdvPagaId : pdvDefault ?? pdvs[0]?.id ?? null);
+    // Si nadie eligió quién paga y cambian las facturas tildadas, sigue a la sucursal de esas facturas.
+    const pdvElegido = useRef(editando);
+    const setPdvPaga = (v) => { pdvElegido.current = true; setPdvPagaSel(v); };
+    const [pdvDefVista, setPdvDefVista] = useState(pdvDefault);
+    if (pdvDefVista !== pdvDefault) {
+        setPdvDefVista(pdvDefault);
+        if (!pdvElegido.current && pdvDefault != null) setPdvPagaSel(pdvDefault);
+    }
     const [error, setError] = useState(null);
     // "cuenta:ID" = usar el disponible de un pago a cuenta (no crea otro pago).
     const usado = medio.startsWith("cuenta:") ? aCuenta.find((p) => p.id === Number(medio.slice(7))) ?? null : null;
@@ -46,12 +64,30 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
         if (!(comp?.datos?.importe > 0) || editando)
             setImporte(importeAInput(usado ? Math.min(base, usado.disponible) : base));
     }
-    async function adjuntar(file) {
-        if (!file || leyendo) return;
+    async function adjuntar(files) {
+        const lista = Array.from(files || []).filter(Boolean);
+        if (!lista.length || leyendo) return;
         setError(null);
         setLeyendo(true);
         try {
+            for (const file of lista) await adjuntarUno(file);
+        }
+        finally {
+            setLeyendo(false);
+        }
+    }
+    async function adjuntarUno(file) {
+        try {
             const r = await subirComprobante(file);
+            // Ya hay uno: este va como otro pago (no en edición, ni aplicando un pago a cuenta).
+            if (!editando && leidosRef.current.main) {
+                leidosRef.current = { ...leidosRef.current, extras: [...leidosRef.current.extras, r] };
+                setExtras((xs) => [...xs, filaDeComprobante(r, null)]);
+                const total = [leidosRef.current.main, ...leidosRef.current.extras].reduce((a, x) => a + (Number(x?.datos?.importe) || 0), 0);
+                onLeido?.({ ...leidosRef.current.main, extras: leidosRef.current.extras }, total);
+                return;
+            }
+            if (!editando) leidosRef.current = { ...leidosRef.current, main: r };
             setComp(r);
             const d = r.datos || {};
             if (editando) {
@@ -63,15 +99,22 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
                 if (r.medio) setMedio(r.medio);
                 if (d.operacion) setReferencia(d.operacion);
             }
-            onLeido?.(r);
+            if (!editando) {
+                const total = [r, ...leidosRef.current.extras].reduce((a, x) => a + (Number(x?.datos?.importe) || 0), 0);
+                onLeido?.({ ...r, extras: leidosRef.current.extras }, total);
+            }
+            else onLeido?.(r);
         }
         catch (e) {
-            setError(e?.message || "No se pudo subir el comprobante.");
-        }
-        finally {
-            setLeyendo(false);
+            setError(`${file?.name ? `${file.name}: ` : ""}${e?.message || "No se pudo subir el comprobante."}`);
         }
     }
+    const cambiarExtra = (i, cambio) => setExtras((xs) => xs.map((x, j) => (j === i ? { ...x, ...cambio } : x)));
+    const quitarExtra = (i) => {
+        leidosRef.current = { ...leidosRef.current, extras: leidosRef.current.extras.filter((r) => r !== extras[i]?.comp) };
+        setExtras((xs) => xs.filter((_, j) => j !== i));
+    };
+    const valorExtras = extras.reduce((a, x) => a + (parsearImporteAR(x.importe) ?? 0), 0);
     const valor = parsearImporteAR(importe) ?? 0;
     function cambiarMedio(v) {
         setMedio(v);
@@ -137,7 +180,18 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
                 return;
             }
         }
-        const err = await onConfirm({ fecha, medio, referencia: ref, pdvPagaId: pdvPaga, importe: valor, comprobanteId: comp?.comprobanteId ?? null });
+        const otros = [];
+        for (const [i, x] of extras.entries()) {
+            const imp = parsearImporteAR(x.importe) ?? 0;
+            const med = x.medio || medioPorDefecto(lista)?.nombre || "";
+            if (!(imp > 0)) { setError(`Cargá el importe del comprobante ${i + 2}.`); return; }
+            if (!med) { setError(`Elegí el medio del comprobante ${i + 2}.`); return; }
+            const r = x.referencia.trim() ? normalizarReferencia(x.referencia) : null;
+            if (x.referencia.trim() && !r) { setError(`El ID del comprobante ${i + 2} tiene que ser de letras y números.`); return; }
+            if (r && r === ref) { setError(`El comprobante ${i + 2} tiene el mismo ID que el primero.`); return; }
+            otros.push({ fecha: x.fecha, medio: med, referencia: r, pdvPagaId: x.pdvPaga ?? pdvPaga, importe: imp, comprobanteId: x.comp?.comprobanteId ?? null });
+        }
+        const err = await onConfirm({ fecha, medio, referencia: ref, pdvPagaId: pdvPaga, importe: valor, comprobanteId: comp?.comprobanteId ?? null, ...(otros.length ? { extras: otros } : {}) });
         if (err)
             setError(err);
     }
@@ -145,7 +199,8 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
     const etiqueta = "w-12 shrink-0 text-muted-foreground";
     const titulo = modo.tipo === "facturas" ? `Pagar ${modo.n} factura${modo.n === 1 ? "" : "s"} · ${proveedor}`
         : modo.tipo === "cuenta" ? `Pago a cuenta · ${proveedor}` : `Editar ${numeroPago(modo.pago.id)}`;
-    const excedente = modo.tipo === "facturas" && !usado ? valor - modo.saldo : 0;
+    const totalPagos = valor + (usado ? 0 : valorExtras);
+    const excedente = modo.tipo === "facturas" && !usado ? totalPagos - modo.saldo : 0;
     const ayuda = editando
         ? (valor > modo.pago.importe + 0.005 ? `Lo que sumás (${fmtPesos(valor - modo.pago.importe)}) queda a cuenta de ${proveedor}.`
             : valor < modo.pago.importe - 0.005 ? "Si no alcanza para lo que ya pagó, se suelta primero lo de las facturas más nuevas (quedan parciales o impagas)."
@@ -153,18 +208,20 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
         : usado ? `No crea un pago nuevo: se aplica el disponible de ${numeroPago(usado.id)}, de la factura más vieja a la más nueva.`
             : modo.tipo === "cuenta" ? `Queda a cuenta de ${proveedor}. Después lo aplicás tildando facturas.`
                 : excedente > 0.5 ? `Salda las facturas tildadas y ${fmtPesos(excedente)} quedan a cuenta de ${proveedor}.`
-                    : valor < modo.saldo - 0.005 ? "Se imputa de la más vieja a la más nueva; la última queda parcial."
+                    : totalPagos < modo.saldo - 0.005 ? "Se imputa de la más vieja a la más nueva; la última queda parcial."
                         : "Salda las facturas tildadas, de la más vieja a la más nueva.";
     const dc = comp?.datos || {};
-    const difComp = !editando && modo.tipo === "facturas" && dc.importe > 0 ? dc.importe - modo.saldo : 0;
+    const importeLeido = (Number(dc.importe) || 0) + extras.reduce((a, x) => a + (Number(x.comp?.datos?.importe) || 0), 0);
+    const difComp = !editando && modo.tipo === "facturas" && importeLeido > 0 ? importeLeido - modo.saldo : 0;
     return (<div onDragOver={(e) => { if (!usado) { e.preventDefault(); setArrastrando(true); } }} onDragLeave={() => setArrastrando(false)}
-        onDrop={(e) => { e.preventDefault(); setArrastrando(false); if (!usado) void adjuntar(e.dataTransfer.files?.[0]); }}
+        onDrop={(e) => { e.preventDefault(); setArrastrando(false); if (!usado) void adjuntar(editando ? [e.dataTransfer.files?.[0]] : e.dataTransfer.files); }}
         className={cn("border-t border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950 px-6 py-3 shadow-[0_-4px_10px_rgba(0,0,0,0.06)] shrink-0 -mx-6", arrastrando && "outline-2 outline-dashed outline-[#5BC2EA] -outline-offset-4")}>
       <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex items-baseline gap-2 text-sm">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2 text-sm">
             <b className="whitespace-nowrap">{titulo}</b>
             {modo.tipo === "facturas" && <span className="tabular-nums text-muted-foreground whitespace-nowrap">Saldo {fmtPesos(modo.saldo)}</span>}
+            {extras.length > 0 && !usado && <span className="tabular-nums font-semibold whitespace-nowrap">· {extras.length + 1} pagos por {fmtPesos(totalPagos)}</span>}
           </div>
           <div className="grid w-full sm:w-fit grid-cols-1 sm:grid-cols-[auto_auto_auto] items-center gap-x-5 gap-y-2 text-sm">
             <label className="flex items-center gap-1.5"><span className={etiqueta}>Importe</span>
@@ -197,14 +254,14 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
           {comp && !leyendo && (<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]">
               <span className="inline-flex items-center gap-1 rounded-md border border-[#5BC2EA] bg-white px-1.5 py-0.5 text-[#0e7490] dark:bg-zinc-900">
                 📎 <button type="button" onClick={() => void abrirComprobante(comp.comprobanteId).catch((e) => setError(e.message))} className="max-w-48 truncate hover:underline" title="Abrir el comprobante">{comp.nombre}</button>
-                <button type="button" onClick={() => setComp(null)} className="text-zinc-400 hover:text-zinc-700" title="Sacar el comprobante (no cambia los datos)">×</button>
+                <button type="button" onClick={() => { setComp(null); leidosRef.current = { ...leidosRef.current, main: null }; }} className="text-zinc-400 hover:text-zinc-700" title="Sacar el comprobante (no cambia los datos)">×</button>
               </span>
               {comp.datos && (dc.importe > 0 || dc.fecha) && <span className="text-muted-foreground">
                   Leído: {[dc.importe > 0 && fmtPesos(dc.importe), dc.fecha && dc.fecha.split("-").reverse().join("/"), dc.banco, dc.operacion && `ID ${dc.operacion}`].filter(Boolean).join(" · ")}. Revisá y confirmá.
                 </span>}
               {comp.error && <span className="text-[#b45309]">{comp.error}</span>}
               {comp.nota && <span className="font-semibold text-[#0e7490]">{comp.nota}</span>}
-              {Math.abs(difComp) > 1 && !comp.nota && <span className="font-semibold text-[#b45309]">El comprobante es de {fmtPesos(dc.importe)} y las facturas tildadas suman {fmtPesos(modo.saldo)}{difComp > 0 ? `: ${fmtPesos(difComp)} quedan a cuenta.` : "."}</span>}
+              {Math.abs(difComp) > 1 && !comp.nota && <span className="font-semibold text-[#b45309]">{extras.length ? `Los comprobantes suman ${fmtPesos(importeLeido)}` : `El comprobante es de ${fmtPesos(dc.importe)}`} y las facturas tildadas suman {fmtPesos(modo.saldo)}{difComp > 0 ? `: ${fmtPesos(difComp)} quedan a cuenta.` : "."}</span>}
             </div>)}
           {comp && !leyendo && (dc.emisor || dc.receptor) && (<div className="mt-1 grid gap-0.5 text-[11.5px] text-muted-foreground">
               {dc.emisor && <div className="min-w-0 break-words"><b className="font-semibold text-zinc-600 dark:text-zinc-300">De:</b> {textoCuenta(dc.emisor)}</div>}
@@ -213,6 +270,50 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
                   ⚠ El comprobante es para CUIT {fmtCuit(dc.receptor.cuit)} y {proveedor} tiene CUIT {fmtCuit(String(proveedorCuit).replace(/\D/g, ""))}. Revisá que sea el pago de este proveedor.
                 </div>)}
             </div>)}
+          {!usado && extras.map((x, i) => {
+                const dx = x.comp?.datos || {};
+                const medX = x.medio || medioPorDefecto(lista)?.nombre || "";
+                return (<div key={x.comp?.comprobanteId ?? i} className="mt-3 border-t border-dashed border-sky-200 pt-2.5 dark:border-sky-900">
+                  <div className="mb-1.5 flex items-center gap-2 text-[12px] font-semibold text-zinc-600 dark:text-zinc-300">
+                    Pago {i + 2}
+                    {x.comp && <span className="inline-flex items-center gap-1 rounded-md border border-[#5BC2EA] bg-white px-1.5 py-0.5 font-normal text-[#0e7490] dark:bg-zinc-900">
+                      📎 <button type="button" onClick={() => void abrirComprobante(x.comp.comprobanteId).catch((e) => setError(e.message))} className="max-w-48 truncate hover:underline" title="Abrir el comprobante">{x.comp.nombre}</button>
+                    </span>}
+                    <button type="button" onClick={() => quitarExtra(i)} className="ml-auto font-normal text-zinc-400 hover:text-red-600" title="Sacar este pago">quitar</button>
+                  </div>
+                  <div className="grid w-full sm:w-fit grid-cols-1 sm:grid-cols-[auto_auto_auto] items-center gap-x-5 gap-y-2 text-sm">
+                    <label className="flex items-center gap-1.5"><span className={etiqueta}>Importe</span>
+                      <ImporteInput value={x.importe} onChange={(v) => cambiarExtra(i, { importe: v })} className={cn(input, "sm:w-40 text-right tabular-nums")}/>
+                    </label>
+                    <label className="flex items-center gap-1.5"><span className={etiqueta}>Medio</span>
+                      <select value={medX} onChange={abmMedios.alElegir((v) => cambiarExtra(i, { medio: v }))} className={cn(input, "sm:w-56")}>
+                        {!medX && <option value="">Elegí el medio…</option>}
+                        {abmMedios.opcion}
+                        {lista.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}{m.activo ? "" : " (desactivado)"}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1.5"><span className={etiqueta}>Fecha</span>
+                      <FechaInput key={`${i}-${x.fechaVer}`} value={x.fecha} onChange={(v) => cambiarExtra(i, { fecha: v })} className={cn(input, "sm:w-32 tabular-nums")}/>
+                    </label>
+                    <label className="flex items-center gap-1.5"><span className={etiqueta}>Paga</span>
+                      <select value={x.pdvPaga ?? pdvPaga ?? ""} onChange={(e) => cambiarExtra(i, { pdvPaga: Number(e.target.value) })} className={cn(input, "sm:w-56")}>
+                        {pdvs.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1.5"><span className={etiqueta}>ID</span>
+                      <input value={x.referencia} onChange={(e) => cambiarExtra(i, { referencia: e.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase() })} placeholder="opcional" className={cn(input, "sm:w-56 font-mono")}/>
+                    </label>
+                  </div>
+                  {(dx.importe > 0 || x.comp?.error) && <div className="mt-1 text-[11.5px] text-muted-foreground">
+                      {dx.importe > 0 ? `Leído: ${[fmtPesos(dx.importe), dx.fecha && dx.fecha.split("-").reverse().join("/"), dx.banco, dx.operacion && `ID ${dx.operacion}`].filter(Boolean).join(" · ")}.` : null}
+                      {x.comp?.error && <span className="text-[#b45309]"> {x.comp.error}</span>}
+                    </div>}
+                  {(dx.emisor || dx.receptor) && (<div className="mt-0.5 grid gap-0.5 text-[11.5px] text-muted-foreground">
+                      {dx.emisor && <div className="min-w-0 break-words"><b className="font-semibold text-zinc-600 dark:text-zinc-300">De:</b> {textoCuenta(dx.emisor)}</div>}
+                      {dx.receptor && <div className="min-w-0 break-words"><b className="font-semibold text-zinc-600 dark:text-zinc-300">Para:</b> {textoCuenta(dx.receptor)}</div>}
+                    </div>)}
+                </div>);
+            })}
           {error && <div className="mt-1.5 text-xs text-destructive">{error}</div>}
         </div>
         <div className="flex shrink-0 flex-row flex-wrap sm:flex-col gap-1.5">
@@ -223,11 +324,11 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
             {modo.tipo === "facturas" ? "Limpiar" : "Cancelar"}
           </button>
           {!usado && (<>
-              <button type="button" disabled={leyendo} onClick={() => archivoRef.current?.click()} title="PDF o foto de la transferencia: completa importe, fecha, medio e ID. También podés soltarlo sobre esta barra."
+              <button type="button" disabled={leyendo} onClick={() => archivoRef.current?.click()} title={comp && !editando ? "Otro comprobante: va como otro pago (ej. la parte que salió de otro banco). Para cambiar el primero, sacalo con la ×." : "PDF o foto de la transferencia: completa importe, fecha, medio e ID. Podés elegir varios o soltarlos sobre esta barra."}
                 className="h-11 sm:h-8 flex-1 sm:flex-none min-w-28 px-3 rounded-md border border-dashed border-[#5BC2EA] bg-white text-[#0e7490] text-sm whitespace-nowrap disabled:opacity-50 dark:bg-zinc-900">
-                {leyendo ? "Leyendo…" : comp ? "📎 Cambiar comprobante" : "📎 Adjuntar comprobante"}
+                {leyendo ? "Leyendo…" : comp && editando ? "📎 Cambiar comprobante" : comp ? "📎 Otro comprobante" : "📎 Adjuntar comprobante"}
               </button>
-              <input ref={archivoRef} type="file" accept={TIPOS_COMPROBANTE} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void adjuntar(f); }}/>
+              <input ref={archivoRef} type="file" accept={TIPOS_COMPROBANTE} multiple={!editando} className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.target.value = ""; void adjuntar(fs); }}/>
             </>)}
         </div>
       </div>

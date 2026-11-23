@@ -163,7 +163,8 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
             const b = await res.json().catch(() => null);
             if (!res.ok)
                 return b?.error ?? "No se pudo guardar.";
-            toast.success(ok);
+            if (ok)
+                toast.success(ok);
             for (const k of ["cta-cte", "impagas", "detalle", "pivot", "actividad"])
                 void queryClient.invalidateQueries({ queryKey: [k] });
             return null;
@@ -184,8 +185,26 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                 setForm(null);
             return err;
         }
-        const body = { codPro: data.codPro, ...b, ...(form.tipo === "facturas" ? { facturas: elegidas.map((f) => ({ pdvId: f.pdvId, comprobante: f.comprobante })) } : {}) };
-        const err = await llamar("/api/pagos-proveedor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, b.usarPago ? `${numeroPago(b.usarPago)} aplicado` : form.tipo === "cuenta" ? "Pago a cuenta registrado" : "Pago registrado");
+        // Varios comprobantes = varios pagos, uno detrás del otro sobre las mismas facturas (cada uno toma
+        // lo que le queda de saldo; lo que sobra queda a cuenta).
+        const { extras = [], ...principal } = b;
+        const facts = form.tipo === "facturas" ? { facturas: elegidas.map((f) => ({ pdvId: f.pdvId, comprobante: f.comprobante })) } : {};
+        let err = null, hechos = 0, resto = form.tipo === "facturas" ? saldoElegidas : 0;
+        for (const p of [principal, ...extras]) {
+            const ult = hechos === extras.length;
+            // Si los pagos anteriores ya saldaron lo tildado, este queda a cuenta.
+            const conFacturas = resto > 0.004 ? facts : {};
+            resto -= Number(p.importe) || 0;
+            err = await llamar("/api/pagos-proveedor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ codPro: data.codPro, ...p, ...conFacturas }) },
+                ult ? (b.usarPago ? `${numeroPago(b.usarPago)} aplicado` : extras.length ? `${extras.length + 1} pagos registrados` : form.tipo === "cuenta" ? "Pago a cuenta registrado" : "Pago registrado") : null);
+            if (err) break;
+            hechos++;
+        }
+        // Si alguno ya se guardó, se cierra igual (reintentar duplicaría los guardados) y se avisa cuál faltó.
+        if (err && hechos > 0) {
+            toast.error(`Se registraron ${hechos} de ${extras.length + 1} pagos. El ${hechos + 1}º no: ${err}`);
+            err = null;
+        }
         if (!err) {
             setForm(null);
             setTildadas(new Set());
@@ -250,15 +269,15 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     useEffect(() => { filaSel.current?.scrollIntoView({ block: "center" }); }, [data]);
     const cambiarProv = (c) => { setOrigen({ codPro: c }); setSel(null); setBusca(""); setAgrupar(false); setTildadas(new Set()); setForm(null); setLeido(null); };
     // Al leer un comprobante: si el importe no es lo tildado, se tildan solas las impagas que lo suman.
-    const alLeerComprobante = (r) => {
-        const imp = r?.datos?.importe;
+    const alLeerComprobante = (r, total) => {
+        const imp = total > 0 ? total : r?.datos?.importe;
         if (!(imp > 0) || !form || form.tipo === "editar") { setLeido(r); return; }
         if (form.tipo === "facturas" && Math.abs(saldoElegidas - imp) <= 1) { setLeido(r); return; }
         const claves = facturasQueSuman(facturas.filter((f) => PAGABLE(f.estado)).map((f) => ({ clave: claveF(f), saldo: saldoDe(f), fecha: f.fecha })), imp);
         if (claves) {
             setTildadas(new Set(claves));
             setForm({ tipo: "facturas" });
-            setLeido({ ...r, nota: `Tildé ${claves.length === 1 ? "la factura" : `las ${claves.length} facturas`} que suma${claves.length === 1 ? "" : "n"} ${fmtPesos(imp)}.` });
+            setLeido({ ...r, nota: `Tildé ${claves.length === 1 ? "la factura" : `las ${claves.length} facturas`} que suma${claves.length === 1 ? "" : "n"} ${fmtPesos(imp)}${r?.extras?.length ? " (lo de todos los comprobantes)" : ""}.` });
         }
         else setLeido(r);
     };
@@ -532,7 +551,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                             : null;
             if (!modo)
                 return null;
-            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : form.tipo} modo={modo} proveedor={data.proveedor} proveedorCuit={data.cuit} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (form.tipo === "facturas")
+            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : "nuevo"} modo={modo} proveedor={data.proveedor} proveedorCuit={data.cuit} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (form.tipo === "facturas")
                 setTildadas(new Set()); setForm(null); setLeido(null); }} onConfirm={confirmarPago}/>);
         })()}
 
