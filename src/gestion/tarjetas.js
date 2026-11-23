@@ -43,15 +43,19 @@ export function conPersonalCompleto(lista) {
   });
 }
 
-export function tarjetasDelMes(mesesCrudos, mes, variable, anteriorCrudo) {
+// fc = { actual, anterior }: food cost del KPI General de Artículos (Diego 23/11/2026). Si llega, reemplaza
+// al de Mercaderías / ventas y el Mix pasa a ser ese food cost + personal.
+const conFoodCost = (i, fc) => (!i || fc == null ? i : { ...i, foodCost: fc, mix: fc + (i.personal ?? 0) });
+
+export function tarjetasDelMes(mesesCrudos, mes, variable, anteriorCrudo, fc = null) {
   const lista = conPersonalCompleto([...(anteriorCrudo ? [anteriorCrudo] : []), ...mesesCrudos.filter((x) => x.mes <= mes).sort((a, b) => a.mes - b.mes)]);
   const anterior = anteriorCrudo ? lista[0] : undefined;
   const meses = anteriorCrudo ? lista.slice(1) : lista;
   const m = meses.find((x) => x.mes === mes);
   if (!m || !(m.ventas > 0)) return null;
-  const i = indicadores(m.ventas, m.rubros);
+  const i = conFoodCost(indicadores(m.ventas, m.rubros), fc?.actual);
   const ant = anterior ?? meses.find((x) => x.mes === mes - 1) ?? null;
-  const ia = ant && ant.ventas > 0 ? indicadores(ant.ventas, ant.rubros) : null;
+  const ia = ant && ant.ventas > 0 ? conFoodCost(indicadores(ant.ventas, ant.rubros), fc?.anterior) : null;
   const pp = (a, b) => (a == null || b == null ? null : (a - b) * 100);
   return {
     mes, ventas: i.ventas, gastos: i.gastos, resultado: i.resultado, rentabilidad: i.rentabilidad,
@@ -67,13 +71,13 @@ export function tarjetasDelMes(mesesCrudos, mes, variable, anteriorCrudo) {
  * Alertas de "Para mirar": un indicador del mes cerrado que se fue de lo normal (más de 2 puntos
  * arriba del promedio de los 6 meses anteriores con ventas) y no haber llegado al equilibrio.
  */
-export function alertasDelMes(meses, t, anteriores = []) {
-  const previos = [...anteriores, ...meses.filter((m) => m.mes < t.mes)].filter((m) => m.ventas > 0).slice(-6);
+export function alertasDelMes(meses, t, anteriores = [], fcDe = null) {
+  const previos = [...anteriores.map((m) => ({ ...m, delAnterior: true })), ...meses.filter((m) => m.mes < t.mes)].filter((m) => m.ventas > 0).slice(-6);
   const out = [];
   if (t.equilibrio?.equilibrio != null && t.equilibrio.diferencia < 0) out.push({ texto: "No llegó al equilibrio", nivel: "rojo" });
   if (previos.length >= 3) {
     const prom = (k) => {
-      const xs = previos.map((m) => indicadores(m.ventas, m.rubros)[k]).filter((v) => v != null);
+      const xs = previos.map((m) => conFoodCost(indicadores(m.ventas, m.rubros), fcDe ? fcDe(m, !!m.delAnterior) : null)[k]).filter((v) => v != null);
       return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
     };
     for (const [k, nombre] of [["foodCost", "Food cost"], ["personal", "Personal"]]) {

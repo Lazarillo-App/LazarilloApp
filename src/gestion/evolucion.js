@@ -37,7 +37,13 @@ export function serieIndicador(p) {
   const valorDe = (anio, mes) => {
     if (anio === p.hasta.anio && mes === p.hasta.mes && p.actual) return p.actual.valor;
     const m = p.meses.find((x) => x.anio === anio && x.mes === mes);
-    return m && m.ventas > 0 ? indicadores(m.ventas, m.rubros)[p.clave] : null;
+    if (!(m && m.ventas > 0)) return null;
+    const ind = indicadores(m.ventas, m.rubros);
+    // Food cost del KPI General de Artículos (Diego 23/11/2026); Mix = ese food cost + personal.
+    const fc = p.foodCostDe ? p.foodCostDe(anio, mes) : null;
+    if (fc != null && p.clave === "foodCost") return fc;
+    if (fc != null && p.clave === "mix") return fc + (ind.personal ?? 0);
+    return ind[p.clave];
   };
   const out = [];
   // Uno más al principio para tener la diferencia del primero.
