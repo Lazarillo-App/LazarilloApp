@@ -328,7 +328,11 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       ? { observacManual: state.observacManual !== '' ? state.observacManual : null }
       : {
         ...(imp.incluir ? { importeManual: imp.value } : {}),
-        fechaManual: state.fechaManual !== '' ? new Date(`${state.fechaManual}T12:00:00Z`).toISOString() : null,
+        // La fecha viaja solo si la cambiaste: guardar otra cosa no fija la fecha de carga
+        // por encima del período del sueldo (Diego 23/11/2026).
+        ...(state.fechaManual !== state.inicial.fecha
+          ? { fechaManual: state.fechaManual !== '' ? new Date(`${state.fechaManual}T12:00:00Z`).toISOString() : null }
+          : {}),
         conceptoCodigoManual: state.conceptoCodigoManual !== '' ? state.conceptoCodigoManual : null,
         observacManual: state.observacManual !== '' ? state.observacManual : null,
       };
@@ -441,7 +445,8 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       ajena,
       importeManual: importeInicial,
       importeInicial,
-      fechaManual: fechaInput(item.fechaManual ?? item.fecha),
+      // F. gasto que cuenta: la corregida, si no el PERÍODO (sueldos, mes vencido), si no la de carga.
+      fechaManual: fechaInput(item.fechaGasto ?? item.fechaManual ?? item.fecha),
       conceptoCodigoManual: concepto,
       observacManual: item.observacManual ?? '',
       rubroFiltro: conceptos.find((o) => o.codigo === concepto)?.rubroCodigo ?? SIN_RUBRO_CODE,
@@ -453,7 +458,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       fechaPago: fechaInput(item.fechaPago),
       fechaPagoInicial: fechaInput(item.fechaPago),
       fechaPagoOriginal: item.fechaPagoManual != null ? null : fechaInput(item.fechaPago),
-      inicial: { fecha: fechaInput(item.fechaManual ?? item.fecha), concepto, observac: item.observacManual ?? '' },
+      inicial: { fecha: fechaInput(item.fechaGasto ?? item.fechaManual ?? item.fecha), concepto, observac: item.observacManual ?? '' },
     });
   };
 
