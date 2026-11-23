@@ -7,7 +7,7 @@ import { importeAInput, normalizarReferencia, parsearImporteAR } from "@/gestion
 import { FechaInput, ImporteInput, hoyISO } from "./deuda-pdv";
 import { useMediosPago } from "@/gestion/hooksPanel";
 import { useAbmMediosPago } from "../MediosPagoAbm";
-import { mediosParaElegir } from "@/gestion/cargaUtils";
+import { mediosParaElegir, medioPorDefecto } from "@/gestion/cargaUtils";
 import { numeroPago } from "@/gestion/pagosImputar";
 export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, guardando, onCancel, onConfirm }) {
     const editando = modo.tipo === "editar";
@@ -18,7 +18,7 @@ export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, 
     const abmMedios = useAbmMediosPago();
     const lista = mediosParaElegir(medios, editando ? modo.pago.medio : null);
     const [medioSel, setMedio] = useState(editando ? modo.pago.medio : "");
-    const medio = medioSel || lista[0]?.nombre || "";
+    const medio = medioSel || medioPorDefecto(lista)?.nombre || "";
     const [referencia, setReferencia] = useState(editando ? modo.pago.referencia ?? "" : "");
     const [pdvPaga, setPdvPaga] = useState(editando ? modo.pago.pdvPagaId : pdvDefault ?? pdvs[0]?.id ?? null);
     const [error, setError] = useState(null);
@@ -127,6 +127,7 @@ export function FormPagoProveedor({ modo, proveedor, pdvs, pdvDefault, aCuenta, 
             </label>
             <label className="flex items-center gap-1.5"><span className={etiqueta}>Medio</span>
               <select value={medio} onChange={abmMedios.alElegir(cambiarMedio)} className={cn(input, "w-56")}>
+              {!medio && <option value="">Elegí el medio…</option>}
                 {abmMedios.opcion}
                 {lista.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}{m.activo ? "" : " (desactivado)"}</option>)}
                 {modo.tipo === "facturas" && aCuenta.length > 0 && (<optgroup label="Usar un pago a cuenta">

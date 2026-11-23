@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useFetchQuery } from "@/gestion/compat";
 import { useMediosPago } from "@/gestion/hooksPanel";
-import { mediosParaElegir } from "@/gestion/cargaUtils";
+import { mediosParaElegir, medioPorDefecto } from "@/gestion/cargaUtils";
 import { normalizarBusqueda } from "@/gestion/impagasClasificar";
 import { soloDigitos } from "@/gestion/movil/qr-arca";
 import { escalarA, totalFactura } from "@/gestion/movil/escalar";
@@ -85,7 +85,7 @@ export function FacturaMovil({ qr, localId, pdvId, onCerrar, proveedorId }) {
             setError(`El total no da: ${$(total)} contra ${$(qr.importe)} del QR. Ajustá los importes.`);
             return;
         }
-        const medioPago = medio || medios[0]?.nombre;
+        const medioPago = medio || medioPorDefecto(medios)?.nombre;
         if (pagar && !medioPago) {
             setError("Elegí el medio de pago.");
             return;
@@ -195,7 +195,8 @@ export function FacturaMovil({ qr, localId, pdvId, onCerrar, proveedorId }) {
           </label>
           {pagar && (<div className="grid grid-cols-2 gap-2">
               <div><span className={lbl}>Medio</span>
-                <select className={inp} value={medio || medios[0]?.nombre || ""} onChange={(e) => setMedio(e.target.value)}>
+                <select className={inp} value={medio || medioPorDefecto(medios)?.nombre || ""} onChange={(e) => setMedio(e.target.value)}>
+              {!(medio || medioPorDefecto(medios)) && <option value="">Elegí el medio…</option>}
                   {medios.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                 </select></div>
               <div><span className={lbl}>Fecha de pago</span><input type="date" className={inp} value={fechaPago} onChange={(e) => setFechaPago(e.target.value)}/></div>

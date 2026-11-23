@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useFetchQuery } from "@/gestion/compat";
 import { useMediosPago } from "@/gestion/hooksPanel";
-import { mediosParaElegir } from "@/gestion/cargaUtils";
+import { mediosParaElegir, medioPorDefecto } from "@/gestion/cargaUtils";
 import { normalizarBusqueda } from "@/gestion/impagasClasificar";
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 // Ticket / gasto vario desde el celular (Diego 27/10/2026): período (mes), concepto,
@@ -57,7 +57,7 @@ export function GastoMovil({ pdvId, onCerrar, inicial }) {
             setError("Poné el importe.");
             return;
         }
-        const medioPago = medio || medios[0]?.nombre;
+        const medioPago = medio || medioPorDefecto(medios)?.nombre;
         if (pagado && !medioPago) {
             setError("Elegí el medio de pago.");
             return;
@@ -126,7 +126,8 @@ export function GastoMovil({ pdvId, onCerrar, inicial }) {
       </label>
       {pagado ? (<div className="grid grid-cols-2 gap-2">
           <div><span className={lbl}>Medio</span>
-            <select className={inp} value={medio || medios[0]?.nombre || ""} onChange={(e) => setMedio(e.target.value)}>
+            <select className={inp} value={medio || medioPorDefecto(medios)?.nombre || ""} onChange={(e) => setMedio(e.target.value)}>
+              {!(medio || medioPorDefecto(medios)) && <option value="">Elegí el medio…</option>}
               {medios.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
             </select></div>
           <div><span className={lbl}>Fecha de pago</span><input type="date" className={inp} value={fechaPago} onChange={(e) => e.target.value && setFechaPago(e.target.value)}/></div>

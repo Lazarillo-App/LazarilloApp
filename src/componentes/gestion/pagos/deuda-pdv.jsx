@@ -9,7 +9,7 @@ import { dias, fmtComprobante, fmtFecha, fmtPesos, normalizarBusqueda } from "@/
 import { Antiguedad, Boton } from "./ui";
 import { useMediosPago } from "@/gestion/hooksPanel";
 import { useAbmMediosPago } from "../MediosPagoAbm";
-import { mediosParaElegir } from "@/gestion/cargaUtils";
+import { mediosParaElegir, medioPorDefecto } from "@/gestion/cargaUtils";
 import { HistorialPagosModal, OrdenPagoModal } from "./orden-pago-modal";
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const nombreMes = (m) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
@@ -413,7 +413,7 @@ function FormPago({ modo, ops, origenLabel, guardando, barra, onCancel, onConfir
     const abmMedios = useAbmMediosPago();
     const lista = mediosParaElegir(medios, editando ? modo.pago.medio : null);
     const [medioSel, setMedio] = useState(editando ? modo.pago.medio : "");
-    const medio = medioSel || lista[0]?.nombre || "";
+    const medio = medioSel || medioPorDefecto(lista)?.nombre || "";
     const [referencia, setReferencia] = useState(editando ? modo.pago.referencia ?? "" : "");
     const [error, setError] = useState(null);
     const conId = lista.find((m) => m.nombre === medio)?.pideId ?? false;
@@ -489,6 +489,7 @@ function FormPago({ modo, ops, origenLabel, guardando, barra, onCancel, onConfir
           </label>
           <label className="flex items-center gap-1.5"><span className={etiqueta}>Medio</span>
             <select value={medio} onChange={abmMedios.alElegir(cambiarMedio)} className={cn(input, "w-56")}>
+              {!medio && <option value="">Elegí el medio…</option>}
                 {abmMedios.opcion}
               {lista.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}{m.activo ? "" : " (desactivado)"}</option>)}
               {modo.tipo === "elegidos" && ops.length > 0 && (<optgroup label="Usar una orden sin imputar">
