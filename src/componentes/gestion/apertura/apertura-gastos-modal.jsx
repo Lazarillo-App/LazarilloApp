@@ -102,6 +102,12 @@ const AVISO_SIN_VIGENTE = {
     registro: "Ninguna regla vigente — este registro no se apertura.",
 };
 export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLocalId, origenPdvId, lote = null, onLoteGuardado, onClose, origenEditable = false, }) {
+    // Quien abre el modal puede pasar el local/PDV como texto ("204"): se normaliza a número. Si no, el
+    // primer destino no encuentra su local (no deja elegir el PDV) y el servidor rechaza la regla
+    // («expected number, received string») — Diego 23/11/2026.
+    const aNum = (v) => (v == null || v === "" ? null : Number(v));
+    origenLocalId = aNum(origenLocalId);
+    origenPdvId = aNum(origenPdvId);
     const queryClient = useQueryClient();
     const esLote = nivel === "registro" && lote != null && lote.length > 1;
     const [view, setView] = useState(esLote ? "formulario" : "lista");
@@ -273,7 +279,7 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
         let creadas = 0;
         let conRegla = 0;
         let fallidas = 0;
-        const cuerpoDestinos = destinos.map((d) => ({ localId: d.localId, puntoDeVentaId: d.puntoDeVentaId, porcentaje: d.porcentaje }));
+        const cuerpoDestinos = destinos.map((d) => ({ localId: aNum(d.localId), puntoDeVentaId: aNum(d.puntoDeVentaId), porcentaje: Number(d.porcentaje) }));
         for (const r of lote) {
             try {
                 const res = await gestionFetch("/api/apertura/reglas", {
@@ -282,8 +288,8 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
                     body: JSON.stringify({
                         nivel: "registro",
                         entidadId: r.entidadId,
-                        origenLocalId: r.origenLocalId,
-                        origenPuntoDeVentaId: r.origenPdvId,
+                        origenLocalId: aNum(r.origenLocalId),
+                        origenPuntoDeVentaId: aNum(r.origenPdvId),
                         ...VIGENCIA_REGISTRO_CUERPO,
                         destinos: cuerpoDestinos,
                     }),
@@ -338,14 +344,14 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
             const usaFechaDesde = vigencia.modo === "entre_fechas" || vigencia.modo === "desde_adelante";
             const usaFechaHasta = vigencia.modo === "entre_fechas" || vigencia.modo === "desde_atras";
             const cuerpoComun = {
-                origenLocalId: origen.localId,
-                origenPuntoDeVentaId: origen.puntoDeVentaId,
+                origenLocalId: aNum(origen.localId),
+                origenPuntoDeVentaId: aNum(origen.puntoDeVentaId),
                 modo: vigencia.modo,
                 fechaDesde: usaFechaDesde ? fechaISOConHora(vigencia.fechaDesde) : null,
                 fechaHasta: usaFechaHasta ? fechaISOConHora(vigencia.fechaHasta) : null,
                 extremosInclusivos: vigencia.extremosInclusivos,
                 confirmarHistorico: vigencia.modo === "historico" ? vigencia.confirmarHistorico : undefined,
-                destinos: destinos.map((d) => ({ localId: d.localId, puntoDeVentaId: d.puntoDeVentaId, porcentaje: d.porcentaje })),
+                destinos: destinos.map((d) => ({ localId: aNum(d.localId), puntoDeVentaId: aNum(d.puntoDeVentaId), porcentaje: Number(d.porcentaje) })),
             };
             const res = editando
                 ? await gestionFetch(`/api/apertura/reglas/${editando.id}`, {

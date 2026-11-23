@@ -15,7 +15,7 @@ function esNumeroValido(texto) {
     return Number.isFinite(Number(texto));
 }
 export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onChange, onRemove, removable, }) {
-    const localSeleccionado = locales.find((l) => l.id === destino.localId);
+    const localSeleccionado = locales.find((l) => Number(l.id) === Number(destino.localId));
     const puntosDeVenta = localSeleccionado?.puntosDeVenta ?? [];
     const monto = total !== null ? montoDesdePct(destino.porcentaje, total) : null;
     // ¿Alguna otra fila ya usa un destino que compite por la misma plata que
