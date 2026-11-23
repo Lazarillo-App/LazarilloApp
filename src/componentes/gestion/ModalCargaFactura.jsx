@@ -9,11 +9,12 @@ import { toast } from "sonner";
 import { refrescarCompras, useFetchQuery, useMediosPago } from "@/gestion/hooksPanel";
 import { useAbmMediosPago } from "./MediosPagoAbm";
 import ReglaAperturaGasto from "./apertura/ReglaAperturaGasto";
-import { MEDIO_ADELANTOS, mediosParaElegir, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
+import { MEDIO_ADELANTOS, mediosParaElegir, medioPorDefecto, factorEnvase, validarSueldo } from "@/gestion/cargaUtils";
 import { fechaDelPeriodo, moverPeriodo, nombrePeriodo, periodoDe } from "@/gestion/periodoGastos";
 import { gestionFetch } from "@/servicios/apiGestion";
 import { C, $fmt } from "./cargaEstilos";
 import HistorialConcepto from "./HistorialConcepto";
+import { textoAFecha, textoMientrasEscribe } from "@/componentes/CampoFecha";
 import { avisoPrecio, textoVeces } from "@/gestion/avisoPrecio";
 import { insumoCreate } from "@/servicios/apiInsumos";
 import EnvasesEditor, { conCambios } from "@/componentes/gestion/EnvasesEditor";
@@ -99,33 +100,35 @@ const fechaValida = (s) => {
 const MESES12 = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const pad2 = (n) => String(n).padStart(2, "0");
 const dmy4 = (iso) => { const [y, m, d] = String(iso).split("-"); return `${d}/${m}/${y}`; };
+// Fecha tipeada con las reglas de CampoFecha (Guía «Fechas», Diego 23/11/2026): barra sola, día+mes =
+// año actual, año de 2 dígitos; al entrar se selecciona todo (se escribe encima sin borrar) y el
+// ícono abre el calendario. Mismo estilo que los demás campos del modal.
 function FechaInput({ iso, onISO, style: st, title, inputRef, tabIndex }) {
   const [txt, setTxt] = useState(iso ? dmy4(iso) : "");
   useEffect(() => { setTxt(iso ? dmy4(iso) : ""); }, [iso]);
+  const nativo = useRef(null);
   const commit = () => {
-    let s = txt.trim();
-    if (/^\d{6,8}$/.test(s)) s = s.slice(0, 2) + "/" + s.slice(2, 4) + "/" + s.slice(4);
-    const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-    if (!m) { setTxt(iso ? dmy4(iso) : ""); return; }
-    let d = Number(m[1]), mo = Math.min(Math.max(Number(m[2]), 1), 12), y = Number(m[3]);
-    if (y < 100) y += 2000;
-    const ult = new Date(y, mo, 0).getDate();
-    d = Math.min(Math.max(d, 1), ult);
-    setTxt(`${pad2(d)}/${pad2(mo)}/${y}`);
-    onISO(`${y}-${pad2(mo)}-${pad2(d)}`);
+    const nuevo = textoAFecha(txt);
+    if (!nuevo) { setTxt(iso ? dmy4(iso) : ""); return; }
+    setTxt(dmy4(nuevo));
+    onISO(nuevo);
   };
+  const abrirCalendario = () => { const el = nativo.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } };
   return (
-    <input ref={inputRef} style={st} value={txt} placeholder="dd/mm/aaaa" title={title} tabIndex={tabIndex}
-      onChange={(e) => {
-        let v = e.target.value.replace(/[^\d\/\-.]/g, "");
-        if (/^\d+$/.test(v)) {
-          const d = v.slice(0, 8);
-          v = d.length > 4 ? d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4) : d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d;
-        }
-        setTxt(v);
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+    <span style={{ position: "relative", display: "block", width: (st && st.width) || "100%" }}>
+      <input ref={inputRef} style={{ ...st, width: "100%", paddingRight: 30 }} value={txt} placeholder="dd/mm/aaaa" title={title} tabIndex={tabIndex} inputMode="numeric"
+        onFocus={(e) => { const el = e.target; setTimeout(() => { if (document.activeElement === el) el.select(); }, 0); }}
+        onChange={(e) => setTxt(textoMientrasEscribe(e.target.value, txt))}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); }} />
+      <button type="button" tabIndex={-1} aria-label="Elegir en el calendario" onClick={abrirCalendario}
+        style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", padding: 4, cursor: "pointer", color: C.gris, display: "flex" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9.5h18M8 3v3M16 3v3" /></svg>
+      </button>
+      <input ref={nativo} type="date" tabIndex={-1} aria-hidden value={iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : ""}
+        onChange={(e) => { if (e.target.value) { setTxt(dmy4(e.target.value)); onISO(e.target.value); } }}
+        style={{ position: "absolute", right: 0, bottom: 0, width: 1, height: 1, opacity: 0, border: 0, padding: 0, pointerEvents: "none" }} />
+    </span>
   );
 }
 function FechaTriple({ iso, onISO, error, inputRef }) {
@@ -449,14 +452,47 @@ export function edeDesdeFactura(rowId, f, { maestros, pdvsRef }) {
   };
 }
 
-// Período: el mismo control, en el mismo lugar (arriba a la derecha, en la barra del título) en Factura,
-// Gastos Varios y Empleados (Diego 06/11/2026). ‹ › mueven de a un mes; el desplegable muestra 2 adelante y 12 atrás.
-function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo }) {
+// Medio habitual: el más repetido de una lista de medios (recientes primero; en empate gana el más reciente),
+// llevado a los medios de pago del negocio (Diego 23/11/2026). Lo que viene del POS se traduce: mismo nombre sin
+// importar mayúsculas («CAJA MAYOR» → Caja Mayor); «BANCOS» → el primer medio de tipo banco; «CAJA…» → el
+// primero de tipo caja. Lo que no se puede traducir no cuenta.
+function medioHabitual(lista, medios) {
+  const ms = (medios || []).map((m) => (typeof m === "string" ? { nombre: m } : m));
+  const traducir = (x) => {
+    const t = String(x || "").trim(); if (!t) return null;
+    const igual = ms.find((m) => m.nombre.toLowerCase() === t.toLowerCase()); if (igual) return igual.nombre;
+    if (/^bancos?$/i.test(t)) return (ms.find((m) => m.tipo === "banco") || {}).nombre || null;
+    if (/^caja/i.test(t)) return (ms.find((m) => m.tipo === "caja") || {}).nombre || null;
+    return null;
+  };
+  const cuenta = new Map();
+  (lista || []).forEach((m, i) => { const k = traducir(m); if (!k) return; const c = cuenta.get(k) || { n: 0, i }; c.n += 1; cuenta.set(k, c); });
+  let mejor = null;
+  cuenta.forEach((c, k) => { if (!mejor || c.n > mejor.n || (c.n === mejor.n && c.i < mejor.i)) mejor = { k, ...c }; });
+  return mejor ? mejor.k : null;
+}
+
+// Período: en Factura va arriba a la derecha, en la barra del título (Diego 06/11/2026). En Gastos Varios y
+// Empleados va como un campo más del formulario (enCampo), en el primer renglón (Diego 23/11/2026).
+// ‹ › mueven de a un mes; el desplegable muestra 2 adelante y 12 atrás.
+function SelectorPeriodo({ valor, onCambio, soloVer = false, nota = null, titulo, enCampo = false, refCampo }) {
   const hoyP = periodoDe(hoyISO());
   const base = Array.from({ length: 15 }, (_, i) => moverPeriodo(hoyP, 2 - i));
   const opciones = base.includes(valor) ? base : [valor, ...base];
-  const alto = 34;
+  const alto = enCampo ? 38 : 34;
   const flecha = { height: alto, width: 32, border: `1px solid ${C.borde}`, borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 15, color: "#555", padding: 0, boxSizing: "border-box" };
+  if (enCampo) return (
+    <div ref={refCampo} title={titulo} style={{ minWidth: 0 }}><span style={lab}>Período</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button type="button" tabIndex={-1} title="Mes anterior" onClick={() => onCambio(moverPeriodo(valor, -1))} style={{ ...flecha, flexShrink: 0 }}>‹</button>
+        <select tabIndex={-1} value={valor} onChange={(e) => onCambio(e.target.value)}
+          style={{ height: alto, flex: 1, minWidth: 0, boxSizing: "border-box", border: "1px solid #ccc", borderRadius: 9, padding: "0 8px", fontSize: 13.5, fontWeight: 700, background: "#fff", color: C.neg, textAlign: "center" }}>
+          {opciones.map((x) => <option key={x} value={x}>{nombrePeriodo(x)}</option>)}
+        </select>
+        <button type="button" tabIndex={-1} title="Mes siguiente" onClick={() => onCambio(moverPeriodo(valor, 1))} style={{ ...flecha, flexShrink: 0 }}>›</button>
+      </div>
+    </div>
+  );
   return (
     <div title={titulo} style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: C.gris, letterSpacing: ".04em", textTransform: "uppercase" }}>Período</span>
@@ -722,7 +758,7 @@ function ModalNuevaCarga(props) {
   const [periodoF, setPeriodoF] = useState(ede && ede.periodo ? ede.periodo : null);
   const perF = periodoF || (fechaValida(fecha) ? periodoDe(fecha) : periodoDe(HOY));
   // Empleados: el período vive acá para mostrarse en el mismo lugar que en Factura y Gastos Varios.
-  const [periodoE, setPeriodoE] = useState(periodoHoy(-1));
+  const [periodoE, setPeriodoE] = useState(ctx.modo === "empleado" && ctx.periodo ? ctx.periodo : periodoHoy(-1));
   const [pdv, setPdv] = useState(ede ? ede.pdv : pdvActual || PDVS[0]);
   const [obs, setObs] = useState(ede ? ede.obs || "" : "");
   // Total del comprobante, antes del desglose: al terminar, el desglose tiene que coincidir (Diego 05/11/2026).
@@ -888,9 +924,15 @@ function ModalNuevaCarga(props) {
   const mediosPago = mediosParaElegir(mediosData);
   const abmMedios = useAbmMediosPago();
   const [medioPagoSel, setMedioPago] = useState("");
-  // Sin elegir a mano, sale la forma de pago habitual del proveedor (su ficha, tablero #83) si es un medio activo.
+  // Sin elegir a mano, sale la forma de pago habitual del proveedor (su ficha, tablero #83) si es un medio activo;
+  // si no tiene, el medio por defecto.
   const medioDelProv = (proveedores.find((x) => x.nombre === prov) || {}).medioPago;
-  const medioPago = medioPagoSel || (medioDelProv && mediosPago.some((m) => m.nombre === medioDelProv) ? medioDelProv : "") || (mediosPago[0] && mediosPago[0].nombre) || "";
+  const medioPago = medioPagoSel || (medioDelProv && mediosPago.some((m) => m.nombre === medioDelProv) ? medioDelProv : "") || (medioPorDefecto(mediosPago) || {}).nombre || "";
+  // Gastos Varios: el medio de pago arranca en el HABITUAL del concepto (el más usado en sus últimas 6 cargas)
+  // hasta que se lo cambie a mano (Diego 23/11/2026: «no pierdo tanto tiempo eligiendo»).
+  const medioManualV = useRef(false);
+  const [medioHabV, setMedioHabV] = useState(null);
+  useEffect(() => { medioManualV.current = false; setMedioHabV(null); }, [conceptoV]);
   const pidePagoId = !!(mediosPago.find((m) => m.nombre === medioPago) || {}).pideId;
   const [refPago, setRefPago] = useState("");
   const [importePago, setImportePago] = useState(""); // vacío = el total de la factura
@@ -1314,13 +1356,11 @@ function ModalNuevaCarga(props) {
               </div>
             </>) : <h2 style={{ fontSize: 17, margin: 0 }}>{titulo}</h2>}
             <span style={{ flex: 1 }} />
-            <span ref={refsT.periodo} style={{ display: "inline-flex" }}>
-            {modo === "factura"
-              ? <SelectorPeriodo valor={perF} soloVer={soloVer} onCambio={(x) => setPeriodoF(fechaValida(fecha) && x === periodoDe(fecha) ? null : x)}
+            {/* En Gastos Varios y Empleados el período va adentro del formulario (Diego 23/11/2026). */}
+            {modo === "factura" && <span ref={refsT.periodo} style={{ display: "inline-flex" }}>
+              <SelectorPeriodo valor={perF} soloVer={soloVer} onCambio={(x) => setPeriodoF(fechaValida(fecha) && x === periodoDe(fecha) ? null : x)}
                   nota={periodoF ? "distinto al de la fecha" : null} titulo="Mes en el que cuenta toda la factura en la vista Económica. Sigue la fecha salvo que lo cambies." />
-              : modo === "vario" ? <SelectorPeriodo valor={periodoV} onCambio={elegirPeriodo} titulo="Mes del gasto" />
-              : <SelectorPeriodo valor={periodoE} onCambio={setPeriodoE} titulo="Período del sueldo o del adelanto" />}
-            </span>
+            </span>}
             <button type="button" tabIndex={-1} onClick={onCerrar} style={{ border: "none", background: "none", fontSize: 20, color: "#999", cursor: "pointer", marginLeft: 6 }}>×</button>
           </div>
         {recCarga.visible && pasoT && (
@@ -1429,7 +1469,7 @@ function ModalNuevaCarga(props) {
         <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? { marginBottom: 16 } : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
-            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} />
+            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} codigoInicial={ctx.empleadoCodigo} periodoRef={refsT.periodo} />
         ) : (
         <fieldset disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
@@ -1912,14 +1952,12 @@ function ModalNuevaCarga(props) {
           <div style={{ padding: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 40%)", gap: 14, alignItems: "start" }}>
           <div style={{ minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {/* El período está arriba, en la barra del título (mismo lugar en las 3 pestañas, Diego 06/11/2026). */}
-            <div style={{ gridColumn: "1 / -1", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ width: 150 }}><span style={lab}>Fecha del gasto</span>
-                <FechaInput tabIndex={-1} style={{ ...inp, color: fechaV === fechaDelPeriodo(periodoV) ? C.gris : C.neg, border: errFecha ? `1.6px solid ${C.rojo}` : inp.border }} iso={fechaV}
-                  onISO={(v) => { setFechaV(v); setErrFecha(false); }} /></div>
-              <span style={{ fontSize: 11.5, color: C.gris, paddingBottom: 10 }}>va al 15, cambiala si querés</span>
-              {errFecha && <div style={{ fontSize: 11, color: C.rojo, fontWeight: 700, paddingBottom: 10 }}>Falta una fecha válida.</div>}
-            </div>
+            {/* Primer renglón: el período donde estaba la fecha y la fecha del gasto arriba del rubro (Diego 23/11/2026). */}
+            <SelectorPeriodo enCampo refCampo={refsT.periodo} valor={periodoV} onCambio={elegirPeriodo} titulo="Mes del gasto" />
+            <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", gap: 8 }}>Fecha del gasto
+                <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400, color: errFecha ? C.rojo : C.gris }}>{errFecha ? "Falta una fecha válida." : "va al 15, cambiala si querés"}</span></span>
+              <FechaInput tabIndex={-1} style={{ ...inp, color: fechaV === fechaDelPeriodo(periodoV) ? C.gris : C.neg, border: errFecha ? `1.6px solid ${C.rojo}` : inp.border }} iso={fechaV}
+                onISO={(v) => { setFechaV(v); setErrFecha(false); }} /></div>
             {/* Primero el concepto (el rubro se completa solo), después el rubro (Diego, 28/10/2026). */}
             <div><span style={lab}>Concepto</span>
               <Combo opciones={conceptosDe(rubroV)} fuera={rubroV ? conceptosDe(null) : undefined} valor={conceptoV} autoFocus={!vieneConImporte && !conceptoV} placeholder="Buscar concepto..." onElegir={(c) => { setConceptoV(c); setRubroV(rubroDe(c) || rubroV); }} /></div>
@@ -1998,8 +2036,9 @@ function ModalNuevaCarga(props) {
             </label>
             {pagarV && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 1fr" + (pidePagoId ? " 160px" : ""), gap: 10, marginTop: 10, alignItems: "end" }}>
-                <div><span style={lab}>Medio</span>
-                  <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{abmMedios.opcion}
+                <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", gap: 6 }}>Medio
+                    {medioHabV && medioPago === medioHabV && <span title="Es el medio que más se usó en las últimas cargas de este concepto" style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>el habitual</span>}</span>
+                  <select style={sel} value={medioPago} onChange={(e) => { medioManualV.current = true; abmMedios.alElegir(setMedioPago)(e); }}>{!medioPago && <option value="">Elegí el medio…</option>}{abmMedios.opcion}
                     {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                   </select></div>
                 <div><span style={lab}>Fecha de pago</span>
@@ -2015,6 +2054,9 @@ function ModalNuevaCarga(props) {
           </div>
           <HistorialConcepto concepto={conceptoV} codigo={codConcepto(conceptoV)} pdvId={idPdv(pdvV)} pdvNombre={pdvV} periodo={periodoV} onPeriodo={elegirPeriodo}
             onFilas={(fs) => {
+              const hab = medioHabitual(fs.slice(0, 6).map((f) => f.medio), mediosPago);
+              setMedioHabV(hab);
+              if (hab && !medioManualV.current) setMedioPago(hab);
               // La última carga del concepto fue en US$: esta arranca en US$, con el dólar de hoy (Diego 19/11/2026).
               if (fs[0] && fs[0].moneda && !usdV && !importeV) pasarAUsd({ tipo: fs[0].moneda.tipo });
             }}
@@ -2101,7 +2143,7 @@ function ModalNuevaCarga(props) {
                     <input style={{ ...inp, textAlign: "right" }} value={importePago} placeholder={fmtNum(Math.round(totalFactura * 100) / 100)}
                       title="Vacío = el total de la factura" onChange={(e) => setImportePago(fmtImp(e.target.value, e.nativeEvent))} /></div>
                   <div><span style={lab}>Medio</span>
-                    <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{abmMedios.opcion}
+                    <select style={sel} value={medioPago} onChange={abmMedios.alElegir(setMedioPago)}>{!medioPago && <option value="">Elegí el medio…</option>}{abmMedios.opcion}
                       {mediosPago.map((m) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                     </select></div>
                   <div><span style={lab}>Fecha de pago</span>
@@ -2185,10 +2227,11 @@ function ModalNuevaCarga(props) {
 // "Adelantos"). Adelanto: concepto fijo. PDV: la regla del empleado; si se cambia, aplica al total.
 const ADEL = MEDIO_ADELANTOS;
 const periodoHoy = (n = 0) => moverPeriodo(hoyISO().slice(0, 7), n);
-function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe, onGuardado, onCerrar, periodo, setPeriodo }) {
+function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe, onGuardado, onCerrar, periodo, setPeriodo, codigoInicial, periodoRef }) {
   const queryClient = useQueryClient();
   const [sub, setSub] = useState("sueldo");
-  const [codigo, setCodigo] = useState("");
+  // Desde la fila de un empleado en el Panel, ya viene elegido (Diego 23/11/2026).
+  const [codigo, setCodigo] = useState(codigoInicial ? String(codigoInicial) : "");
   const [fechaPago, setFechaPago] = useState(hoyISO());
   const [total, setTotal] = useState(null); // null = el último total del empleado (Diego 29/10)
   const [lineas, setLineas] = useState(null); // null = se arma sola con el total
@@ -2218,7 +2261,18 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   const [verCuenta, setVerCuenta] = useState("concepto"); // concepto | medio
   const medios = mediosPago.map((m) => m.nombre);
   const abmMedios = useAbmMediosPago();
-  const medioDef = medios[0] || "Efectivo";
+  // Forma de pago habitual del empleado (Diego 23/11/2026): la más usada en sus últimos 6 períodos, aparte
+  // para sueldo y para adelantos; si no hay historia, la primera de la lista.
+  const movs = cuenta ? cuenta.periodos.slice(0, 6).flatMap((p) => p.movimientos || []) : [];
+  const habSueldo = medioHabitual(movs.filter((m) => m.cod !== cuenta.codigoAdelanto).map((m) => m.medio), mediosPago);
+  const habAdel = medioHabitual(movs.filter((m) => m.cod === cuenta.codigoAdelanto).map((m) => m.medio), mediosPago);
+  const medioDef = habSueldo || (medioPorDefecto(mediosPago) || {}).nombre || "Efectivo";
+  const medioDefA = habAdel || medioDef;
+  // Cada concepto con SU forma habitual (Diego 23/11/2026: «usamos 2 conceptos diferentes, uno para cada
+  // forma» — p. ej. Liquidación Sueldo en Caja Mayor y B. Liquidación de Sueldo por banco). Sin historia
+  // de ese concepto en el empleado, la habitual de su sueldo.
+  const habDeConcepto = (nombre) => { const cod = codDe(nombre); return cod ? medioHabitual(movs.filter((m) => m.cod === cod).map((m) => m.medio), mediosPago) : null; };
+  const medioDeConcepto = (nombre) => habDeConcepto(nombre) || medioDef;
   // Conceptos de personal (rubros de personal), sin el de adelantos que es fijo.
   const codAdel = nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.codigo : null;
   const opcCon = conceptos.filter((c) => /personal/i.test(c.rubro) && c.codigo !== codAdel);
@@ -2226,10 +2280,43 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
   const conceptoDef = (opcCon.find((c) => /^liquidaci[oó]n sueldo$/i.test(c.nombre)) || opcCon[0] || {}).nombre || "";
   const totalN = parseImp(totalTxt);
   // Mientras no se toque la apertura, sale sola del total: un concepto, adelantos + el resto en el medio por defecto.
-  const auto = () => [{ concepto: conceptoDef, importe: totalTxt, pagos: [
+  const autoUno = () => [{ concepto: conceptoDef, importe: totalTxt, pagos: [
     ...(adelantos > 0 ? [{ medio: ADEL, importe: fmtNum(adelantos) }] : []),
-    ...(totalN - adelantos > 0.004 ? [{ medio: medioDef, importe: fmtNum(Math.round((totalN - adelantos) * 100) / 100) }] : []),
+    ...(totalN - adelantos > 0.004 ? [{ medio: medioDeConcepto(conceptoDef), importe: fmtNum(Math.round((totalN - adelantos) * 100) / 100) }] : []),
   ] }];
+  // La apertura arranca con los MISMOS conceptos que su último sueldo y en las mismas proporciones
+  // (Diego 23/11/2026: cobran parte por banco y parte en efectivo con dos conceptos distintos), cada uno
+  // con su forma habitual. El aguinaldo (SAC) no se copia: no es de todos los meses. Los adelantos se
+  // descuentan del concepto que se paga como ellos (si no, del primero). Sin historia, un solo concepto.
+  const estructura = (() => {
+    if (!ultimo) return null;
+    const suma = new Map();
+    (ultimo.movimientos || []).forEach((m) => {
+      if (!m.cod || m.cod === (cuenta && cuenta.codigoAdelanto)) return;
+      const c = opcCon.find((x) => String(x.codigo) === String(m.cod));
+      if (!c || /\bsac\b|aguinaldo/i.test(c.nombre)) return;
+      suma.set(c.nombre, (suma.get(c.nombre) || 0) + (Number(m.importe) || 0));
+    });
+    const tot = [...suma.values()].reduce((a, v) => a + v, 0);
+    return tot > 0 ? [...suma.entries()].sort((x, y) => y[1] - x[1]).map(([nombre, v]) => ({ nombre, prop: v / tot })) : null;
+  })();
+  const auto = () => {
+    // Lo que se reparte es lo que se paga (total − adelantos); los adelantos se suman enteros al concepto
+    // que los descuenta. Con el mismo total que el mes pasado, quedan los mismos importes.
+    const base = Math.round((totalN - adelantos) * 100) / 100;
+    if (!estructura || !(base > 0)) return autoUno();
+    let resto = base;
+    const ls0 = estructura.map((e, i) => {
+      const imp = i === estructura.length - 1 ? resto : Math.round(base * e.prop * 100) / 100;
+      resto = Math.round((resto - imp) * 100) / 100;
+      return { concepto: e.nombre, imp, medio: medioDeConcepto(e.nombre) };
+    });
+    const j = adelantos > 0 ? Math.max(0, ls0.findIndex((l) => l.medio === medioDefA)) : -1;
+    return ls0.map((l, i) => ({ concepto: l.concepto, importe: fmtNum(Math.round((l.imp + (i === j ? adelantos : 0)) * 100) / 100), pagos: [
+      ...(i === j ? [{ medio: ADEL, importe: fmtNum(adelantos) }] : []),
+      ...(l.imp > 0.004 ? [{ medio: l.medio, importe: fmtNum(l.imp) }] : []),
+    ] }));
+  };
   const ls = lineas || auto();
   const tocar = (f) => setLineas(f(ls.map((l) => ({ ...l, pagos: l.pagos.map((p) => ({ ...p })) }))));
   const regla = emp ? reglaEmpleadoDe(emp.nombre, emp.codigo, fechaPago) : null;
@@ -2244,7 +2331,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     return sub === "sueldo"
       ? { tipo: "sueldo", pdvId, codigo, periodo, fechaPago, total: totalN, reparto: rep, forzar: !!forzar,
           conceptos: ls.map((l) => ({ conceptoCodigo: codDe(l.concepto), importe: parseImp(l.importe), pagos: l.pagos.filter((p) => parseImp(p.importe) > 0).map((p) => ({ medio: p.medio, importe: parseImp(p.importe) })) })) }
-      : { tipo: "adelanto", pdvId, codigo, periodo, fechaPago, importe: parseImp(importeA), medio: medioA || medioDef, observacion: obsA.trim() || null, reparto: rep, forzar: !!forzar };
+      : { tipo: "adelanto", pdvId, codigo, periodo, fechaPago, importe: parseImp(importeA), medio: medioA || medioDefA, observacion: obsA.trim() || null, reparto: rep, forzar: !!forzar };
   };
   const faltan = () => {
     const out = [];
@@ -2309,10 +2396,12 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 16, alignItems: "start" }}>
       <div>
         {tabsSub}
-        <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr", gap: 10 }}>
-          <div><span style={lab}>Empleado</span>
+        {/* Empleado más angosto y el período en el medio, entre el nombre y la fecha de pago (Diego 23/11/2026). */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.1fr 1fr", gap: 10 }}>
+          <div style={{ minWidth: 0 }}><span style={lab}>Empleado</span>
             <Combo opciones={empleados.map(etiqueta)} valor={emp ? etiqueta(emp) : ""} placeholder={nomina ? "Buscar empleado..." : "Cargando nómina…"} autoFocus
               onElegir={(t) => { const e = empleados.find((x) => etiqueta(x) === t); setCodigo(e ? e.codigo : ""); setTotal(null); setLineas(null); setReparto(null); setEditRep(false); setParecido(null); }} /></div>
+          <SelectorPeriodo enCampo refCampo={periodoRef} valor={periodo} onCambio={setPeriodo} titulo="Período del sueldo o del adelanto" />
           <div><span style={lab}>Fecha de pago</span><FechaInput style={inp} iso={fechaPago} onISO={setFechaPago} /></div>
         </div>
 
@@ -2343,8 +2432,9 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
         {sub === "adelanto" ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             <div><span style={lab}>Importe</span><input style={{ ...inp, textAlign: "right", fontWeight: 700 }} value={importeA} placeholder="0,00" onChange={(e) => setImporteA(fmtImp(e.target.value, e.nativeEvent))} /></div>
-            <div><span style={lab}>Forma de pago</span>
-              <select style={sel} value={medioA || medioDef} onChange={abmMedios.alElegir(setMedioA)}>{abmMedios.opcion}{medios.map((m) => <option key={m}>{m}</option>)}</select>{abmMedios.dialogo}</div>
+            <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", gap: 6 }}>Forma de pago
+                {habAdel && !medioA && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>la habitual de sus adelantos</span>}</span>
+              <select style={sel} value={medioA || medioDefA} onChange={abmMedios.alElegir(setMedioA)}>{abmMedios.opcion}{medios.map((m) => <option key={m}>{m}</option>)}</select>{abmMedios.dialogo}</div>
             <div style={{ gridColumn: "1 / -1" }}><span style={lab}>Observación</span>
               <input style={inp} value={obsA} maxLength={200} placeholder="Opcional · ej. pedido por viaje, a descontar en 2 cuotas" onChange={(e) => setObsA(e.target.value)} /></div>
             <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#888" }}>Concepto fijo: <b>{nomina && nomina.conceptoAdelanto ? nomina.conceptoAdelanto.nombre : "Adelanto Sueldo"}</b> · va a la cuenta del empleado en {nombrePeriodo(periodo)} y se descuenta del sueldo.</div>
@@ -2359,16 +2449,17 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
               <div><span style={lab}>A pagar</span><div style={{ ...inp, display: "flex", alignItems: "center", fontWeight: 700, fontSize: 15 }}>{totalN ? $fmt(Math.max(0, totalN - adelantos)) : "—"}</div></div>
             </div>
             {yaSueldo > 0 && <div style={{ marginTop: 8, fontSize: 12.5, color: "#8a5a00" }}>⚠ {nombrePeriodo(periodo)} ya tiene sueldo cargado ({$fmt(yaSueldo)}). Mirá la cuenta a la derecha antes de cargar.</div>}
-            <span style={{ ...lab, marginTop: 14 }}>Apertura por concepto y forma de pago</span>
+            <span style={{ ...lab, marginTop: 14, display: "flex", justifyContent: "space-between", gap: 8 }}>Apertura por concepto y forma de pago
+              {habSueldo && <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>{!lineas && estructura && estructura.length > 1 ? `conceptos y proporciones como su sueldo de ${nombrePeriodo(ultimo.periodo)} · ` : ""}forma de pago: la habitual de cada concepto</span>}</span>
             <div style={{ border: `1px solid ${C.borde}`, borderRadius: 11, padding: "6px 10px" }}>
               {ls.map((l, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) 130px minmax(0, 2fr) 24px", gap: 8, alignItems: "start", padding: "6px 0", borderBottom: i < ls.length - 1 ? "1px solid #f2f2f0" : "none" }}>
-                  <Combo opciones={opcCon.map((c) => c.nombre)} valor={l.concepto} placeholder="Concepto..." onElegir={(v) => tocar((x) => { x[i].concepto = v; return x; })} />
+                  <Combo opciones={opcCon.map((c) => c.nombre)} valor={l.concepto} placeholder="Concepto..." onElegir={(v) => tocar((x) => { x[i].concepto = v; x[i].pagos.forEach((p) => { if (p.medio !== ADEL && !p.aMano) p.medio = medioDeConcepto(v); }); return x; })} />
                   <input style={{ ...inp, textAlign: "right" }} value={l.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => { x[i].importe = v; if (x[i].pagos.length === 1 && x[i].pagos[0].medio !== ADEL) x[i].pagos[0].importe = v; return x; }); }} />
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {l.pagos.map((p, k) => (
                       <div key={k} style={{ display: "flex", gap: 6 }}>
-                        <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={abmMedios.alElegir((v) => tocar((x) => { x[i].pagos[k].medio = v; return x; }))}>
+                        <select style={{ ...sel, flex: 1, height: 38 }} value={p.medio} onChange={abmMedios.alElegir((v) => tocar((x) => { x[i].pagos[k].medio = v; x[i].pagos[k].aMano = true; return x; }))}>
                           {abmMedios.opcion}{[...(adelantos > 0 ? [ADEL] : []), ...medios].map((m) => <option key={m}>{m}</option>)}</select>
                         <input style={{ ...inp, width: 130, textAlign: "right" }} value={p.importe} placeholder="0,00" onChange={(e) => { const v = fmtImp(e.target.value, e.nativeEvent); tocar((x) => {
                           x[i].pagos[k].importe = v;
@@ -2383,7 +2474,7 @@ function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe,
                           return x; }); }} />
                         <span onClick={() => tocar((x) => { x[i].pagos.splice(k, 1); return x; })} style={{ cursor: "pointer", color: C.gris, alignSelf: "center", width: 14, textAlign: "center" }}>×</span>
                       </div>))}
-                    <span onClick={() => tocar((x) => { const rest = parseImp(x[i].importe) - x[i].pagos.reduce((a, p) => a + parseImp(p.importe), 0); x[i].pagos.push({ medio: medioDef, importe: rest > 0 ? fmtNum(Math.round(rest * 100) / 100) : "" }); return x; })}
+                    <span onClick={() => tocar((x) => { const rest = parseImp(x[i].importe) - x[i].pagos.reduce((a, p) => a + parseImp(p.importe), 0); x[i].pagos.push({ medio: medioDeConcepto(x[i].concepto), importe: rest > 0 ? fmtNum(Math.round(rest * 100) / 100) : "" }); return x; })}
                       style={{ fontSize: 12, fontWeight: 600, color: "#2a88ad", cursor: "pointer" }}>+ forma de pago</span>
                   </div>
                   <span onClick={() => tocar((x) => (x.length > 1 ? x.filter((_, j) => j !== i) : x))} title="Quitar concepto" style={{ cursor: "pointer", color: C.gris, paddingTop: 9 }}>×</span>

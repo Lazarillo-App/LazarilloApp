@@ -718,6 +718,9 @@ export default function Navbar() {
 
               {userMenuOpen && (
                 <ClickAwayListener onClickAway={() => setUserMenuOpen(false)}>
+                  {/* El ClickAwayListener necesita un elemento con ref: MenuPerfil es un componente sin
+                      forwardRef y no se cerraba al tocar afuera (Diego 23/11/2026). */}
+                  <div>
                   {logged ? (
                     <MenuPerfil
                       nombre={getUser()?.name || getUser()?.nombre}
@@ -740,6 +743,7 @@ export default function Navbar() {
                       </MenuList>
                     </Box>
                   )}
+                  </div>
                 </ClickAwayListener>
               )}
             </Box>

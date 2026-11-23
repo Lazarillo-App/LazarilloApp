@@ -411,14 +411,22 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
 // Evolución de un indicador (Diego 29/10/2026, mockup_celu_pdvs_indicadores): barras de los últimos
 // 3 / 6 / 9 / 12 meses hasta el que se mira y la diferencia contra el mes anterior (puntos en los %,
 // variación % en la plata). Verde/rojo según hacia dónde conviene que vaya.
-const plataCorta = (n) => {
+const plataCorta = (n, dec = 1) => {
     const a = Math.abs(n), sg = n < 0 ? "-" : "";
     if (a >= 1e6)
-        return `${sg}${(a / 1e6).toLocaleString("es-AR", { maximumFractionDigits: a >= 1e8 ? 0 : 1 })}M`;
+        return `${sg}${(a / 1e6).toLocaleString("es-AR", { maximumFractionDigits: a >= 1e8 ? 0 : dec })}M`;
     return `${sg}${Math.round(a / 1e3).toLocaleString("es-AR")}k`;
 };
+// Cantidades (tickets, cubiertos): con muchas barras, en miles para que entren.
+const cantCorta = (v, corta) => (corta && Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })}k` : Math.round(v).toLocaleString("es-AR"));
+const UNIDADES = [{ k: "pesos", t: "$" }, { k: "tickets", t: "Tickets" }, { k: "cubiertos", t: "Cubiertos" }];
 function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     const [n, setN] = useState(6);
+    // Ventas en $, tickets o cubiertos (Diego 23/11/2026): el mismo gráfico, cambia la unidad.
+    const [unidad, setUnidad] = useState("pesos");
+    // Un solo gráfico que cambia de vista (Diego 23/11/2026): mes a mes, un mes año por año, o el año.
+    const [vista, setVista] = useState("mes");
+    const [mesH, setMesH] = useState(hasta.mes);
     // Ventas: debajo del gráfico va el detalle de un día o de un mes (Diego 08/11/2026).
     const esVentas = clave === "ventas";
     const [periodo, setPeriodo] = useState({ modo: "dia", dia: null, mes: null });
@@ -428,13 +436,22 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     const necesitaAnt = hasta.mes < n;
     const antes = useMulti(sel, (s) => ["m-anual", s.localId, s.pdvId, ant], (s) => (necesitaAnt ? `/api/m/anual?localId=${s.localId}&pdvId=${s.pdvId}&anio=${ant}` : null), 10 * 60_000).list;
     const anualAnt = antes ? sumarAnual(antes) : undefined;
+    const todosMeses = [...(anualAnt?.meses ?? []).map((m) => ({ ...m, anio: ant })), ...anualActual.map((m) => ({ ...m, anio: hasta.anio }))];
+    // Sin cubiertos cargados en el POS no se ofrece verlos.
+    const hayCubiertos = esVentas && todosMeses.some((m) => (m.cubiertos ?? 0) > 0);
+    const u = esVentas && (unidad === "tickets" || (unidad === "cubiertos" && hayCubiertos)) ? unidad : "pesos";
+    const cant = u !== "pesos";
+    // En unidades, el mes proyectado se estima con la misma proporción que las ventas.
+    const delMes = anualActual.find((m) => m.mes === hasta.mes);
+    const actualU = !cant || !actual ? actual
+        : { ...actual, valor: actual.proyectado && delMes?.ventas > 0 && actual.valor != null ? (delMes[u] ?? 0) * (actual.valor / delMes.ventas) : delMes?.[u] ?? null };
     const serie = serieIndicador({
-        meses: [...(anualAnt?.meses ?? []).map((m) => ({ ...m, anio: ant })), ...anualActual.map((m) => ({ ...m, anio: hasta.anio }))],
-        clave, hasta, n, actual,
+        meses: cant ? todosMeses.map((m) => ({ ...m, ventas: m[u] ?? 0 })) : todosMeses,
+        clave, hasta, n, actual: actualU,
     });
     const info = INFO_INDICADOR[clave];
-    const plata = info.tipo === "plata";
-    const unidad = plata ? "%" : " pp";
+    const plata = info.tipo === "plata" && !cant;
+    const unidadDif = plata || cant ? "%" : " pp";
     const vals = serie.map((x) => x.valor).filter((v) => v != null);
     const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
     // La barra más baja queda en 40%: se ven las diferencias sin exagerarlas.
@@ -447,36 +464,134 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
         <span className="ml-auto text-[12px] text-zinc-500">hasta {MESES[hasta.mes - 1]} {hasta.anio}</span>
       </div>
       <div className="px-4 pt-3 pb-10">
-        <div className="inline-flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
-          {[3, 6, 9, 12].map((k) => (<button key={k} type="button" onClick={() => setN(k)} className={cn("rounded-lg px-3.5 py-1 text-[13px] font-semibold", n === k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{k}</button>))}
-          <span className="self-center px-2 text-[12px] text-zinc-500">meses</span>
+        {esVentas && <div className="mb-2 flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
+            {[{ k: "mes", t: "Mes a mes" }, { k: "hist", t: `${MESES[mesH - 1].slice(0, 3)} histórico` }, { k: "anual", t: "Anual histórico" }].map((x) => (<button key={x.k} type="button" onClick={() => setVista(x.k)} className={cn("min-h-[36px] min-w-0 flex-1 truncate rounded-lg px-2 py-1 text-[13px] font-semibold", vista === x.k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{x.t}</button>))}
+          </div>}
+        <div className="flex flex-wrap gap-2">
+          {esVentas && <div className="inline-flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
+            {UNIDADES.filter((x) => x.k !== "cubiertos" || hayCubiertos).map((x) => (<button key={x.k} type="button" onClick={() => setUnidad(x.k)} className={cn("min-h-[36px] rounded-lg px-3 py-1 text-[13px] font-semibold", u === x.k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{x.t}</button>))}
+          </div>}
+          {vista === "hist" && <div className="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
+            <button type="button" aria-label="Mes anterior" onClick={() => setMesH(mesH === 1 ? 12 : mesH - 1)} className="flex min-h-[36px] w-9 items-center justify-center rounded-lg text-zinc-600"><ChevronLeft className="size-5"/></button>
+            <span className="w-24 text-center text-[13px] font-semibold">{MESES[mesH - 1]}</span>
+            <button type="button" aria-label="Mes siguiente" onClick={() => setMesH(mesH === 12 ? 1 : mesH + 1)} className="flex min-h-[36px] w-9 items-center justify-center rounded-lg text-zinc-600"><ChevronRight className="size-5"/></button>
+          </div>}
+          {vista === "mes" && <div className="inline-flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
+            {[3, 6, 9, 12].map((k) => (<button key={k} type="button" onClick={() => setN(k)} className={cn("min-h-[36px] rounded-lg px-3 py-1 text-[13px] font-semibold", n === k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{k}</button>))}
+            <span className="self-center px-2 text-[12px] text-zinc-500">meses</span>
+          </div>}
         </div>
+        {vista !== "mes" && <Historico sel={sel} modo={vista} mes={mesH} hasta={hasta} unidad={u} proy={actual?.proyectado && actual.valor != null ? actual.valor : null} setPeriodo={setPeriodo} detalle={<DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}/>}
+        {vista === "mes" && <>
         <div className="mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
           {serie.map((x) => {
             const elegido = esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x);
-            return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
+            return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
               onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
-              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{plata ? plataCorta(x.valor) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
+              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{cant ? cantCorta(x.valor, n > 6) : plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
               <div className={cn("w-full rounded-t-md", x.valor != null && x.valor < 0 ? "bg-red-400" : elegido ? "bg-sky-700" : x.proyectado ? "bg-sky-500" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
             </div>);
           })}
         </div>
         <div className="flex gap-1.5">
-          {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
+          {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("min-w-0 flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
         </div>
         {esVentas && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un mes para verlo abajo</p>}
-        {esVentas && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
+        </>}
+        {esVentas && vista === "mes" && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
+        {vista === "mes" && <>
         <div className="mt-4">
           {[...serie].reverse().map((x) => (<div key={`${x.anio}-${x.mes}`} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-2 text-[14px]">
               <span className="flex-1">{MESES[x.mes - 1]} {x.anio !== hasta.anio ? x.anio : ""}{x.proyectado && <span className="ml-1.5 text-[11.5px] text-zinc-500">proyectado</span>}</span>
-              <b className={cn("text-right tabular-nums", plata ? "w-24" : "w-16")}>{plata ? (x.valor == null ? "—" : $m(x.valor)) : pc(x.valor)}</b>
+              <b className={cn("text-right tabular-nums", plata ? "w-24" : "w-16")}>{cant ? (x.valor == null ? "—" : Math.round(x.valor).toLocaleString("es-AR")) : plata ? (x.valor == null ? "—" : $m(x.valor)) : pc(x.valor)}</b>
               <span className={cn("w-20 text-right text-[12.5px] font-bold tabular-nums", { bueno: "text-emerald-700", malo: "text-red-600", nada: "text-zinc-400" }[sentido(clave, x.dif) ?? "nada"])}>
-                {x.dif == null ? "—" : Math.abs(x.dif) < 0.05 ? "=" : `${x.dif > 0 ? "▲" : "▼"} ${Math.abs(x.dif).toLocaleString("es-AR", { maximumFractionDigits: 1 })}${unidad}`}</span>
+                {x.dif == null ? "—" : Math.abs(x.dif) < 0.05 ? "=" : `${x.dif > 0 ? "▲" : "▼"} ${Math.abs(x.dif).toLocaleString("es-AR", { maximumFractionDigits: 1 })}${unidadDif}`}</span>
             </div>))}
         </div>
-        <p className="mt-2 text-[11.5px] text-zinc-500">{plata ? "% contra el mes anterior" : "pp = puntos contra el mes anterior"} · verde: mejora · rojo: empeora</p>
+        <p className="mt-2 text-[11.5px] text-zinc-500">{plata || cant ? "% contra el mes anterior" : "pp = puntos contra el mes anterior"} · verde: mejora · rojo: empeora</p>
+        </>}
       </div>
     </div>);
+}
+// Histórico de ventas (Diego 23/11/2026), una barra por año:
+//  - «hist»: el mismo mes de cada año (se cambia de mes con las flechas).
+//  - «anual»: enero hasta el mes actual de cada año, para comparar años parejos.
+// El mes en curso va siempre con su proyección; tickets y cubiertos con la misma proporción. Los
+// pesos van a «pesos de hoy» con el IPC del INDEC; tickets y cubiertos no se ajustan. Se pide una
+// vez (todo el historial por año y mes) y cada vista se arma acá. Varios PDV: se suman.
+function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle }) {
+    const [todos, setTodos] = useState(false);
+    const q = useMulti(sel, (s) => ["m-historico", s.localId, s.pdvId], (s) => `/api/m/historico?localId=${s.localId}&pdvId=${s.pdvId}`, 30 * 60_000);
+    if (!q.list) return q.isError ? <p className="mt-6 text-center text-[13px] text-zinc-500">No se pudo traer el histórico.</p> : <div className="mt-5 h-52 animate-pulse rounded-2xl bg-zinc-100 dark:bg-zinc-800"/>;
+    const ipc = q.list[0]?.ipc ?? { disponible: false };
+    const ajusta = unidad === "pesos" && ipc.disponible;
+    // Por año y mes, sumando los PDV.
+    const ym = new Map();
+    for (const r of q.list)
+        for (const m of r.meses) {
+            const k = `${m.anio}-${m.mes}`;
+            const x = ym.get(k) ?? { anio: m.anio, mes: m.mes, ventas: 0, ventasHoy: 0, tickets: 0, cubiertos: 0 };
+            x.ventas += m.ventas; x.tickets += m.tickets; x.cubiertos += m.cubiertos;
+            x.ventasHoy = x.ventasHoy == null || m.ventasHoy == null ? null : x.ventasHoy + m.ventasHoy;
+            ym.set(k, x);
+        }
+    // El mes en curso, proyectado.
+    const kAct = `${hasta.anio}-${hasta.mes}`, act = ym.get(kAct);
+    const conProy = proy != null && act && act.ventas > 0;
+    if (conProy) {
+        const f = proy / act.ventas;
+        ym.set(kAct, { ...act, ventas: proy, ventasHoy: proy, tickets: act.tickets * f, cubiertos: act.cubiertos * f });
+    }
+    const val = (m) => (unidad === "pesos" ? (ajusta ? m.ventasHoy : m.ventas) : m[unidad]);
+    const anios = [...new Set([...ym.values()].map((m) => m.anio))].sort((a, b) => a - b);
+    const lista = anios.map((a) => {
+        const meses = [...ym.values()].filter((m) => m.anio === a && (modo === "hist" ? m.mes === mes : m.mes <= hasta.mes));
+        // Anual: un año solo cuenta si tiene todos los meses (si no, se compararía un año parcial).
+        const completo = modo === "hist" ? meses.length === 1 : meses.length === hasta.mes;
+        const vs = meses.map(val);
+        const valor = !completo || vs.some((v) => v == null) ? null : vs.reduce((s, v) => s + v, 0);
+        return { anio: a, valor: valor != null && valor > 0 ? valor : null, proyectado: conProy && a === hasta.anio && (modo === "anual" || mes === hasta.mes) };
+    }).filter((x, i, arr) => x.valor != null || arr.slice(0, i).some((y) => y.valor != null));
+    if (!lista.some((x) => x.valor != null)) return <p className="mt-6 text-center text-[13px] text-zinc-500">Todavía no hay historia para comparar.</p>;
+    const vista = todos ? lista : lista.slice(-6);
+    const vals = vista.map((x) => x.valor).filter((v) => v != null);
+    const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
+    const alto = (v) => 40 + (max > min ? ((v - min) / (max - min)) * 60 : 40);
+    const fmt = (v) => (unidad === "pesos" ? plataCorta(v, vista.length > 6 ? 0 : 1) : cantCorta(v, vista.length > 6));
+    const mc = (m) => MESES[m - 1].slice(0, 3).toLowerCase();
+    const nombreIpc = (k) => `${mc(Number(k.slice(5, 7)))} ${k.slice(0, 4)}`;
+    const elegido = modo === "hist" && mes > hasta.mes ? hasta.anio - 1 : hasta.anio;
+    const conDif = lista.map((x, i) => { const p = lista.slice(0, i).reverse().find((y) => y.valor != null); return { ...x, dif: x.valor != null && p ? (x.valor / p.valor - 1) * 100 : null }; });
+    const qProy = lista.some((x) => x.proyectado);
+    return (<div className="mt-5">
+        <p className="text-[12px] text-zinc-500">
+          {modo === "hist" ? `${MESES[mes - 1]} de cada año` : `${hasta.mes === 1 ? "enero" : `ene–${mc(hasta.mes)}`} de cada año`}
+          {qProy ? ` · ${mc(hasta.mes)} ${hasta.anio} proyectado` : ""}
+          {unidad === "pesos" ? (ajusta ? ` · pesos de hoy (IPC INDEC a ${nombreIpc(ipc.hasta)})` : " · sin ajustar: no se pudo traer el IPC") : ""}
+        </p>
+        <div className="mt-4 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
+          {vista.map((x) => (<div key={x.anio} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", modo === "hist" && x.valor != null && "cursor-pointer")}
+              onClick={modo === "hist" && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: `${x.anio}-${String(mes).padStart(2, "0")}` }) : undefined}>
+              <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{x.valor != null ? fmt(x.valor) : "—"}</span>
+              <div className={cn("w-full rounded-t-md", x.anio === elegido ? "bg-sky-700" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
+            </div>))}
+        </div>
+        <div className="flex gap-1.5">
+          {vista.map((x) => <span key={x.anio} className={cn("min-w-0 flex-1 text-center text-[10.5px]", x.anio === elegido ? "font-bold text-sky-700" : "text-zinc-500")}>{vista.length > 6 ? `'${String(x.anio).slice(2)}` : x.anio}{x.proyectado ? "*" : ""}</span>)}
+        </div>
+        {modo === "hist" && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un año para verlo abajo</p>}
+        {lista.length > 6 && <div className="text-center"><button type="button" onClick={() => setTodos(!todos)} className="min-h-[36px] text-[13px] font-semibold text-sky-700">{todos ? "ver los últimos 6" : `ver los ${lista.length} años`}</button></div>}
+        {detalle}
+        <div className="mt-4">
+          {[...conDif].reverse().map((x) => (<div key={x.anio} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-2 text-[14px]">
+              <span className="flex-1">{x.anio}{x.proyectado && <span className="ml-1.5 text-[11.5px] text-zinc-500">proyectado</span>}</span>
+              <b className="w-24 text-right tabular-nums">{x.valor == null ? "—" : unidad === "pesos" ? $m(x.valor) : Math.round(x.valor).toLocaleString("es-AR")}</b>
+              <span className={cn("w-20 text-right text-[12.5px] font-bold tabular-nums", x.dif == null ? "text-zinc-400" : x.dif >= 0 ? "text-emerald-700" : "text-red-600")}>
+                {x.dif == null ? "—" : Math.abs(x.dif) < 0.05 ? "=" : `${x.dif > 0 ? "▲" : "▼"} ${Math.abs(x.dif).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`}</span>
+            </div>))}
+        </div>
+        <p className="mt-2 text-[11.5px] text-zinc-500">% contra el año anterior · verde: mejora · rojo: empeora</p>
+      </div>);
 }
 // Un rubro de "Gastos del mes por rubro": tocándolo se despliega su detalle de mayor a menor
 // (Diego 29/10/2026). Personal por empleado (vista Proveedor del Panel); el resto por insumo

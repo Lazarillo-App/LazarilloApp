@@ -465,7 +465,7 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
     return (<>
       <Dialog open={entidadId !== null} onOpenChange={(o) => { if (!o)
         onClose(); }}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-xl" style={{ maxWidth: 760 }}>
           <DialogHeader>
             <Badge variant="secondary" className="w-fit">{NIVEL_LABELS[nivel]}</Badge>
             <DialogTitle className="text-base">

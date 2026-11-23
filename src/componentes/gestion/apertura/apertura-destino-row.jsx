@@ -104,7 +104,7 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
       <Select value={destino.localId != null ? String(destino.localId) : ""} 
     // Si al elegir el local queda una sola opción de punto de venta libre, se elige sola.
     onValueChange={(v) => onChange(autocompletarDestino({ ...destino, localId: Number(v), puntoDeVentaId: -Number(v) }, locales, otrosDestinos))}>
-        <SelectTrigger className="w-28 shrink-0 text-xs" size="sm">
+        <SelectTrigger className="w-48 shrink-0 text-xs" size="sm">
           <SelectValue placeholder="Local"/>
         </SelectTrigger>
         <SelectContent>
@@ -115,7 +115,7 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
       </Select>
 
       <Select value={destino.puntoDeVentaId != null ? String(destino.puntoDeVentaId) : TODO_EL_LOCAL} onValueChange={(v) => onChange({ ...destino, puntoDeVentaId: v === TODO_EL_LOCAL ? null : Number(v) })} disabled={!localSeleccionado}>
-        <SelectTrigger className="w-28 shrink-0 text-xs" size="sm">
+        <SelectTrigger className="w-48 shrink-0 text-xs" size="sm">
           <SelectValue placeholder="Punto de venta"/>
         </SelectTrigger>
         <SelectContent>

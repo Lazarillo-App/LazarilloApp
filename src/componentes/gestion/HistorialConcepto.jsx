@@ -83,6 +83,13 @@ export default function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, 
   const porPeriodo = [];
   (filas || []).forEach((f) => { const g = porPeriodo.find((x) => x.p === f.periodo); if (g) g.filas.push(f); else porPeriodo.push({ p: f.periodo, filas: [f] }); });
   const tieneActual = porPeriodo.some((g) => g.p === periodo);
+  // El período elegido sin cargas va en su lugar cronológico, entre los meses que tiene al lado
+  // (Diego 23/11/2026: arriba de todo «descoloca»). Los meses vienen del más nuevo al más viejo.
+  const grupos = porPeriodo.slice();
+  if (!tieneActual && periodo) {
+    const i = grupos.findIndex((g) => String(g.p) < String(periodo));
+    grupos.splice(i < 0 ? grupos.length : i, 0, { p: periodo, filas: [], vacio: true });
+  }
   // Total de cada mes (usuaria 18/11/2026: «que según el mes abajo aparezca el total, así no lo sumo a mano»).
   const totalDe = (g) => g.filas.reduce((s, f) => s + (Number(f.importe) || 0), 0);
   const delPeriodo = porPeriodo.find((g) => g.p === periodo);
@@ -91,10 +98,12 @@ export default function HistorialConcepto({ concepto, codigo, pdvId, pdvNombre, 
       <div style={{ fontWeight: 700, fontSize: 15.5 }}>Últimas cargas · {concepto}</div>
       <div style={{ display: "flex", justifyContent: "space-between", color: C.gris, margin: "2px 0 6px" }}><span>{pdvNombre} · últimos 12 meses</span>{filas && <span>{filas.length} carga{filas.length === 1 ? "" : "s"}</span>}</div>
       {!filas ? <div style={{ color: C.gris }}>Cargando…</div> : (<>
-        {!tieneActual && <div style={{ background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 8, padding: "4px 8px", fontWeight: 700 }}>{nombrePeriodo(periodo)} <span style={{ fontWeight: 400, color: "#2a88ad" }}>· este período, sin cargar</span></div>}
         {!filas.length && <div style={{ color: C.gris, marginTop: 6 }}>Sin cargas de este concepto en el último año.</div>}
         <div ref={lista} style={{ maxHeight: 330, overflow: "auto" }}>
-          {porPeriodo.map((g) => (
+          {grupos.map((g) => g.vacio ? (
+            <div key={g.p} data-periodo={g.p} style={{ marginTop: 6, background: "#f3fafd", border: "1px solid #bfe0f0", borderRadius: 8, padding: "4px 8px", fontWeight: 700 }}>
+              {nombrePeriodo(g.p)} <span style={{ fontWeight: 400, color: "#2a88ad" }}>· este período, sin cargar</span></div>
+          ) : (
             <div key={g.p} data-periodo={g.p} role="button" title={`Cargar en ${nombrePeriodo(g.p)}`} onClick={() => onPeriodo && onPeriodo(g.p)}
               style={{ marginTop: 6, borderRadius: 8, padding: "4px 7px", cursor: "pointer", border: "1px solid transparent", ...(g.p === periodo ? { background: "#fdf8ef", border: "1px solid #f0d9a8" } : {}) }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>

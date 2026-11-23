@@ -16,13 +16,19 @@ export function cambiosLote(inicial, actual, enCero = false) {
   if (actual.observac !== inicial.observac) {
     body.observacManual = actual.observac !== "" ? actual.observac : null;
   }
+  // Fecha de pago (gastos varios y sueldos, Diego 23/11/2026): también viaja a las tildadas.
+  // Vacía = vuelve la del informe.
+  if (actual.fechaPago !== undefined && actual.fechaPago !== inicial.fechaPago) {
+    body.fechaPagoManual = actual.fechaPago !== "" ? actual.fechaPago : null;
+  }
   return body;
 }
 
 // Texto corto de qué se va a aplicar, para la confirmación ("fecha y concepto").
 export function describirCambios(body) {
   const partes = [
-    "fechaManual" in body ? "fecha" : null,
+    "fechaManual" in body ? "fecha de gasto" : null,
+    "fechaPagoManual" in body ? "fecha de pago" : null,
     "conceptoCodigoManual" in body ? "concepto" : null,
     "observacManual" in body ? "observación" : null,
     "importeManual" in body ? "importe en $0" : null,

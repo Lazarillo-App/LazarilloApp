@@ -26,7 +26,7 @@ export function sumarAnual(lista) {
     const meses = Array.from({ length: 12 }, (_, i) => {
         const del = lista.map((a) => a.meses.find((m) => m.mes === i + 1)).filter((m) => !!m);
         const rubros = sumarRubros(del.map((m) => m.rubros));
-        return { ...(del[0] ?? {}), mes: i + 1, ventas: del.reduce((s, m) => s + m.ventas, 0), gastos: rubros.reduce((s, r) => s + r.total, 0), rubros };
+        return { ...(del[0] ?? {}), mes: i + 1, ventas: del.reduce((s, m) => s + m.ventas, 0), tickets: del.reduce((s, m) => s + (m.tickets ?? 0), 0), cubiertos: del.reduce((s, m) => s + (m.cubiertos ?? 0), 0), gastos: rubros.reduce((s, r) => s + r.total, 0), rubros };
     });
     return { ...lista[0], meses };
 }

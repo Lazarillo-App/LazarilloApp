@@ -65,10 +65,13 @@ const COLS = [
   { label: 'Importe', right: true, sortKey: 'importe', width: 128 },
 ];
 // Lo que depende de los gastos: se recalcula después de guardar.
-const DEPENDIENTES = ['gestionPivot', 'gestionAnual', 'gestionEquilibrio', 'gestionEquilibrioVariables', 'gestionDiferenciaCaja', 'gestionCanasta'];
+const DEPENDIENTES = ['gestionDetalle', 'gestionPivot', 'gestionAnual', 'gestionEquilibrio', 'gestionEquilibrioVariables', 'gestionDiferenciaCaja', 'gestionCanasta'];
 
 // Mismo criterio que el back (fuente-compras: es_gv): sin comprobante o proveedor, o comprobante E/G.
-const esGastoVario = (c) => !c.comprobante || !c.codigoProveedor || ['E', 'G'].includes(String(c.comprobante).charAt(0).toUpperCase());
+// Gasto vario: sin comprobante o proveedor, E/G, o un ticket de Gastos Varios de MaxiRest (proveedor GV,
+// comprobante Z9999…): su fecha de pago es la de la caja y se corrige en la compra (Diego 23/11/2026).
+const esGastoVario = (c) => !c.comprobante || !c.codigoProveedor || String(c.codigoProveedor).trim().toUpperCase() === 'GV'
+  || ['E', 'G'].includes(String(c.comprobante).charAt(0).toUpperCase());
 const pagosConFechaManual = (c) => (c.estadoPago?.pagos80 ?? []).some((p) => p.manual);
 const esEditada = (c) => c.importeManual != null || c.fechaManual != null || c.conceptoCodigoManual != null || c.observacManual != null
   || c.fechaPagoManual != null || pagosConFechaManual(c);
@@ -92,6 +95,7 @@ function sortCompras(a, b, sort) {
     concepto: (x) => String((x.conceptoCajaManual ?? x.conceptoCaja)?.nombre ?? ''),
     detalle: (x) => String(x.detalle ?? ''),
     observacion: (x) => String(x.observacManual ?? x.observac ?? ''),
+    pdv: (x) => String(x.puntoDeVenta?.nombre ?? ''),
   }[sort.key];
   if (!valor) return 0;
   const cmp = valor(a).localeCompare(valor(b), 'es', { numeric: true });
@@ -100,7 +104,7 @@ function sortCompras(a, b, sort) {
 
 const searchFields = (i) => [
   i.proveedor, i.proveedorRef?.nombre, i.proveedorRef?.razon, i.observacManual, i.observac, i.obsInsumos, i.detalle, i.concepto,
-  (i.conceptoCajaManual ?? i.conceptoCaja)?.nombre, (i.conceptoCajaManual ?? i.conceptoCaja)?.rubro?.nombre, i.local?.nombre,
+  (i.conceptoCajaManual ?? i.conceptoCaja)?.nombre, (i.conceptoCajaManual ?? i.conceptoCaja)?.rubro?.nombre, i.local?.nombre, i.puntoDeVenta?.nombre,
 ];
 
 // Fecha de pago: la del informe 80 (si hubo varios, el último) o la de la caja del gasto vario / sueldo.
@@ -186,7 +190,15 @@ function CheckFila({ seleccion }) {
 }
 
 export default function ComprasDetalleModal({ filter, onClose }) {
-  const { businessId, modo, nombreLugar } = usePanelGestion();
+  const { businessId, modo, nombreLugar, sucursal, pedirCarga } = usePanelGestion();
+  // Con «Todas» las sucursales, cada registro dice de qué PDV es (Diego 23/11/2026).
+  const todas = sucursal === undefined;
+  // Para que Observación no quede sin lugar, la columna nueva se compensa achicando Detalle, Rubro y Concepto.
+  const cols = todas
+    ? [...COLS.slice(0, 3), { label: 'PDV', sortKey: 'pdv', width: 112 }, ...COLS.slice(3)]
+      .map((c) => ({ ...c, width: { Proveedor: 128, Detalle: 64, Rubro: 104, Concepto: 104 }[c.label] ?? c.width }))
+    : COLS;
+  const celdaPdv = (item) => (todas ? <TableCell sx={{ ...celda, color: 'text.secondary' }} title={item.puntoDeVenta?.nombre ?? undefined}>{item.puntoDeVenta?.nombre ?? '—'}</TableCell> : null);
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -302,7 +314,10 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     if (!tildadas.has(state.rowId) || tildadas.size < 2) return null;
     const imp = resolverImporteParaPatch({ esDistribuida: state.esDistribuida, importeInput: state.importeManual, importeInicial: state.importeInicial });
     const enCero = imp.ok && imp.incluir && imp.value === 0;
-    const cuerpo = cambiosLote(state.inicial, { fecha: state.fechaManual, concepto: state.conceptoCodigoManual, observac: state.observacManual }, enCero);
+    const cuerpo = cambiosLote(
+      { ...state.inicial, fechaPago: state.fechaPagoInicial },
+      { fecha: state.fechaManual, concepto: state.conceptoCodigoManual, observac: state.observacManual, ...(state.esGastoVario ? { fechaPago: state.fechaPago } : {}) },
+      enCero);
     if (Object.keys(cuerpo).length === 0) return null;
     return { otras: [...tildadas.values()].filter((f) => f.rowId !== state.rowId), cuerpo };
   };
@@ -319,7 +334,11 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       ? { observacManual: state.observacManual !== '' ? state.observacManual : null }
       : {
         ...(imp.incluir ? { importeManual: imp.value } : {}),
-        fechaManual: state.fechaManual !== '' ? new Date(`${state.fechaManual}T12:00:00Z`).toISOString() : null,
+        // La fecha viaja solo si la cambiaste: guardar otra cosa no fija la fecha de carga
+        // por encima del período del sueldo (Diego 23/11/2026).
+        ...(state.fechaManual !== state.inicial.fecha
+          ? { fechaManual: state.fechaManual !== '' ? new Date(`${state.fechaManual}T12:00:00Z`).toISOString() : null }
+          : {}),
         conceptoCodigoManual: state.conceptoCodigoManual !== '' ? state.conceptoCodigoManual : null,
         observacManual: state.observacManual !== '' ? state.observacManual : null,
       };
@@ -341,10 +360,12 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     }
     const lote = loteDe(state);
     let fallidas = 0;
-    if (lote) {
-      for (const f of lote.otras) {
-        try { await GestionAPI.editarCompra(f.rowId, lote.cuerpo); } catch { fallidas += 1; }
-      }
+    // Las otras tildadas van en UN pedido (todo o nada): así queda un solo aviso en la Actividad
+    // con la cantidad, no uno por registro (regla «todo ABM queda en Notificaciones», 23/11/2026).
+    if (lote && lote.otras.length) {
+      try {
+        await GestionAPI.editarComprasLote(lote.otras.map((f) => ({ rowId: f.rowId, ...lote.cuerpo })), `Mismo cambio de ${describirCambios(lote.cuerpo)} en las tildadas`);
+      } catch { fallidas = lote.otras.length; }
     }
     // Ya guardó: un fallo del refresco no es "no se guardó". El resto se refresca de fondo.
     DEPENDIENTES.forEach((k) => { queryClient.invalidateQueries({ queryKey: [k] }); });
@@ -391,6 +412,27 @@ export default function ComprasDetalleModal({ filter, onClose }) {
 
   const guardar = (state) => { if (loteDe(state)) setPendiente(state); else guardarConfirmado(state); };
   const cerrar = () => { setEditing(null); setLineas(null); setTildadas(new Map()); setSaveError(null); onClose(); };
+  // «+ Cargar gasto» con lo filtrado (Diego 23/11/2026: «cuando ya hay gastos cargados no me da la opción de
+  // carga desde la tabla»): mismo concepto (y proveedor si no es Gastos Varios), en el mes que se está viendo.
+  const { data: datosDetalleCarga } = useQuery({ queryKey, queryFn, enabled: false, staleTime: 60_000 }); // caché del modal
+  const filasAca = datosDetalleCarga?.data ?? [];
+  const conceptoAca = stable?.conceptoCodigo
+    ? { codigo: stable.conceptoCodigo, nombre: filasAca.find((f) => f.concepto)?.concepto ?? null }
+    : null;
+  const hoyCarga = new Date();
+  const mesCarga = periodo?.modo === 'mes' ? periodo.mes : (periodo?.year === hoyCarga.getFullYear() ? hoyCarga.getMonth() + 1 : 12);
+  const puedeCargarAca = !!pedirCarga && modo !== 'financiera' && !!conceptoAca && periodo?.modo !== 'historico';
+  const cargarAca = () => {
+    const ultima = [...filasAca].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')))[0];
+    const conProv = filasAca.find((f) => f.proveedorRef?.id != null && f.codigoProveedor !== 'GV');
+    const mesPrev = ultima?.fecha ? Number(String(ultima.fecha).slice(5, 7)) : null;
+    cerrar();
+    pedirCarga({
+      anio: periodo.year, mes: mesCarga, conceptoCodigo: conceptoAca.codigo, conceptoNombre: conceptoAca.nombre,
+      prev: mesPrev && String(ultima.fecha).slice(0, 4) === String(periodo.year) ? { mes: mesPrev } : null,
+      ...(conProv ? { proveedorId: conProv.proveedorRef.id } : {}),
+    });
+  };
 
   const abrirEdicion = (item) => {
     const esDistribuida = item.esDistribuido || item.distribucionId != null;
@@ -409,7 +451,8 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       ajena,
       importeManual: importeInicial,
       importeInicial,
-      fechaManual: fechaInput(item.fechaManual ?? item.fecha),
+      // F. gasto que cuenta: la corregida, si no el PERÍODO (sueldos, mes vencido), si no la de carga.
+      fechaManual: fechaInput(item.fechaGasto ?? item.fechaManual ?? item.fecha),
       conceptoCodigoManual: concepto,
       observacManual: item.observacManual ?? '',
       rubroFiltro: conceptos.find((o) => o.codigo === concepto)?.rubroCodigo ?? SIN_RUBRO_CODE,
@@ -421,7 +464,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
       fechaPago: fechaInput(item.fechaPago),
       fechaPagoInicial: fechaInput(item.fechaPago),
       fechaPagoOriginal: item.fechaPagoManual != null ? null : fechaInput(item.fechaPago),
-      inicial: { fecha: fechaInput(item.fechaManual ?? item.fecha), concepto, observac: item.observacManual ?? '' },
+      inicial: { fecha: fechaInput(item.fechaGasto ?? item.fechaManual ?? item.fecha), concepto, observac: item.observacManual ?? '' },
     });
   };
 
@@ -440,6 +483,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
           </TableCell>
           <TableCell sx={celdaEdicion}><EdicionFechaPago editing={editing} setEditing={setEditing} item={item} /></TableCell>
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{nombreProveedor(item)}</TableCell>
+          {celdaPdv(item)}
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{normalize(item.detalle)}</TableCell>
           <TableCell sx={celdaEdicion}>
             <Box component="input" type="text" placeholder={item.observac ? normalize(item.observac) : ''} value={editing.observacManual} onChange={(e) => setEditing({ ...editing, observacManual: e.target.value })} sx={sxInput} />
@@ -498,6 +542,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
             <Box component="button" type="button" data-tour="ed-proveedor" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
           ) : prov}
         </TableCell>
+        {celdaPdv(item)}
         <TableCell sx={celda} title={item.detalle ?? undefined}>
           {item.detalle ? (
             <Box component="button" type="button" data-tour="ed-comprobante" onClick={() => setLineas({ rowId: item.rowId, detalle: item.detalle })} sx={{ all: 'unset', cursor: 'pointer', color: 'text.secondary', fontFamily: 'monospace', fontSize: 12, '&:hover': { color: 'text.primary', textDecoration: 'underline' } }}>
@@ -552,7 +597,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
 
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
-    ? `Fecha, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
+    ? `Fecha de gasto, fecha de pago, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
     : editing?.ajena ? 'Esta compra se carga en otro negocio: fecha, importe y concepto se cambian desde ese negocio'
       : editing?.esDistribuida ? 'Repartida entre negocios: el importe es el total; al guardar se vuelve a repartir según la regla' : null;
 
@@ -563,7 +608,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         onClose={cerrar}
         title="Detalle de compras"
         subtitle={nombreLugar}
-        cols={COLS}
+        cols={cols}
         queryKey={queryKey}
         queryFn={queryFn}
         resetKey={resetKey}
@@ -573,7 +618,15 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         seleccion={conSeleccion ? { ids: new Set(tildadas.keys()), idDe: (r) => r.rowId, onCambiar: cambiarTildadas, onLimpiar: () => setTildadas(new Map()) } : undefined}
         saveError={saveError}
         footerNote={nota}
-        headerControls={conPeriodo ? <DetallePeriodoControls periodo={periodo} onChange={setPeriodo} /> : null}
+        headerControls={conPeriodo ? <>
+          <DetallePeriodoControls periodo={periodo} onChange={setPeriodo} />
+          {puedeCargarAca && (
+            <Box component="button" type="button" onClick={cargarAca} title={`Cargar ${conceptoAca?.nombre ?? 'un gasto'} en ${labelPeriodo({ ...periodo, modo: 'mes', mes: mesCarga })}`}
+              sx={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 36, px: 1.5, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5, borderRadius: 2, bgcolor: 'grey.900', color: '#fff', fontSize: 13.5, fontWeight: 500, whiteSpace: 'nowrap', '&:hover': { bgcolor: 'grey.800' } }}>
+              + Cargar gasto
+            </Box>
+          )}
+        </> : null}
         periodoLabel={conPeriodo ? labelPeriodo(periodo) : null}
         // Un registro puntual (click en un gasto de la vista económica): la edición queda arriba,
         // tal cual, y abajo la cuenta corriente del proveedor.
