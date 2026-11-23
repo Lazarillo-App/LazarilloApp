@@ -5,6 +5,8 @@
 // registro puntual (click en una fila de gasto) la cuenta corriente va debajo, como en gestion.
 // El comprobante abre sus líneas.
 
+import CampoImporte from '../CampoImporte';
+import CampoFecha from '../CampoFecha';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Popover, Select, Snackbar, Alert, TableCell, TableRow, TextField, Tooltip,
@@ -55,8 +57,8 @@ const SIN_RUBRO_NOMBRE = 'Sin Rubro';
 
 // Anchos fijos y angostos para todo menos Observación, que se lleva el resto.
 const COLS = [
-  { label: 'F. gasto', sortKey: 'fecha', width: 112 },
-  { label: 'F. pago', sortKey: 'fechaPago', width: 104 },
+  { label: 'F. gasto', sortKey: 'fecha', width: 124 },
+  { label: 'F. pago', sortKey: 'fechaPago', width: 124 },
   { label: 'Proveedor', sortKey: 'proveedor', width: 190 },
   { label: 'Detalle', sortKey: 'detalle', width: 96 },
   { label: 'Observación', sortKey: 'observacion' },
@@ -80,6 +82,8 @@ const texto = (v) => (v != null ? String(v) : '');
 const nombreProveedor = (i) => normalize(i.proveedor ?? i.proveedorRef?.nombre ?? i.proveedorRef?.razon);
 const celda = { px: 1.5, py: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const celdaEdicion = { px: 0.75, py: 0.75 };
+// CampoFecha / CampoImporte dentro de la fila editada: mismo alto (28) y letra (12) que los demás campos.
+const sxCampoFila = { '& .MuiInputBase-root': { height: 28, fontSize: 12, bgcolor: 'background.paper', pr: 0.5 }, '& .MuiInputBase-input': { px: 0.75 }, '& .MuiInputAdornment-root p': { fontSize: 12 }, '& .MuiIconButton-root': { p: 0.25 }, '& .MuiSvgIcon-root': { fontSize: 16 } };
 const sxInput = { width: '100%', boxSizing: 'border-box', height: 28, border: 1, borderColor: 'divider', borderRadius: 1, px: 0.75, fontSize: 12, bgcolor: 'background.paper', '&:disabled': { bgcolor: 'grey.100', color: 'text.disabled' } };
 
 function sortCompras(a, b, sort) {
@@ -137,13 +141,13 @@ function EdicionFechaPago({ editing, setEditing, item }) {
   const setPago = (rowId, fecha) => setEditing({ ...editing, pagos: pagos.map((p) => (p.rowId === rowId ? { ...p, fecha } : p)) });
   if (!pagos.length) {
     return (
-      <Box component="input" type="date" title={editing.fechaPagoOriginal ? `Del informe: ${fmtDate(editing.fechaPagoOriginal)}` : 'Sin fecha de pago en el informe'}
-        value={editing.fechaPago} onChange={(e) => setEditing({ ...editing, fechaPago: e.target.value })} sx={sxInput} />
+      <CampoFecha size="small" fullWidth title={editing.fechaPagoOriginal ? `Del informe: ${fmtDate(editing.fechaPagoOriginal)}` : 'Sin fecha de pago en el informe'}
+        value={editing.fechaPago} onChange={(v) => setEditing({ ...editing, fechaPago: v })} sx={sxCampoFila} />
     );
   }
   if (pagos.length === 1) {
     const p = pagos[0];
-    return <Box component="input" type="date" title={`Del informe: ${fmtDate(p.original)}`} value={p.fecha} onChange={(e) => setPago(p.rowId, e.target.value)} sx={sxInput} />;
+    return <CampoFecha size="small" fullWidth title={`Del informe: ${fmtDate(p.original)}`} value={p.fecha} onChange={(v) => setPago(p.rowId, v)} sx={sxCampoFila} />;
   }
   return (
     <>
@@ -155,7 +159,7 @@ function EdicionFechaPago({ editing, setEditing, item }) {
           <Box sx={{ fontWeight: 600 }}>Fecha de pago</Box><Box sx={{ fontWeight: 600, textAlign: 'right' }}>Importe</Box><Box sx={{ fontWeight: 600, color: 'text.secondary' }}>Informe</Box>
           {pagos.map((p) => (
             <React.Fragment key={p.rowId}>
-              <Box component="input" type="date" value={p.fecha} onChange={(e) => setPago(p.rowId, e.target.value)} sx={{ ...sxInput, width: 130 }} />
+              <CampoFecha size="small" value={p.fecha} onChange={(v) => setPago(p.rowId, v)} sx={{ ...sxCampoFila, width: 130 }} />
               <Box sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtARS(p.importe)}</Box>
               <Box sx={{ color: 'text.secondary' }}>{fmtDate(p.original)}</Box>
             </React.Fragment>
@@ -479,7 +483,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <TableRow key={key} sx={{ bgcolor: 'grey.50' }}>
           <CheckFila seleccion={seleccion} />
           <TableCell sx={celdaEdicion}>
-            <Box component="input" type="date" disabled={bloqueada} value={editing.fechaManual} onChange={(e) => setEditing({ ...editing, fechaManual: e.target.value })} sx={sxInput} />
+            <CampoFecha size="small" fullWidth disabled={bloqueada} value={editing.fechaManual} onChange={(v) => setEditing({ ...editing, fechaManual: v })} sx={sxCampoFila} />
           </TableCell>
           <TableCell sx={celdaEdicion}><EdicionFechaPago editing={editing} setEditing={setEditing} item={item} /></TableCell>
           <TableCell sx={{ ...celda, color: 'text.secondary' }}>{nombreProveedor(item)}</TableCell>
@@ -519,7 +523,14 @@ export default function ComprasDetalleModal({ filter, onClose }) {
             />
           </TableCell>
           <TableCell sx={celdaEdicion}>
-            <Box component="input" type="text" inputMode="decimal" disabled={bloqueada} value={editing.importeManual} onChange={(e) => setEditing({ ...editing, importeManual: e.target.value })} sx={{ ...sxInput, textAlign: 'right' }} />
+            {/* Importe con miles mientras se escribe (Guía «Importes»): CampoImporte devuelve el número limpio;
+                acá se guarda como texto "103603.74" porque así lo lee resolverImporteParaPatch. */}
+            <CampoImporte
+              size="small" fullWidth disabled={bloqueada}
+              value={editing.importeManual === '' || editing.importeManual == null ? '' : Number(editing.importeManual)}
+              onChange={(v) => setEditing({ ...editing, importeManual: v === '' ? '' : String(v) })}
+              sx={sxCampoFila}
+            />
           </TableCell>
           <TableCell sx={{ px: 1, py: 0.5 }}><EditActionButtons onSave={() => guardar(editing)} onCancel={() => setEditing(null)} saving={saving} /></TableCell>
         </TableRow>
