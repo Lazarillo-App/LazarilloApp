@@ -105,6 +105,12 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
       if (r.calculo) setCalculo(r.calculo);
       if (r.config?.tipo === 'ancla' || artId !== articleId) setAnclas((await pedir('/anclas')).anclas || []);
       try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { /* sin tabla abierta */ }
+      // La tabla de Artículos refresca el costo de toda la familia (Diego 23/11/2026: el Colegio
+      // seguía en $ 11.744 y 0,3 % después de cargarle las horas).
+      try {
+        const ids = [...new Set([artId, articleId, ...((r.calculo?.familia || []).map((f) => Number(f.articleId)))])].filter(Boolean);
+        window.dispatchEvent(new CustomEvent('servicio:costos', { detail: { ids } }));
+      } catch { /* sin tabla abierta */ }
     } catch (e) { setError(e.message); } finally { setGuardando(false); }
   }, [pedir, articleId]);
 
@@ -115,6 +121,7 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
       const s = await pedir(`/${articleId}`);
       setCalculo(s.calculo);
       try { window.dispatchEvent(new CustomEvent('articulos:updated')); } catch { /* idem */ }
+      try { window.dispatchEvent(new CustomEvent('servicio:costos', { detail: { ids: [artId, articleId] } })); } catch { /* idem */ }
     } catch (e) { setError(e.message); } finally { setGuardando(false); }
   }, [pedir, articleId]);
 
