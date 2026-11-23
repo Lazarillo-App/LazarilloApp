@@ -87,6 +87,25 @@ const PROPOSAL_KINDS = new Set([
   'receta_proposal', 'receta_proposal_approved', 'receta_proposal_rejected', 'receta_proposal_revision',
 ]);
 
+// Avisos de cocina (usuaria 23/11/2026): también quedan en pantalla hasta descartarlos, y al tocarlos
+// abren la tarea (la receta con el cambio o la observación) o lo que corresponda. Quién los recibe lo
+// decide el servidor: del cocinero al jefe y al dueño/admin; del jefe al dueño/admin.
+const aTarea = (m) => {
+  const id = m?.tarea_id ?? m?.ids?.[0];
+  return id ? `/produccion?tarea=${id}` : '/produccion';
+};
+const aOrden = (m) => (m?.orden_id ? `/mantenimiento?orden=${m.orden_id}` : '/mantenimiento');
+const COCINA_KINDS = {
+  produccion_cambio: { icono: '🔁', color: '#C77C12', abrir: aTarea },
+  produccion_nota: { icono: '💬', color: '#2F6FB2', abrir: aTarea },
+  produccion_desperdicio: { icono: '🗑️', color: '#C0392B', abrir: () => '/produccion?vista=registros' },
+  produccion_decision: { icono: '✅', color: '#1F8A5B', abrir: aTarea },
+  produccion_tarea: { icono: '📋', color: '#15213E', abrir: aTarea },
+  mant_falla: { icono: '🛠️', color: '#C0392B', abrir: aOrden },
+  mant_orden: { icono: '🔧', color: '#15213E', abrir: aOrden },
+};
+const ROL_ACTOR = { cocina: 'cocina', jefe: 'jefe de cocina', gestor: 'administración' };
+
 /* ========= helpers ========= */
 function pickChangeSetId(notif) {
   const raw = notif?.metadata?.change_set_id ?? notif?.meta?.change_set_id ?? null;
@@ -205,7 +224,15 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     markAsRead,
     markAllAsRead,
     patchNotification,
-  } = useNotifications({ businessId });
+  } = useNotifications({ businessId, refreshInterval: 60000 });
+
+  // Cada minuto se mira el número; si subió, se trae la lista para que las ventanitas aparezcan sin
+  // recargar la página (antes solo se traía al abrir la campana).
+  const unreadPrevio = React.useRef(unreadCount);
+  useEffect(() => {
+    if (unreadCount > unreadPrevio.current) refresh?.();
+    unreadPrevio.current = unreadCount;
+  }, [unreadCount, refresh]);
 
   const [rowBusy, setRowBusy] = useState({});
   const [uiNotifs, setUiNotifs] = useState([]);
@@ -501,11 +528,12 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
   // aprobada/rechazada/a revisión (quien la propuso).
   // Se muestran mientras la notificación esté sin leer: no se borran solas ni al
   // recargar. Cerrarla (X) o abrirla la marca como leída.
-  const proposalToasts = useMemo(() => (notifications || [])
-    .filter((n) => !n.read && PROPOSAL_KINDS.has(n.metadata?.kind))
-    .slice(0, 5)
-    .map((n) => ({ id: n.id, message: n.message, title: n.title, kind: n.metadata?.kind })),
-  [notifications]);
+  const toastsPendientes = useMemo(() => (notifications || [])
+    .filter((n) => !n.read && (PROPOSAL_KINDS.has(n.metadata?.kind) || COCINA_KINDS[n.metadata?.kind])), [notifications]);
+  const proposalToasts = useMemo(() => toastsPendientes.slice(0, 4)
+    .map((n) => ({ id: n.id, message: n.message, title: n.title, kind: n.metadata?.kind, meta: n.metadata || {} })),
+  [toastsPendientes]);
+  const toastsDeMas = toastsPendientes.length - proposalToasts.length;
 
   const cerrarToast = (id) => markAsRead([id]);
 
@@ -762,11 +790,46 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
       </IconButton>
 
       {proposalToasts.length > 0 && (
-        <Box sx={{
-          position: 'fixed', left: 16, bottom: 16, zIndex: 1400,
-          display: 'flex', flexDirection: 'column-reverse', gap: 1, maxWidth: 360,
+        <Box data-no-captura="" sx={{
+          // En el celular a lo ancho y por encima del botón de Anthony (abajo a la derecha).
+          position: 'fixed', left: 16, right: { xs: 16, sm: 'auto' }, bottom: { xs: 96, sm: 16 }, zIndex: 1400,
+          display: 'flex', flexDirection: 'column-reverse', gap: 1, maxWidth: { xs: 'none', sm: 360 },
         }}>
-          {proposalToasts.map((t) => (
+          {toastsDeMas > 0 && (
+            <Button size="small" onClick={abrirCampana}
+              sx={{ alignSelf: 'flex-start', bgcolor: 'background.paper', boxShadow: 2, borderRadius: 2, textTransform: 'none', px: 1.5 }}>
+              +{toastsDeMas} {toastsDeMas === 1 ? 'aviso más' : 'avisos más'}
+            </Button>
+          )}
+          {proposalToasts.map((t) => {
+            const cocina = COCINA_KINDS[t.kind];
+            if (cocina) {
+              const abrir = () => { cerrarToast(t.id); navigate(cocina.abrir(t.meta)); };
+              return (
+                <Box key={t.id} role="button" tabIndex={0} onClick={abrir} onKeyDown={(e) => { if (e.key === 'Enter') abrir(); }}
+                  sx={{
+                    bgcolor: 'background.paper', borderRadius: 2, boxShadow: 4, border: '1px solid', borderColor: 'divider',
+                    borderLeft: `4px solid ${cocina.color}`, p: 1.25, display: 'flex', alignItems: 'flex-start', gap: 1, cursor: 'pointer',
+                    '&:hover': { boxShadow: 6 },
+                  }}>
+                  <Box sx={{ fontSize: 20, lineHeight: 1.2 }} aria-hidden>{cocina.icono}</Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography fontWeight={700} fontSize="0.85rem">{t.title}</Typography>
+                    {t.meta.actor_nombre && (
+                      <Typography fontSize="0.72rem" color="text.secondary">
+                        {t.meta.actor_nombre}{ROL_ACTOR[t.meta.actor_rol] ? ` · ${ROL_ACTOR[t.meta.actor_rol]}` : ''}
+                      </Typography>
+                    )}
+                    {t.message && <Typography fontSize="0.78rem" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{t.message}</Typography>}
+                    <Typography fontSize="0.72rem" sx={{ color: cocina.color, fontWeight: 600, mt: 0.25 }}>Tocá para abrir</Typography>
+                  </Box>
+                  <IconButton size="small" aria-label="Descartar" onClick={(e) => { e.stopPropagation(); cerrarToast(t.id); }}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              );
+            }
+            return (
             <Box
               key={t.id}
               sx={{
@@ -791,7 +854,8 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Box>
-          ))}
+            );
+          })}
         </Box>
       )}
 

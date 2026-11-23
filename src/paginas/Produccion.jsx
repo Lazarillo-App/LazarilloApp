@@ -109,6 +109,9 @@ export default function Produccion() {
   useEffect(() => {
     const id = Number(params.get('tarea'));
     if (id) { setAbierta(id); params.delete('tarea'); setParams(params, { replace: true }); }
+    // ?vista=registros (aviso de desperdicio) abre esa pestaña
+    const v = params.get('vista');
+    if (v) { setVista(v); params.delete('vista'); setParams(params, { replace: true }); }
   }, [params, setParams]);
 
   const refrescar = useCallback(() => { cargarTareas(); cargarCambios(); setSugerencias(null); if (vista === 'panel') cargarPanel(); }, [cargarTareas, cargarCambios, cargarPanel, vista]);
