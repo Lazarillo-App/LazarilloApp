@@ -722,7 +722,7 @@ function ModalNuevaCarga(props) {
   const [periodoF, setPeriodoF] = useState(ede && ede.periodo ? ede.periodo : null);
   const perF = periodoF || (fechaValida(fecha) ? periodoDe(fecha) : periodoDe(HOY));
   // Empleados: el período vive acá para mostrarse en el mismo lugar que en Factura y Gastos Varios.
-  const [periodoE, setPeriodoE] = useState(periodoHoy(-1));
+  const [periodoE, setPeriodoE] = useState(ctx.modo === "empleado" && ctx.periodo ? ctx.periodo : periodoHoy(-1));
   const [pdv, setPdv] = useState(ede ? ede.pdv : pdvActual || PDVS[0]);
   const [obs, setObs] = useState(ede ? ede.obs || "" : "");
   // Total del comprobante, antes del desglose: al terminar, el desglose tiene que coincidir (Diego 05/11/2026).
@@ -1427,7 +1427,7 @@ function ModalNuevaCarga(props) {
         <div ref={refsT.renglones} style={{ flex: "1 1 auto", minHeight: 0, overflow: "auto", margin: "0 20px", ...(modo === "empleado" ? { marginBottom: 16 } : { border: `1px solid ${C.borde}`, borderRadius: 12 }) }}>
         {modo === "empleado" ? (
           <CargaEmpleado pdvId={idPdv(pdvActual || PDVS[0])} pdvsRef={pdvsRef} conceptos={maestros.conceptos} mediosPago={mediosPago}
-            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} />
+            reglaEmpleadoDe={reglaEmpleadoDe} onGuardado={onGuardado} onCerrar={onCerrar} periodo={periodoE} setPeriodo={setPeriodoE} codigoInicial={ctx.empleadoCodigo} />
         ) : (
         <fieldset disabled={soloVer} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
@@ -2183,10 +2183,11 @@ function ModalNuevaCarga(props) {
 // "Adelantos"). Adelanto: concepto fijo. PDV: la regla del empleado; si se cambia, aplica al total.
 const ADEL = MEDIO_ADELANTOS;
 const periodoHoy = (n = 0) => moverPeriodo(hoyISO().slice(0, 7), n);
-function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe, onGuardado, onCerrar, periodo, setPeriodo }) {
+function CargaEmpleado({ pdvId, pdvsRef, conceptos, mediosPago, reglaEmpleadoDe, onGuardado, onCerrar, periodo, setPeriodo, codigoInicial }) {
   const queryClient = useQueryClient();
   const [sub, setSub] = useState("sueldo");
-  const [codigo, setCodigo] = useState("");
+  // Desde la fila de un empleado en el Panel, ya viene elegido (Diego 23/11/2026).
+  const [codigo, setCodigo] = useState(codigoInicial ? String(codigoInicial) : "");
   const [fechaPago, setFechaPago] = useState(hoyISO());
   const [total, setTotal] = useState(null); // null = el último total del empleado (Diego 29/10)
   const [lineas, setLineas] = useState(null); // null = se arma sola con el total
