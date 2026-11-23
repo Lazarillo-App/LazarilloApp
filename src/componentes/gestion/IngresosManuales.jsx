@@ -3,6 +3,7 @@
 // ventas que no están en el PDV, días en que falló, o todas las de un negocio sin POS. Tipo y
 // forma de cobro son opcionales.
 
+import { tipearImporte } from '../CampoImporte';
 import React, { useMemo, useState } from 'react';
 import { Alert, Box, Dialog, IconButton, Snackbar } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -24,7 +25,6 @@ const parseImporte = (s) => {
   if (!t) return NaN;
   return Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/\.(?=\d{3}(\.|$))/g, ''));
 };
-const fmtTipeo = (s) => s.replace(/[^\d,.-]/g, '');
 const hoy = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
 
 const sxInput = { width: '100%', boxSizing: 'border-box', height: 36, borderRadius: 2, border: 1, borderColor: 'divider', bgcolor: 'background.paper', px: 1.25, fontSize: 14 };
@@ -154,7 +154,7 @@ function ModalIngresos({ sucursal, data, onClose }) {
         {modo === 'suelto' ? (
           <Box sx={celda2}>
             <div><Box component="span" sx={sxLab}>Fecha</Box><Box component="input" type="date" sx={sxInput} value={fecha} onChange={(e) => setFecha(e.target.value)} /></div>
-            <div><Box component="span" sx={sxLab}>Importe</Box><Box component="input" inputMode="decimal" placeholder="0,00" sx={{ ...sxInput, textAlign: 'right', fontWeight: 600 }} value={importe} onChange={(e) => setImporte(fmtTipeo(e.target.value))} /></div>
+            <div><Box component="span" sx={sxLab}>Importe</Box><Box component="input" inputMode="decimal" placeholder="$ 0,00" sx={{ ...sxInput, textAlign: 'right', fontWeight: 600 }} value={importe} onChange={(e) => setImporte(tipearImporte(e))} /></div>
             <div><Box component="span" sx={sxLab}>Tipo · opcional</Box><Opcional valor={tipo} opciones={tipos} onCambio={setTipo} /></div>
             <div><Box component="span" sx={sxLab}>Forma de cobro · opcional</Box><Opcional valor={cobro} opciones={cobros} onCambio={setCobro} /></div>
             <div><Box component="span" sx={sxLab}>Detalle / comprobante</Box><Box component="input" maxLength={120} sx={sxInput} value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Ej: FC A 0006-00000123, evento" /></div>
@@ -189,7 +189,7 @@ function ModalIngresos({ sucursal, data, onClose }) {
                           key={c} component="input" inputMode="decimal" value={celdas[d]?.[c] ?? ''}
                           data-celda={`${fi}-${ci}`} onKeyDown={(e) => moverEnGrilla(e, fi, ci, dias.length, cols.length)}
                           onFocus={(e) => e.target.select()}
-                          onChange={(e) => setCeldas((x) => ({ ...x, [d]: { ...(x[d] ?? {}), [c]: fmtTipeo(e.target.value) } }))}
+                          onChange={(e) => { const v = tipearImporte(e); setCeldas((x) => ({ ...x, [d]: { ...(x[d] ?? {}), [c]: v } })); }}
                           sx={{ ...sxInput, height: 32, px: 1, textAlign: 'right', fontSize: 13 }}
                         />
                       ))}

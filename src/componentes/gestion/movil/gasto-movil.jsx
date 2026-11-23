@@ -1,5 +1,6 @@
 /* eslint-disable */
 // Traído de lazarillo_gestion/components/movil/gasto-movil.tsx (misma lógica).
+import { tipearImporte } from "@/componentes/CampoImporte";
 import { gestionFetch } from "@/servicios/apiGestion";
 import { useState } from "react";
 import ReglaAperturaGasto from "../apertura/ReglaAperturaGasto";
@@ -116,7 +117,7 @@ export function GastoMovil({ pdvId, onCerrar, inicial }) {
       <input className={inp} value={detalle} maxLength={200} onChange={(e) => setDetalle(e.target.value)} placeholder="Opcional (ej. flete, cerrajero)"/>
 
       <span className={lbl}>Importe</span>
-      <input inputMode="decimal" className={`${inp} text-right text-[18px] font-bold`} value={importeTxt} placeholder="0,00" onChange={(e) => setImporteTxt(e.target.value.replace(/[^\d.,]/g, ""))}/>
+      <input inputMode="decimal" className={`${inp} text-right text-[18px] font-bold`} value={importeTxt} placeholder="$ 0,00" onChange={(e) => setImporteTxt(tipearImporte(e))}/>
       {/* Regla de apertura del concepto, siempre visible (Diego 20/11/2026) */}
       {concepto && <div className="mt-3"><ReglaAperturaGasto codigo={concepto.codigo} origenPdvId={pdvId} fecha={fecha} importe={importe} /></div>}
 

@@ -2,6 +2,7 @@
 // Detalle de ventas (lazarillo_gestion/components/dashboard/ventas-detalle-modal.tsx): las ventas
 // de la celda clickeada, con su importe editable.
 
+import CampoImporte from '../CampoImporte';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Box, TableRow, TableCell } from '@mui/material';
 import { useQueryClient } from '@tanstack/react-query';
@@ -94,10 +95,12 @@ export default function VentasDetalleModal({ filter, onClose }) {
             <TableCell sx={celda}>{normalize(item.mozo)}</TableCell>
             <TableCell sx={{ ...celda, textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
               {enEdicion ? (
-                <Box
-                  component="input" type="text" inputMode="decimal" autoFocus value={editing.importeManual}
-                  onChange={(e) => setEditing({ ...editing, importeManual: e.target.value })}
-                  sx={{ width: '100%', height: 28, border: 1, borderColor: 'divider', borderRadius: 1, px: 0.5, textAlign: 'right', fontSize: 12 }}
+                // Miles mientras se escribe (Guía «Importes»); el estado sigue siendo texto "1234.5" para parseImporteManual.
+                <CampoImporte
+                  size="small" fullWidth autoFocus
+                  value={editing.importeManual === '' || editing.importeManual == null ? '' : Number(editing.importeManual)}
+                  onChange={(v) => setEditing({ ...editing, importeManual: v === '' ? '' : String(v) })}
+                  sx={{ '& .MuiInputBase-root': { height: 28, fontSize: 12 }, '& .MuiInputAdornment-root p': { fontSize: 12 } }}
                 />
               ) : (
                 <Box component="span" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.75 }}>
