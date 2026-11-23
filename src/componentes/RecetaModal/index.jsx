@@ -3045,8 +3045,8 @@ export default function RecetaModal({
                       </Stack>
                     );
                         })()}
-                        {/* ── Rendimiento del lote (BloqueRendimiento.jsx) ── */}
-                        <BloqueRendimiento
+                        {/* ── Rendimiento del lote (BloqueRendimiento.jsx) ── sin él en un servicio (Diego 23/11/2026) */}
+                        {!servicioMode && <BloqueRendimiento
                           isStaff={isStaff}
                           promoMode={promoMode}
                           rendimiento={rendimiento}
@@ -3060,9 +3060,9 @@ export default function RecetaModal({
                           setRendimientoUnidad={setRendimientoUnidad}
                           setUnidadPeso={setUnidadPeso}
                           unidadPeso={unidadPeso}
-                        />
+                        />}
                   {/* ── Panel de gemelos — entre datos generales e ingredientes (PanelGemelos.jsx) ── */}
-                  <PanelGemelos
+                  {!servicioMode && <PanelGemelos
                     actualizarObjetivoGemelo={actualizarObjetivoGemelo}
                     agregarGemelo={agregarGemelo}
                     articulo={articulo}
@@ -3084,7 +3084,7 @@ export default function RecetaModal({
                     setGemelosOpen={setGemelosOpen}
                     setGemelosResults={setGemelosResults}
                     setGemelosSearch={setGemelosSearch}
-                  />
+                  />}
 
                         {!modoInsumo && (
                           <ToggleButtonGroup
@@ -3490,6 +3490,7 @@ export default function RecetaModal({
           {pieVisible && !consultaCel && (
             <Box ref={recResumenRef} sx={{ flexShrink: 0 }}>
             <PieCostos
+              esServicio={servicioMode}
               modoInsumo={modoInsumo}
               verCostosExtra={verCostosExtra}
               setVerCostosExtra={setVerCostosExtra}
