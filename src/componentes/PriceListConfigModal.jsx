@@ -1,4 +1,4 @@
-﻿/* eslint-disable no-empty */
+/* eslint-disable no-empty */
 // src/componentes/PriceListConfigModal.jsx
 // Modal de gestión de listas de precios (modelo nuevo).
 // Cada cambio guarda inmediato al onBlur — no hay "Guardar" final.
@@ -22,6 +22,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import ExcluirListasModal from './ExcluirListasModal';
 import { PriceListsAPI } from '@/servicios/apiPriceLists';
 import { showConfirm } from '@/servicios/appConfirm';
+import ListaPosSucursales from './ListaPosSucursales';
 
 const PRIMARY = 'var(--color-primary, #2492C8)';
 
@@ -199,6 +200,9 @@ export default function PriceListConfigModal({
       </DialogTitle>
 
       <DialogContent sx={{ pt: 1 }}>
+        {/* Lista del POS de cada sucursal (Diego 23/11/2026: «¿no puede ir en el mismo modal de
+            Configurar listas?»). */}
+        <ListaPosSucursales businessId={bizId} />
         <Alert severity="info" sx={{ mb: 2, py: 0.5, fontSize: '0.78rem' }}>
           La lista marcada como <strong>base</strong> define los precios de partida. Las otras listas aplican un <strong>descuento (↓)</strong> o <strong>recargo (↑)</strong> sobre esa base.
         </Alert>
