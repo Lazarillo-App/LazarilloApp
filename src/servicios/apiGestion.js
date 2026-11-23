@@ -98,7 +98,10 @@ export const GestionAPI = {
   detalleVentas: (f) => api(`${base()}/dashboard/detalle-ventas${qs(f)}`),
   compraLineas: (compraId) => api(`${base()}/dashboard/compra-lineas/${encodeURIComponent(compraId)}`),
   conceptosEdicion: () => api(`${base()}/config/conceptos`),
-  editarCompra: (rowId, body) => api(`${base()}/dashboard/compras/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
+  // negocio: el de la compra cuando se carga en otro negocio de la organización (repartida); sin él, el activo.
+  // El guard del back toma el negocio del header X-Business-Id: tiene que coincidir con el de la URL.
+  editarCompra: (rowId, body, negocio) => api(`${negocio ? `/businesses/${negocio}/gestion` : base()}/dashboard/compras/${encodeURIComponent(rowId)}`,
+    { method: 'PATCH', body, ...(negocio ? { headers: { 'X-Business-Id': String(negocio) } } : {}) }),
   // Varias compras de una vez (todo o nada): un solo aviso en la Actividad (Diego 23/11/2026).
   editarComprasLote: (items, motivo) => api(`${base()}/dashboard/compras-lote`, { method: 'PATCH', body: { items, motivo } }),
   // Fecha de un pago del informe 80 corregida a mano ({ fechaPagoManual: 'YYYY-MM-DD' | null, negocio }).

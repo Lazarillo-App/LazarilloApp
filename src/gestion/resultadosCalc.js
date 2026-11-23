@@ -7,7 +7,8 @@
 export function parseMontoARS(raw) {
   const trimmed = raw.trim();
   if (trimmed === "") return 0;
-  const normalized = trimmed.includes(",")
+  // «10.450.000» (miles sin coma, como los escribe el campo de importe) también es un número.
+  const normalized = trimmed.includes(",") || /^-?\d{1,3}(\.\d{3})+$/.test(trimmed)
     ? trimmed.replace(/\./g, "").replace(",", ".")
     : trimmed;
   const n = Number(normalized);

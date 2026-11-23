@@ -133,8 +133,11 @@ function ActionRow({ icon, title, desc, children }) {
   const tc = 'var(--color-primary, #3b82f6)';
   return (
     <Box sx={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: 2, py: 1.75, '& + &': { borderTop: '1px solid #f3f4f6' },
+      // En el celular el texto arriba y la acción abajo, a lo ancho (antes el texto quedaba en una
+      // columna de una palabra por renglón al lado del botón).
+      display: 'flex', flexDirection: { xs: 'column', sm: 'row' },
+      alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between',
+      gap: { xs: 1.25, sm: 2 }, py: 1.75, '& + &': { borderTop: '1px solid #f3f4f6' },
     }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
         <Box sx={{

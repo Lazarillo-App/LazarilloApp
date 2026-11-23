@@ -40,6 +40,18 @@ const significativo = (c) => /[\d,]/.test(c);
 const contar = (t, cur) => { let n = 0; for (let i = 0; i < Math.min(cur, t.length); i++) if (significativo(t[i])) n++; return n; };
 const posTras = (t, n) => { if (n <= 0) return 0; let c = 0; for (let i = 0; i < t.length; i++) if (significativo(t[i]) && ++c === n) return i + 1; return t.length; };
 
+// Para campos propios (no TextField) que guardan el TEXTO: devuelve lo tipeado con miles y deja el cursor
+// en el mismo dígito (Diego 23/11/2026: «todos los campos con importe con divisores de miles»).
+// Uso: onChange={(e) => setTexto(tipearImporte(e))}. El texto se lee con numeroDeImporte.
+export function tipearImporte(e) {
+  const t = e.target;
+  const sel = t.selectionStart ?? t.value.length;
+  const nuevo = textoImporte(t.value, e.nativeEvent);
+  const n = contar(t.value, sel) + (e.nativeEvent?.data === '.' && nuevo.includes(',') ? 1 : 0);
+  requestAnimationFrame(() => { if (document.activeElement === t) { const p = posTras(t.value, n); t.setSelectionRange(p, p); } });
+  return nuevo;
+}
+
 export default function CampoImporte({ value, onChange, InputProps, inputProps, ...props }) {
   const ref = useRef(null);
   const cursor = useRef(null);

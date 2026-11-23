@@ -52,6 +52,13 @@ function leerPdvs() {
 }
 // Una misma consulta para cada PDV elegido (misma clave que con uno solo: comparte caché). `list`
 // llega cuando están todas (Diego 29/10: ver varios PDV juntos).
+// Mercaderías del mes en curso con la proyección del servidor (la misma que Artículos, Diego 23/11/2026):
+// lo cargado de cada PDV × su factor de compras. Sin factor en algún PDV, la proyección de siempre.
+function mercaderiaProy(lista) {
+    if (!lista?.length || lista.some((r) => !(r?.foodCostProy?.factorCompras > 0)))
+        return undefined;
+    return lista.reduce((s, r) => s + (r.rubros || []).filter((x) => /mercader/i.test(x.rubro)).reduce((a, x) => a + x.total, 0) * r.foodCostProy.factorCompras, 0);
+}
 function useMulti(sel, key, url, staleTime = 30_000) {
     const qs = useQueries({
         queries: sel.map((s) => {
@@ -296,7 +303,7 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
         if (!data)
             return null;
         if (proy && scMes) {
-            const g = proyectarGastos({ cargado: data.rubros, sinCargar: scMes.items, historia, ventasProy: proy.proyeccion });
+            const g = proyectarGastos({ cargado: data.rubros, sinCargar: scMes.items, historia, ventasProy: proy.proyeccion, mercaderiaProy: mercaderiaProy(res.list) });
             return { modo: "proy", ventas: proy.proyeccion, rubros: g.rubros.map((r) => ({ rubro: r.rubro, total: r.total, variable: r.variable })), gastosReal: data.gastos, faltan: sinCargarMes?.n ?? 0 };
         }
         if (sinCargarMes && sinCargarMes.total > 0.5) {
@@ -417,6 +424,23 @@ const plataCorta = (n, dec = 1) => {
         return `${sg}${(a / 1e6).toLocaleString("es-AR", { maximumFractionDigits: a >= 1e8 ? 0 : dec })}M`;
     return `${sg}${Math.round(a / 1e3).toLocaleString("es-AR")}k`;
 };
+// Barra de los gráficos del celular (Diego 23/11/2026): la proyección se distingue del real. La parte
+// proyectada va rayada y con borde punteado; adentro, la parte maciza es lo real a hoy, con su valor
+// si entra. Sin real conocido (indicadores en %), toda la barra va rayada.
+const AZUL = "#5BC2EA", AZUL_ELEGIDO = "#0369a1";
+function Barra({ alto, proyectada, real, valor, elegido, negativo, etiquetaReal, etiquetaFalta }) {
+    if (!proyectada) return <div className="w-full rounded-t-md" style={{ height: alto, background: negativo ? "#f87171" : elegido ? AZUL_ELEGIDO : AZUL }}/>;
+    const color = elegido ? AZUL_ELEGIDO : AZUL;
+    const pct = real != null && valor > 0 ? Math.max(0, Math.min(100, (real / valor) * 100)) : 0;
+    return (<div className="relative w-full overflow-hidden rounded-t-md" style={{ height: alto, border: `1.5px dashed ${color}`, borderBottom: 0,
+        background: `repeating-linear-gradient(135deg, ${color}33 0 5px, ${color}14 5px 10px)` }}>
+        {/* Lo que falta facturar hasta la proyección (Diego 23/11/2026), arriba en la parte rayada. */}
+        {etiquetaFalta && pct > 0 && pct < 85 && <span className="absolute inset-x-0 top-0.5 whitespace-nowrap text-center text-[9px] font-semibold tabular-nums" style={{ color: elegido ? AZUL_ELEGIDO : "#0369a1" }}>{etiquetaFalta}</span>}
+        {pct > 0 && <div className="absolute inset-x-0 bottom-0 flex items-start justify-center overflow-hidden" style={{ height: `${pct}%`, background: color }}>
+            {etiquetaReal && <span className="whitespace-nowrap pt-0.5 text-[9px] font-semibold tabular-nums text-white">{etiquetaReal}</span>}
+          </div>}
+      </div>);
+}
 // Cantidades (tickets, cubiertos): con muchas barras, en miles para que entren.
 const cantCorta = (v, corta) => (corta && Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })}k` : Math.round(v).toLocaleString("es-AR"));
 const UNIDADES = [{ k: "pesos", t: "$" }, { k: "tickets", t: "Tickets" }, { k: "cubiertos", t: "Cubiertos" }];
@@ -451,6 +475,8 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     });
     const info = INFO_INDICADOR[clave];
     const plata = info.tipo === "plata" && !cant;
+    // Lo real del mes en curso (para marcarlo adentro de la barra proyectada): solo en importes y cantidades.
+    const realDelMes = !esVentas || !delMes ? null : cant ? delMes[u] ?? null : clave === "ventas" ? delMes.ventas : null;
     const unidadDif = plata || cant ? "%" : " pp";
     const vals = serie.map((x) => x.valor).filter((v) => v != null);
     const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
@@ -489,7 +515,9 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
             return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
               onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
               {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{cant ? cantCorta(x.valor, n > 6) : plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
-              <div className={cn("w-full rounded-t-md", x.valor != null && x.valor < 0 ? "bg-red-400" : elegido ? "bg-sky-700" : x.proyectado ? "bg-sky-500" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
+              <Barra alto={x.valor != null ? `${alto(x.valor) * 0.8}%` : 0} proyectada={x.proyectado} valor={x.valor} elegido={elegido} negativo={x.valor != null && x.valor < 0}
+                real={x.proyectado ? realDelMes : null} etiquetaReal={x.proyectado && realDelMes != null && n <= 6 ? (cant ? cantCorta(realDelMes, true) : plataCorta(realDelMes, 0)) : null}
+                etiquetaFalta={x.proyectado && realDelMes != null && n <= 6 && x.valor > realDelMes ? `+${cant ? cantCorta(x.valor - realDelMes, true) : plataCorta(x.valor - realDelMes, 0)}` : null}/>
             </div>);
           })}
         </div>
@@ -540,7 +568,8 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
     const conProy = proy != null && act && act.ventas > 0;
     if (conProy) {
         const f = proy / act.ventas;
-        ym.set(kAct, { ...act, ventas: proy, ventasHoy: proy, tickets: act.tickets * f, cubiertos: act.cubiertos * f });
+        ym.set(kAct, { ...act, ventas: proy, ventasHoy: proy, tickets: act.tickets * f, cubiertos: act.cubiertos * f,
+            real: { ventas: act.ventas, ventasHoy: act.ventas, tickets: act.tickets, cubiertos: act.cubiertos } });
     }
     const val = (m) => (unidad === "pesos" ? (ajusta ? m.ventasHoy : m.ventas) : m[unidad]);
     const anios = [...new Set([...ym.values()].map((m) => m.anio))].sort((a, b) => a - b);
@@ -550,7 +579,10 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
         const completo = modo === "hist" ? meses.length === 1 : meses.length === hasta.mes;
         const vs = meses.map(val);
         const valor = !completo || vs.some((v) => v == null) ? null : vs.reduce((s, v) => s + v, 0);
-        return { anio: a, valor: valor != null && valor > 0 ? valor : null, proyectado: conProy && a === hasta.anio && (modo === "anual" || mes === hasta.mes) };
+        const proyectado = conProy && a === hasta.anio && (modo === "anual" || mes === hasta.mes);
+        // Lo real a hoy (el mes en curso sin proyectar), para marcarlo adentro de la barra.
+        const real = proyectado && valor != null ? meses.reduce((s, m) => s + (val(m.real ?? m) ?? 0), 0) : null;
+        return { anio: a, valor: valor != null && valor > 0 ? valor : null, proyectado, real };
     }).filter((x, i, arr) => x.valor != null || arr.slice(0, i).some((y) => y.valor != null));
     if (!lista.some((x) => x.valor != null)) return <p className="mt-6 text-center text-[13px] text-zinc-500">Todavía no hay historia para comparar.</p>;
     const vista = todos ? lista : lista.slice(-6);
@@ -573,7 +605,9 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
           {vista.map((x) => (<div key={x.anio} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", modo === "hist" && x.valor != null && "cursor-pointer")}
               onClick={modo === "hist" && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: `${x.anio}-${String(mes).padStart(2, "0")}` }) : undefined}>
               <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{x.valor != null ? fmt(x.valor) : "—"}</span>
-              <div className={cn("w-full rounded-t-md", x.anio === elegido ? "bg-sky-700" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
+              <Barra alto={x.valor != null ? `${alto(x.valor) * 0.8}%` : 0} proyectada={x.proyectado} valor={x.valor} real={x.real} elegido={x.anio === elegido}
+                etiquetaReal={x.proyectado && x.real != null && vista.length <= 6 ? fmt(x.real) : null}
+                etiquetaFalta={x.proyectado && x.real != null && vista.length <= 6 && x.valor > x.real ? `+${fmt(x.valor - x.real)}` : null}/>
             </div>))}
         </div>
         <div className="flex gap-1.5">

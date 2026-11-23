@@ -15,6 +15,7 @@
 //    actual va a la izquierda.
 //  - STAFF (isStaff): sin sugerido ni %.
 // ─────────────────────────────────────────────────────────────────────────────
+import { tipearImporte, numeroDeImporte, importeATexto } from '../CampoImporte';
 import React from 'react';
 import { Box, Typography, IconButton, Stack, Slider, TextField, InputAdornment, MenuItem } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -291,15 +292,15 @@ export default function PieCostos({
               <RemoveIcon sx={{ fontSize: 14 }} />
             </IconButton>
             {editArt != null ? (
-              <input autoFocus type="number" value={editArt}
-                onChange={(e) => setEditArt(e.target.value)}
+              <input autoFocus type="text" inputMode="decimal" value={editArt}
+                onChange={(e) => setEditArt(tipearImporte(e))}
                 onFocus={(e) => e.target.select()}
-                onBlur={() => { articuloPromo.onCambiar(editArt); setEditArt(null); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { articuloPromo.onCambiar(editArt); setEditArt(null); } if (e.key === 'Escape') setEditArt(null); }}
+                onBlur={() => { articuloPromo.onCambiar(numeroDeImporte(editArt)); setEditArt(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { articuloPromo.onCambiar(numeroDeImporte(editArt)); setEditArt(null); } if (e.key === 'Escape') setEditArt(null); }}
                 style={{ width: 80, font: 'inherit', fontSize: '0.8rem', fontWeight: 700, textAlign: 'center', border: '1px solid #cbd5e1', borderRadius: 4 }} />
             ) : (
               <Typography variant="caption" title="Doble clic para escribir el precio"
-                onDoubleClick={() => setEditArt(String(Math.round(articuloPromo.precio)))}
+                onDoubleClick={() => setEditArt(importeATexto(Math.round(articuloPromo.precio)))}
                 sx={{ fontSize: '0.8rem', fontWeight: 800, cursor: 'text', color: articuloPromo.editado ? 'primary.main' : 'text.primary' }}>
                 ${fmt(articuloPromo.precio)}
               </Typography>
@@ -339,14 +340,15 @@ export default function PieCostos({
               <TextField
                 autoFocus
                 size="small"
-                type="number"
+                type="text"
+                inputProps={{ inputMode: 'decimal' }}
                 variant="standard"
                 value={precioSugeridoDraft}
-                onChange={(e) => setPrecioSugeridoDraft(e.target.value)}
+                onChange={(e) => setPrecioSugeridoDraft(tipearImporte(e))}
                 onFocus={(e) => e.target.select()}
-                onBlur={() => { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }}
+                onBlur={() => { commitPrecioSugerido(numeroDeImporte(precioSugeridoDraft)); setEditandoPrecioSugerido(false); }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }
+                  if (e.key === 'Enter') { commitPrecioSugerido(numeroDeImporte(precioSugeridoDraft)); setEditandoPrecioSugerido(false); }
                   if (e.key === 'Escape') setEditandoPrecioSugerido(false);
                 }}
                 InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: '1.25rem', fontWeight: 800 } }}
@@ -356,7 +358,7 @@ export default function PieCostos({
               <Typography
                 variant="h6"
                 fontWeight={800}
-                onDoubleClick={() => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
+                onDoubleClick={() => { setPrecioSugeridoDraft(importeATexto(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
                 title="Doble click para editar"
                 sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: 'text' }}
               >
@@ -384,14 +386,15 @@ export default function PieCostos({
           <TextField
             autoFocus
             size="small"
-            type="number"
+            type="text"
+            inputProps={{ inputMode: 'decimal' }}
             variant="standard"
             value={precioSugeridoDraft}
-            onChange={(e) => setPrecioSugeridoDraft(e.target.value)}
+            onChange={(e) => setPrecioSugeridoDraft(tipearImporte(e))}
             onFocus={(e) => e.target.select()}
-            onBlur={() => { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }}
+            onBlur={() => { commitPrecioSugerido(numeroDeImporte(precioSugeridoDraft)); setEditandoPrecioSugerido(false); }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { commitPrecioSugerido(precioSugeridoDraft); setEditandoPrecioSugerido(false); }
+              if (e.key === 'Enter') { commitPrecioSugerido(numeroDeImporte(precioSugeridoDraft)); setEditandoPrecioSugerido(false); }
               if (e.key === 'Escape') setEditandoPrecioSugerido(false);
             }}
             InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment>, sx: { fontSize: '1.25rem', fontWeight: 800 } }}
@@ -401,7 +404,7 @@ export default function PieCostos({
           <Typography
             variant="h6"
             fontWeight={800}
-            onDoubleClick={() => { setPrecioSugeridoDraft(String(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
+            onDoubleClick={() => { setPrecioSugeridoDraft(importeATexto(Math.round(precioSugerido))); setEditandoPrecioSugerido(true); }}
             title="Doble click para editar"
             sx={{ color: sugeridoExcedeVenta ? '#ef4444' : 'success.main', cursor: 'text' }}
           >
