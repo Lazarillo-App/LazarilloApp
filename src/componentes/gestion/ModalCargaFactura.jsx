@@ -886,6 +886,23 @@ function ModalNuevaCarga(props) {
   const [periodoV, setPeriodoV] = useState(ctx.periodo || periodoDe(HOY));
   const [fechaV, setFechaV] = useState(fechaDelPeriodo(ctx.periodo || periodoDe(HOY)));
   const elegirPeriodo = (p) => { setPeriodoV(p); setFechaV(fechaDelPeriodo(p)); setErrFecha(false); };
+  // Período sugerido (Diego 23/11/2026: «si octubre también está sin cargar, ¿por qué me sugiere noviembre?»):
+  // en un concepto que se carga todos los meses, arranca en el primer mes sin cargar después de la última
+  // carga. Solo si el usuario no eligió el mes (ni vino de la tabla) y con historia suficiente (3 meses
+  // distintos en los 6 hasta la última carga).
+  const periodoManualV = useRef(!!ctx.periodo);
+  const elegirPeriodoManual = (p) => { periodoManualV.current = true; elegirPeriodo(p); };
+  const sugerirPeriodoV = (fs) => {
+    if (periodoManualV.current) return;
+    const ps = [...new Set((fs || []).map((f) => f.periodo).filter(Boolean))].sort();
+    const ultimo = ps[ps.length - 1];
+    const hoyP = periodoDe(HOY);
+    if (!ultimo || ultimo >= hoyP) { if (periodoV !== hoyP) elegirPeriodo(hoyP); return; }
+    const desde = moverPeriodo(ultimo, -5);
+    if (ps.filter((x) => x >= desde).length < 3) { if (periodoV !== hoyP) elegirPeriodo(hoyP); return; }
+    const sig = moverPeriodo(ultimo, 1);
+    if (sig !== periodoV) elegirPeriodo(sig);
+  };
   const [pdvV, setPdvV] = useState(pdvActual || PDVS[0]);
   // Apertura del gasto por PDV (Diego 06/11/2026): si el concepto tiene regla se muestra ya abierto.
   const [repartoV, setRepartoV] = useState(undefined);
@@ -1950,7 +1967,7 @@ function ModalNuevaCarga(props) {
           <div style={{ minWidth: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {/* Primer renglón: el período donde estaba la fecha y la fecha del gasto arriba del rubro (Diego 23/11/2026). */}
-            <SelectorPeriodo enCampo refCampo={refsT.periodo} valor={periodoV} onCambio={elegirPeriodo} titulo="Mes del gasto" />
+            <SelectorPeriodo enCampo refCampo={refsT.periodo} valor={periodoV} onCambio={elegirPeriodoManual} titulo="Mes del gasto" />
             <div><span style={{ ...lab, display: "flex", justifyContent: "space-between", gap: 8 }}>Fecha del gasto
                 <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 400, color: errFecha ? C.rojo : C.gris }}>{errFecha ? "Falta una fecha válida." : "va al 15, cambiala si querés"}</span></span>
               <FechaInput tabIndex={-1} style={{ ...inp, color: fechaV === fechaDelPeriodo(periodoV) ? C.gris : C.neg, border: errFecha ? `1.6px solid ${C.rojo}` : inp.border }} iso={fechaV}
@@ -2049,8 +2066,9 @@ function ModalNuevaCarga(props) {
             )}
           </div>
           </div>
-          <HistorialConcepto concepto={conceptoV} codigo={codConcepto(conceptoV)} pdvId={idPdv(pdvV)} pdvNombre={pdvV} periodo={periodoV} onPeriodo={elegirPeriodo}
+          <HistorialConcepto concepto={conceptoV} codigo={codConcepto(conceptoV)} pdvId={idPdv(pdvV)} pdvNombre={pdvV} periodo={periodoV} onPeriodo={elegirPeriodoManual}
             onFilas={(fs) => {
+              sugerirPeriodoV(fs);
               const hab = medioHabitual(fs.slice(0, 6).map((f) => f.medio), mediosPago);
               setMedioHabV(hab);
               if (hab && !medioManualV.current) setMedioPago(hab);
