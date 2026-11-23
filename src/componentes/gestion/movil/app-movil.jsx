@@ -1,5 +1,6 @@
 /* eslint-disable */
 // Traído de lazarillo_gestion/components/movil/app-movil.tsx (misma lógica).
+import { useFoodCostGeneral, alcanceFoodCost } from "@/hooks/useFoodCostGeneral";
 import { gestionFetch } from "@/servicios/apiGestion";
 import { useBusiness } from "@/context/BusinessContext";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -267,6 +268,8 @@ const pc = (x) => (x == null ? "—" : `${(x * 100).toLocaleString("es-AR", { mi
 function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
     // El primero, para lo que es de un PDV (la fecha de actualización).
     const { localId, pdvId } = sel[0];
+    const { data: localesFc } = useFetchQuery(["locales"], "/api/locales");
+    const fcGen = useFoodCostGeneral(alcanceFoodCost(sel, localesFc));
     const ahora = new Date();
     const [ym, setYm] = useState({ anio: ahora.getFullYear(), mes: ahora.getMonth() + 1 });
     const mover = (d) => setYm((x) => { let m = x.mes + d, a = x.anio; if (m < 1) {
@@ -315,8 +318,15 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
         }
         return { modo: "real", ventas: data.ventas, rubros: data.rubros.map((r) => ({ rubro: r.rubro, total: r.total, variable: 0 })), gastosReal: data.gastos, faltan: 0 };
     })();
-    const ind = vista ? indicadores(vista.ventas, vista.rubros) : null;
-    const indAnt = h1.data ? indicadores(h1.data.ventas, h1.data.rubros) : null;
+    // Food cost = el KPI «General» de Artículos tal como está configurado (Diego 23/11/2026: «que tome el
+    // que se configura general»). Mix = ese food cost + personal. Con varios negocios juntos, el de siempre.
+    const conFc = (i, anio, mes, proy) => {
+        const r = fcGen?.get(`${anio}-${String(mes).padStart(2, "0")}`);
+        const fc = r ? (proy && r.proyPct != null ? r.proyPct : r.pct) : null;
+        return !i || fc == null ? i : { ...i, foodCost: fc, mix: fc + (i.personal ?? 0) };
+    };
+    const ind = vista ? conFc(indicadores(vista.ventas, vista.rubros), ym.anio, ym.mes, vista.modo === "proy") : null;
+    const indAnt = h1.data ? conFc(indicadores(h1.data.ventas, h1.data.rubros), previos[0].anio, previos[0].mes, false) : null;
     const mesAnt = MESES[previos[0].mes - 1].slice(0, 3).toLowerCase();
     // Promedio mensual del año: meses cerrados (antes del mes en curso).
     const hoyClave = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`;
@@ -344,7 +354,7 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
     // negocio, selector de negocio) y la barra de abajo (Diego 09/11/2026: «no quiero que navegar
     // cambie el header»). Antes era una capa que tapaba todo.
     if (evolucion)
-        return <Evolucion clave={evolucion} sel={sel} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>;
+        return <Evolucion clave={evolucion} sel={sel} fcGen={fcGen} hasta={ym} anualActual={anual?.meses ?? []} actual={vista && vista.modo !== "real" ? { valor: ind?.[evolucion] ?? null, proyectado: vista.modo === "proy" } : null} onClose={() => setEvolucion(null)}/>;
     return (<div className="touch-pan-y" onTouchStart={(e) => { const t = e.touches[0]; toque.current = { x: t.clientX, y: t.clientY }; }} onTouchEnd={(e) => {
             const s = toque.current;
             toque.current = null;
@@ -447,7 +457,7 @@ function Barra({ alto, proyectada, real, valor, elegido, negativo, etiquetaReal,
 // Cantidades (tickets, cubiertos): con muchas barras, en miles para que entren.
 const cantCorta = (v, corta) => (corta && Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })}k` : Math.round(v).toLocaleString("es-AR"));
 const UNIDADES = [{ k: "pesos", t: "$" }, { k: "tickets", t: "Tickets" }, { k: "cubiertos", t: "Cubiertos" }];
-function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
+function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClose }) {
     const [n, setN] = useState(6);
     // Ventas en $, tickets o cubiertos (Diego 23/11/2026): el mismo gráfico, cambia la unidad.
     const [unidad, setUnidad] = useState("pesos");
@@ -475,6 +485,8 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     const serie = serieIndicador({
         meses: cant ? todosMeses.map((m) => ({ ...m, ventas: m[u] ?? 0 })) : todosMeses,
         clave, hasta, n, actual: actualU,
+        // Food cost y Mix con el KPI General (los mismos que Artículos), si es un solo negocio.
+        foodCostDe: cant || !fcGen ? null : (anio, mes) => fcGen.get(`${anio}-${String(mes).padStart(2, "0")}`)?.pct ?? null,
     });
     const info = INFO_INDICADOR[clave];
     const plata = info.tipo === "plata" && !cant;
