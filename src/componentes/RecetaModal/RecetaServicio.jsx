@@ -191,6 +191,11 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
   const candidatos = verTodos || !delRubro.length ? todosCand : delRubro;
   const rubroAncla = yo?.categoria ? String(yo.categoria).replace(/\.$/, '') : null;
   const sugerido = (costo) => (objetivoPct > 0 ? costo / (objetivoPct / 100) : null);
+  // Diego 23/11/2026: «"este servicio" se confunde con los servicios que integran su costo»: se nombra
+  // al artículo (Cancha 3) en vez de decir «el servicio».
+  const nom = String(articulo?.nombre || yo?.nombre || 'este artículo').trim().replace(/\.$/, '');
+  const conAtados = familiaSinAncla.length;
+  const pesoTxt = pctTxt((c?.parteVentas || 0) * 100);
   const caida = c?.horasUltimos3 != null && c.horas > 0 ? c.horasUltimos3 / c.horas - 1 : null;
   const gridC = { xs: '36px minmax(0,1fr) 110px', md: '36px minmax(160px,1fr) 140px 120px 150px' };
   return (
@@ -198,19 +203,19 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
       {error && <Alert severity="error" sx={{ mb: 1.5, py: 0.5 }}>{error}</Alert>}
       {c?.sinDatos && (
         <Typography sx={{ ...gris, mb: 1.5, px: 0.5 }}>
-          Todavía no hay ventas de este servicio o gastos cargados en Tu canasta para calcular. Se completa solo a medida que el POS manda ventas y se cargan los gastos del local.
+          Todavía no hay ventas de {nom} o gastos cargados en Tu canasta para calcular. Se completa solo a medida que el POS manda ventas y se cargan los gastos del local.
         </Typography>
       )}
 
-      <Titulo>Costo del servicio · sale de Tu canasta del local</Titulo>
+      <Titulo>Costo de {nom} · sale de Tu canasta del local</Titulo>
       {/* Diego 23/11/2026: «no entiendo "para el servicio 10,4 %" ni el total por mes». Cada fila dice
           cuánto gasta el local, qué parte le toca a este servicio y cuánto es; el total va adentro de
           la tabla, abajo de su columna, y la frase de abajo explica de dónde sale el %. */}
       <Box sx={{ display: 'grid', gridTemplateColumns: gridC, gap: '4px 8px', alignItems: 'center', px: 0.5 }}>
         <span /><Typography sx={{ ...th, textAlign: 'left' }}>Gasto del local</Typography>
         <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Gasta el local por mes</Typography>
-        <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Le toca al servicio</Typography>
-        <Typography sx={th}>Costo para el servicio</Typography>
+        <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Le toca a {nom}</Typography>
+        <Typography sx={th}>Costo para {nom}</Typography>
         {(c?.rubros || []).map((r) => (
           <React.Fragment key={r.clave}>
             <Checkbox size="small" checked={r.incluido} disabled={soloLectura || guardando}
@@ -234,37 +239,31 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         ))}
         <Box sx={{ gridColumn: '1 / -1', borderTop: '1px solid', borderColor: 'divider', mt: 0.5 }} />
         <span />
-        <Typography sx={{ fontSize: 14, fontWeight: 700, gridColumn: { xs: '2 / 3', md: '2 / 5' } }}>Costo del servicio por mes</Typography>
+        <Typography sx={{ fontSize: 14, fontWeight: 700, gridColumn: { xs: '2 / 3', md: '2 / 5' } }}>Costo de {nom} por mes</Typography>
         <Box sx={{ ...valor, fontWeight: 800, fontSize: 15 }}>{pesos(c?.costoMes)}</Box>
       </Box>
 
-      <Box sx={{ mt: 1, px: 0.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-        <Typography sx={gris}>Lo que comparte con el resto del local se reparte</Typography>
-        <Select size="small" value={config.reparto} disabled={soloLectura || guardando} sx={{ height: 40, fontSize: 13 }}
+      {/* Dos filas con la misma grilla (Diego 23/11/2026: alinear «según lo que vende» y «+ Agregar
+          gasto»): título a la izquierda en una columna fija y el desplegable del mismo ancho. */}
+      <Box sx={{ mt: 1.5, px: 0.5, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '260px 300px minmax(0,1fr)' }, columnGap: 1.5, rowGap: 0.75, alignItems: 'center' }}>
+        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Cómo se reparten los gastos</Typography>
+        <Select size="small" value={config.reparto} disabled={soloLectura || guardando} sx={{ height: 40, fontSize: 13, width: { xs: '100%', sm: 300 } }}
           onChange={(e) => guardar({ ...config, reparto: e.target.value, pct: e.target.value === 'manual' && c
             ? Object.fromEntries(c.rubros.map((r) => [r.clave, Math.round(r.pct * 10) / 10])) : config.pct })}>
-          <MenuItem value="ventas">según lo que vende ({pctTxt((c?.parteVentas || 0) * 100)})</MenuItem>
+          <MenuItem value="ventas">según su peso en las ventas ({pesoTxt})</MenuItem>
           <MenuItem value="manual">a mano, gasto por gasto</MenuItem>
         </Select>
-      </Box>
-      <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.5, px: 0.5 }}>
-        {config.reparto === 'manual'
-          ? 'Escribí en cada gasto qué parte le toca a este servicio.'
-          : `Le toca el ${pctTxt((c?.parteVentas || 0) * 100)} porque este servicio y los que salen de él son el ${pctTxt((c?.parteVentas || 0) * 100)} de lo que vende el local en un año.`}
-        {' '}Los gastos son el promedio de {mesesTxt(c?.mesesCosto)}.
-      </Typography>
+        <span />
+        <Typography sx={{ ...gris, fontSize: 11.5, gridColumn: '1 / -1', mb: 0.75 }}>
+          {config.reparto === 'manual'
+            ? `Escribí en cada gasto qué parte le toca a ${nom}.`
+            : `${conAtados ? `${nom} y los ${conAtados} que salen de ella facturan` : `${nom} factura`} el ${pesoTxt} de todo lo que vende el local en los últimos 12 meses: ese es su peso, y por eso se lleva el ${pesoTxt} de cada gasto (el mismo % en los tres). Si un gasto le toca distinto, elegí «a mano».`}
+          {' '}Los gastos son el promedio de {mesesTxt(c?.mesesCosto)}.
+        </Typography>
 
-      {/* Gastos que son solo de este servicio (antes «Propio del servicio (al 100 %)»): se ven todos, con
-          su ×, y se suman desde un desplegable agrupado por gasto. */}
-      <Box sx={{ mt: 1.5, px: 0.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Gastos que son solo de este servicio</Typography>
-        {(c?.conceptos || []).filter((x) => config.propios.includes(String(x.codigo))).map((x) => (
-          <Chip key={x.codigo} size="medium" label={`${x.nombre} · ${pesos(x.mensual)}`}
-            onDelete={soloLectura || guardando ? undefined : () => guardar({ ...config, propios: config.propios.filter((p) => p !== String(x.codigo)) })}
-            sx={{ height: 32, bgcolor: '#E6F6FC', fontSize: 12.5 }} />
-        ))}
-        {!soloLectura && (
-          <Select size="small" value="" displayEmpty disabled={guardando} sx={{ height: 40, minWidth: 200, fontSize: 13 }}
+        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Gastos que son solo de {nom}</Typography>
+        {soloLectura ? <span /> : (
+          <Select size="small" value="" displayEmpty disabled={guardando} sx={{ height: 40, fontSize: 13, width: { xs: '100%', sm: 300 } }}
             renderValue={() => <span style={{ color: '#2492C8', fontWeight: 600 }}>+ Agregar gasto</span>}
             MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
             onChange={(e) => e.target.value && guardar({ ...config, propios: [...config.propios, String(e.target.value)] })}>
@@ -284,34 +283,30 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
             })}
           </Select>
         )}
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+          {(c?.conceptos || []).filter((x) => config.propios.includes(String(x.codigo))).map((x) => (
+            <Chip key={x.codigo} label={`${x.nombre} · ${pesos(x.mensual)}`}
+              onDelete={soloLectura || guardando ? undefined : () => guardar({ ...config, propios: config.propios.filter((p) => p !== String(x.codigo)) })}
+              sx={{ height: 32, bgcolor: '#E6F6FC', fontSize: 12.5 }} />
+          ))}
+        </Box>
+        <Typography sx={{ ...gris, fontSize: 11.5, gridColumn: '1 / -1' }}>
+          Un gasto que es solo de {nom} (el césped, una cámara) entra entero en su costo, no repartido.
+        </Typography>
       </Box>
-      <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.5, px: 0.5 }}>
-        Un gasto que es solo de este servicio (el césped, la cámara de las canchas) entra entero, no repartido.
-      </Typography>
 
       <Box sx={{ mt: 2.5 }}><Titulo>Cuánto se usa</Titulo></Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0,1fr))' }, gap: 1.5 }}>
-        <Box sx={{ bgcolor: 'action.hover', borderRadius: 1.5, p: 1.25, textAlign: 'center' }}>
-          <Typography sx={th}>Horas por mes (promedio de 12)</Typography>
-          <Typography sx={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', my: 0.25 }}>{Math.round(c?.horas || 0).toLocaleString('es-AR')}</Typography>
-          <Typography sx={{ ...gris, fontSize: 11.5, lineHeight: 1.3 }}>
-            Lo que facturan los servicios de esta ancla ÷ su precio de cada mes{c && c.mesesConDatos < 12 ? ` · calculado con ${c.mesesConDatos} meses` : ''}
-          </Typography>
-        </Box>
-        <Box sx={{ bgcolor: 'action.hover', borderRadius: 1.5, p: 1.25, textAlign: 'center' }}>
-          <Typography sx={th}>Costo de una hora</Typography>
-          <Typography sx={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', my: 0.25 }}>{pesos(c?.costoHora)}</Typography>
-          <Typography sx={{ ...gris, fontSize: 11.5 }}>{pesos(c?.costoMes)} ÷ {Math.round(c?.horas || 0).toLocaleString('es-AR')} horas</Typography>
-        </Box>
-        <Box sx={{ bgcolor: caida != null && caida < -0.1 ? '#fdecea' : 'action.hover', borderRadius: 1.5, p: 1.25, textAlign: 'center' }}>
-          <Typography sx={th}>Últimos 3 meses</Typography>
-          <Typography sx={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', my: 0.25, color: caida != null && caida < -0.1 ? 'error.main' : 'text.primary' }}>
-            {c?.horasUltimos3 != null ? `${Math.round(c.horasUltimos3).toLocaleString('es-AR')} h` : '—'}
-          </Typography>
-          <Typography sx={{ ...gris, fontSize: 11.5, lineHeight: 1.3 }}>
-            {caida == null ? 'Sin datos' : caida < -0.1 ? `${pctTxt(caida * 100)} contra el año: no subas el precio, empujá la venta` : `${caida >= 0 ? '+' : ''}${pctTxt(caida * 100)} contra el promedio del año`}
-          </Typography>
-        </Box>
+      {/* Diego 23/11/2026: el costo de una hora ya está en el pie (Costo total) y los últimos 3 meses
+          van como línea debajo de las horas. */}
+      <Box sx={{ bgcolor: caida != null && caida < -0.1 ? '#fdecea' : 'action.hover', borderRadius: 1.5, p: 1.25, textAlign: 'center', maxWidth: 420, mx: 'auto' }}>
+        <Typography sx={th}>Horas por mes (promedio de 12 meses)</Typography>
+        <Typography sx={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums', my: 0.25 }}>{Math.round(c?.horas || 0).toLocaleString('es-AR')}</Typography>
+        <Typography sx={{ ...gris, fontSize: 11.5, lineHeight: 1.3, color: caida != null && caida < -0.1 ? 'error.main' : 'text.secondary' }}>
+          {c?.horasUltimos3 != null
+            ? `Últimos 3 meses: ${Math.round(c.horasUltimos3).toLocaleString('es-AR')} h (${caida >= 0 ? '+' : ''}${pctTxt((caida || 0) * 100)})${caida != null && caida < -0.1 ? ' · no subas el precio, empujá la venta' : ''}`
+            : 'Lo que facturan esta ancla y los que salen de ella ÷ su precio de cada mes'}
+          {c && c.mesesConDatos < 12 ? ` · calculado con ${c.mesesConDatos} meses` : ''}
+        </Typography>
       </Box>
 
       {/* Último aumento (Diego 23/11/2026): Lazarillo lo detecta solo en las ventas de la hora; ya no
@@ -340,11 +335,11 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         )}
       </Box>
 
-      <Box sx={{ mt: 2.5 }}><Titulo>Servicios que salen de esta ancla ({familiaSinAncla.length})</Titulo></Box>
+      <Box sx={{ mt: 2.5 }}><Titulo>Artículos que salen de {nom} ({familiaSinAncla.length})</Titulo></Box>
       {familiaSinAncla.length > 0 && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0,1fr) 100px 32px', md: 'minmax(160px,1fr) 130px 140px 140px 32px' }, gap: '6px 8px', alignItems: 'center', px: 0.5 }}>
-          <Typography sx={{ ...th, textAlign: 'left' }}>Servicio</Typography>
-          <Typography sx={th}>De la ancla</Typography>
+          <Typography sx={{ ...th, textAlign: 'left' }}>Artículo</Typography>
+          <Typography sx={th}>De la hora de {nom}</Typography>
           <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Costo</Typography>
           <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Sugerido ({pctTxt(objetivoPct, 1)} costo)</Typography>
           <span />
@@ -369,7 +364,7 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
       )}
       {!soloLectura && (
         <Box sx={{ mt: 1, px: 0.5, maxWidth: 360 }}>
-          <SelectorBuscable label={!verTodos && delRubro.length && rubroAncla ? `+ Sumar servicio de ${rubroAncla}` : '+ Sumar servicio a esta ancla'} value={null} deshabilitado={guardando}
+          <SelectorBuscable label={!verTodos && delRubro.length && rubroAncla ? `+ Sumar artículo de ${rubroAncla}` : `+ Sumar artículo a ${nom}`} value={null} deshabilitado={guardando}
             opciones={candidatos.map((a) => a.nombre || a.name).filter(Boolean)}
             onChange={(nombreElegido) => {
               const a = candidatos.find((x) => (x.nombre || x.name) === nombreElegido);
@@ -384,7 +379,7 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         </Typography>
       )}
       <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.75, px: 0.5 }}>
-        Cada servicio vale un % de la hora de la ancla (más de 150 % se toma como horas: 370 % = 3,7 horas). Cuando suben tus costos, sube la hora y todos se recalculan solos.
+        Cada uno vale un % de la hora de {nom} (más de 150 % se toma como horas: 370 % = 3,7 horas). Cuando suben tus costos, sube la hora y todos se recalculan solos.
       </Typography>
     </Box>
   );
