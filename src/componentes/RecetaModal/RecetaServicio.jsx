@@ -5,7 +5,7 @@
 //   · atado:    elige una ancla y cuánto usa de su hora (93 % = Cancha 1; 3,7 horas = un cumple).
 // El servidor (services/servicioCosto.js) hace la cuenta y graba el costo de toda la familia.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Typography, Checkbox, Select, MenuItem, Divider, Button, CircularProgress, Alert, IconButton, Tooltip } from '@mui/material';
+import { Box, Typography, Checkbox, Select, MenuItem, ListSubheader, Chip, Divider, Button, CircularProgress, Alert, IconButton, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { BASE } from '@/servicios/apiBase';
 import SelectorBuscable from '@/componentes/SelectorBuscable';
@@ -56,6 +56,7 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
   const [config, setConfig] = useState(null);
   const [calculo, setCalculo] = useState(null);
   const [anclas, setAnclas] = useState([]);
+  const [verTodos, setVerTodos] = useState(false);
   const onCostoRef = useRef(onCosto);
   onCostoRef.current = onCosto;
 
@@ -179,7 +180,16 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
   const c = calculo;
   const familiaSinAncla = (c?.familia || []).filter((f) => !f.ancla);
   const enFamilia = new Set((c?.familia || []).map((f) => Number(f.articleId)));
-  const candidatos = (allArticulos || []).filter((a) => !enFamilia.has(Number(a.id ?? a.articulo_id)));
+  // Sumar servicios (Diego 23/11/2026: «toma todo, insumos y conceptos, no los diferencia»): de
+  // entrada solo los artículos del mismo rubro que la ancla (primera palabra de su rubro o subrubro:
+  // «Canchas.», «Canchas promos.», «Alquileres grandes»…); «ver todos» abre la lista completa.
+  const palabra = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').match(/[a-z0-9ñ]+/)?.[0] || '';
+  const yo = (allArticulos || []).find((x) => Number(x.id ?? x.articulo_id) === articleId);
+  const claves = new Set([palabra(yo?.categoria), palabra(yo?.subrubro)].filter((x) => x.length > 2));
+  const todosCand = (allArticulos || []).filter((a) => !enFamilia.has(Number(a.id ?? a.articulo_id)));
+  const delRubro = todosCand.filter((a) => claves.has(palabra(a.categoria)) || claves.has(palabra(a.subrubro)));
+  const candidatos = verTodos || !delRubro.length ? todosCand : delRubro;
+  const rubroAncla = yo?.categoria ? String(yo.categoria).replace(/\.$/, '') : null;
   const sugerido = (costo) => (objetivoPct > 0 ? costo / (objetivoPct / 100) : null);
   const caida = c?.horasUltimos3 != null && c.horas > 0 ? c.horasUltimos3 / c.horas - 1 : null;
   const gridC = { xs: '36px minmax(0,1fr) 110px', md: '36px minmax(160px,1fr) 140px 120px 150px' };
@@ -193,11 +203,14 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
       )}
 
       <Titulo>Costo del servicio · sale de Tu canasta del local</Titulo>
+      {/* Diego 23/11/2026: «no entiendo "para el servicio 10,4 %" ni el total por mes». Cada fila dice
+          cuánto gasta el local, qué parte le toca a este servicio y cuánto es; el total va adentro de
+          la tabla, abajo de su columna, y la frase de abajo explica de dónde sale el %. */}
       <Box sx={{ display: 'grid', gridTemplateColumns: gridC, gap: '4px 8px', alignItems: 'center', px: 0.5 }}>
-        <span /><Typography sx={{ ...th, textAlign: 'left' }}>Costo de la canasta</Typography>
-        <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Por mes</Typography>
-        <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Para el servicio</Typography>
-        <Typography sx={th}>Costo del servicio</Typography>
+        <span /><Typography sx={{ ...th, textAlign: 'left' }}>Gasto del local</Typography>
+        <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Gasta el local por mes</Typography>
+        <Typography sx={{ ...th, display: { xs: 'none', md: 'block' } }}>Le toca al servicio</Typography>
+        <Typography sx={th}>Costo para el servicio</Typography>
         {(c?.rubros || []).map((r) => (
           <React.Fragment key={r.clave}>
             <Checkbox size="small" checked={r.incluido} disabled={soloLectura || guardando}
@@ -205,8 +218,8 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
               sx={{ p: 0.5, color: CELESTE, '&.Mui-checked': { color: CELESTE } }} />
             <Box sx={{ minWidth: 0, color: r.incluido ? 'text.primary' : 'text.disabled' }}>
               <Typography sx={{ fontSize: 14, fontWeight: 600 }}>{r.nombre}</Typography>
-              {r.propios.length > 0 && (
-                <Typography sx={{ ...gris, fontSize: 11.5 }}>{r.propios.map((p) => p.nombre).join(', ')} al 100 %</Typography>
+              {r.propios.length > 0 && r.incluido && (
+                <Typography sx={{ ...gris, fontSize: 11.5 }}>incluye {r.propios.map((p) => p.nombre).join(', ')} entero</Typography>
               )}
             </Box>
             <Box sx={{ ...valor, display: { xs: 'none', md: 'flex' }, color: r.incluido ? 'text.primary' : 'text.disabled' }}>{pesos(r.mensual)}</Box>
@@ -219,33 +232,61 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
             <Box sx={{ ...valor, fontWeight: 700, color: r.incluido ? 'text.primary' : 'text.disabled' }}>{r.incluido ? pesos(r.asignado) : '—'}</Box>
           </React.Fragment>
         ))}
+        <Box sx={{ gridColumn: '1 / -1', borderTop: '1px solid', borderColor: 'divider', mt: 0.5 }} />
+        <span />
+        <Typography sx={{ fontSize: 14, fontWeight: 700, gridColumn: { xs: '2 / 3', md: '2 / 5' } }}>Costo del servicio por mes</Typography>
+        <Box sx={{ ...valor, fontWeight: 800, fontSize: 15 }}>{pesos(c?.costoMes)}</Box>
       </Box>
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, mt: 1, pt: 1, px: 0.5, borderTop: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography sx={gris}>Lo compartido se reparte</Typography>
-          <Select size="small" value={config.reparto} disabled={soloLectura || guardando} sx={{ height: 40, fontSize: 13 }}
-            onChange={(e) => guardar({ ...config, reparto: e.target.value, pct: e.target.value === 'manual' && c
-              ? Object.fromEntries(c.rubros.map((r) => [r.clave, Math.round(r.pct * 10) / 10])) : config.pct })}>
-            <MenuItem value="ventas">por ventas ({pctTxt((c?.parteVentas || 0) * 100)} del local)</MenuItem>
-            <MenuItem value="manual">a mano, rubro por rubro</MenuItem>
-          </Select>
-          <Box sx={{ minWidth: 220 }}>
-            <SelectorBuscable label="Propio del servicio (al 100 %)" value={null} deshabilitado={soloLectura || guardando}
-              opciones={(c?.conceptos || []).filter((x) => !config.propios.includes(String(x.codigo))).map((x) => `${x.nombre} · ${pesos(x.mensual)}`)}
-              onChange={(txt) => {
-                const elegido = (c?.conceptos || []).find((x) => `${x.nombre} · ${pesos(x.mensual)}` === txt);
-                if (elegido) guardar({ ...config, propios: [...config.propios, String(elegido.codigo)] });
-              }} />
-          </Box>
-          {config.propios.length > 0 && !soloLectura && (
-            <Typography component="button" type="button" onClick={() => guardar({ ...config, propios: [] })}
-              sx={{ all: 'unset', cursor: 'pointer', fontSize: 12, color: 'text.secondary', textDecoration: 'underline' }}>quitar propios</Typography>
-          )}
-        </Box>
-        <Typography sx={{ fontSize: 14 }}>Total por mes <b style={{ marginLeft: 8, fontVariantNumeric: 'tabular-nums' }}>{pesos(c?.costoMes)}</b></Typography>
+
+      <Box sx={{ mt: 1, px: 0.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+        <Typography sx={gris}>Lo que comparte con el resto del local se reparte</Typography>
+        <Select size="small" value={config.reparto} disabled={soloLectura || guardando} sx={{ height: 40, fontSize: 13 }}
+          onChange={(e) => guardar({ ...config, reparto: e.target.value, pct: e.target.value === 'manual' && c
+            ? Object.fromEntries(c.rubros.map((r) => [r.clave, Math.round(r.pct * 10) / 10])) : config.pct })}>
+          <MenuItem value="ventas">según lo que vende ({pctTxt((c?.parteVentas || 0) * 100)})</MenuItem>
+          <MenuItem value="manual">a mano, gasto por gasto</MenuItem>
+        </Select>
       </Box>
       <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.5, px: 0.5 }}>
-        Promedio de los últimos 3 meses cerrados ({mesesTxt(c?.mesesCosto)}). «Por ventas» = lo que facturan esta ancla y sus servicios ÷ lo que factura el local en 12 meses.
+        {config.reparto === 'manual'
+          ? 'Escribí en cada gasto qué parte le toca a este servicio.'
+          : `Le toca el ${pctTxt((c?.parteVentas || 0) * 100)} porque este servicio y los que salen de él son el ${pctTxt((c?.parteVentas || 0) * 100)} de lo que vende el local en un año.`}
+        {' '}Los gastos son el promedio de {mesesTxt(c?.mesesCosto)}.
+      </Typography>
+
+      {/* Gastos que son solo de este servicio (antes «Propio del servicio (al 100 %)»): se ven todos, con
+          su ×, y se suman desde un desplegable agrupado por gasto. */}
+      <Box sx={{ mt: 1.5, px: 0.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+        <Typography sx={{ fontSize: 13, fontWeight: 600 }}>Gastos que son solo de este servicio</Typography>
+        {(c?.conceptos || []).filter((x) => config.propios.includes(String(x.codigo))).map((x) => (
+          <Chip key={x.codigo} size="medium" label={`${x.nombre} · ${pesos(x.mensual)}`}
+            onDelete={soloLectura || guardando ? undefined : () => guardar({ ...config, propios: config.propios.filter((p) => p !== String(x.codigo)) })}
+            sx={{ height: 32, bgcolor: '#E6F6FC', fontSize: 12.5 }} />
+        ))}
+        {!soloLectura && (
+          <Select size="small" value="" displayEmpty disabled={guardando} sx={{ height: 40, minWidth: 200, fontSize: 13 }}
+            renderValue={() => <span style={{ color: '#2492C8', fontWeight: 600 }}>+ Agregar gasto</span>}
+            MenuProps={{ PaperProps: { sx: { maxHeight: 360 } } }}
+            onChange={(e) => e.target.value && guardar({ ...config, propios: [...config.propios, String(e.target.value)] })}>
+            {['alquiler', 'sueldos', 'servicios'].flatMap((rub) => {
+              const items = (c?.conceptos || []).filter((x) => x.rubro === rub && !config.propios.includes(String(x.codigo)));
+              if (!items.length) return [];
+              return [
+                <ListSubheader key={`h-${rub}`} sx={{ lineHeight: '30px', fontSize: 11, fontWeight: 800, color: 'text.secondary' }}>
+                  {(c?.rubros || []).find((r) => r.clave === rub)?.nombre || rub}
+                </ListSubheader>,
+                ...items.map((x) => (
+                  <MenuItem key={x.codigo} value={String(x.codigo)} sx={{ fontSize: 13, display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+                    <span>{x.nombre}</span><span style={{ color: '#8a93a3', fontVariantNumeric: 'tabular-nums' }}>{pesos(x.mensual)}</span>
+                  </MenuItem>
+                )),
+              ];
+            })}
+          </Select>
+        )}
+      </Box>
+      <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.5, px: 0.5 }}>
+        Un gasto que es solo de este servicio (el césped, la cámara de las canchas) entra entero, no repartido.
       </Typography>
 
       <Box sx={{ mt: 2.5 }}><Titulo>Cuánto se usa</Titulo></Box>
@@ -273,33 +314,29 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
         </Box>
       </Box>
 
-      {/* Desde el último aumento (parte 3): la hora sube lo mismo que suben los costos del servicio. */}
-      <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, p: 1.25, px: 1.5, borderRadius: 1.5,
+      {/* Último aumento (Diego 23/11/2026): Lazarillo lo detecta solo en las ventas de la hora; ya no
+          hace falta marcarlo. El próximo también se toma solo cuando cambia el precio en el POS. */}
+      <Box sx={{ mt: 1.5, p: 1.25, px: 1.5, borderRadius: 1.5,
         border: '1px solid', borderColor: c?.vsBase?.suba >= 0.05 ? '#f5c4b3' : 'divider', bgcolor: c?.vsBase?.suba >= 0.05 ? '#fff7ed' : 'transparent' }}>
-        <Box sx={{ minWidth: 0 }}>
-          {c?.vsBase ? (
-            <>
-              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
-                Desde el aumento del {c.vsBase.desde.slice(8, 10)}/{c.vsBase.desde.slice(5, 7)}/{c.vsBase.desde.slice(2, 4)} tus costos {c.vsBase.suba >= 0 ? 'subieron' : 'bajaron'} {pctTxt(Math.abs((c.vsBase.suba || 0) * 100))}
-                {c.vsBase.precioSugerido ? <> → hora a <span style={{ fontVariantNumeric: 'tabular-nums' }}>{pesos(Math.round(c.vsBase.precioSugerido / 100) * 100)}</span></> : null}
-              </Typography>
-              <Typography sx={{ ...gris, fontSize: 11.5 }}>
-                {c.vsBase.suba >= 0.05 ? 'Pasaste el 5 %: es momento de actualizar la hora y los servicios atados se recalculan solos.' : 'Te avisamos en la campanita cuando acumulen 5 % (y en marzo, para revisar).'}
-                {c.margen != null && c.vsBase.margenBase != null ? ` Margen hoy ${pctTxt(c.margen * 100)} (al aumentar: ${pctTxt(c.vsBase.margenBase * 100)}).` : ''}
-              </Typography>
-            </>
-          ) : (
-            <>
-              <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Marcá el día que aumentás</Typography>
-              <Typography sx={{ ...gris, fontSize: 11.5 }}>Desde ese día Lazarillo mide cuánto suben tus costos y te avisa a cuánto llevar la hora para sostener el margen.</Typography>
-            </>
-          )}
-        </Box>
-        {!soloLectura && (
-          <Button variant="outlined" disabled={guardando} onClick={() => guardar(config, articleId, { tomarBase: true })}
-            sx={{ height: 44, flexShrink: 0, borderColor: CELESTE, color: '#0C447C', textTransform: 'none', fontWeight: 700 }}>
-            Aumenté hoy: tomar como base
-          </Button>
+        {c?.vsBase ? (
+          <>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>
+              Último aumento: {`${c.vsBase.desde.slice(8, 10)}/${c.vsBase.desde.slice(5, 7)}/${c.vsBase.desde.slice(2, 4)}`}
+              {c.vsBase.precioAntes && c.vsBase.precioBase ? <span style={{ fontWeight: 500 }}> ({pesos(c.vsBase.precioAntes)} → {pesos(c.vsBase.precioBase)})</span> : null}
+              {' · '}desde entonces tus costos {c.vsBase.suba >= 0 ? 'subieron' : 'bajaron'} {pctTxt(Math.abs((c.vsBase.suba || 0) * 100))}
+              {c.vsBase.precioSugerido ? <> → la hora a <span style={{ fontVariantNumeric: 'tabular-nums' }}>{pesos(Math.round(c.vsBase.precioSugerido / 100) * 100)}</span></> : null}
+            </Typography>
+            <Typography sx={{ ...gris, fontSize: 11.5 }}>
+              {c.vsBase.detectado ? 'Lo vimos en las ventas: es el día que la hora empezó a cobrarse al precio nuevo. ' : ''}
+              {c.vsBase.suba >= 0.05 ? 'Pasaste el 5 %: es momento de actualizar la hora; los servicios atados se recalculan solos.' : 'Te avisamos en la campanita cuando acumulen 5 % (y en marzo, para revisar).'}
+              {c.margen != null && c.vsBase.margenBase != null ? ` Margen hoy ${pctTxt(c.margen * 100)} (al aumentar: ${pctTxt(c.vsBase.margenBase * 100)}).` : ''}
+            </Typography>
+          </>
+        ) : (
+          <>
+            <Typography sx={{ fontSize: 14, fontWeight: 700 }}>Todavía no vimos un aumento en las ventas de esta hora</Typography>
+            <Typography sx={{ ...gris, fontSize: 11.5 }}>Cuando cambies el precio en tu POS lo tomamos solo, y desde ese día medimos cuánto suben tus costos y te avisamos a cuánto llevar la hora.</Typography>
+          </>
         )}
       </Box>
 
@@ -332,13 +369,19 @@ export default function RecetaServicio({ businessId, articulo, allArticulos = []
       )}
       {!soloLectura && (
         <Box sx={{ mt: 1, px: 0.5, maxWidth: 360 }}>
-          <SelectorBuscable label="+ Sumar servicio a esta ancla" value={null} deshabilitado={guardando}
+          <SelectorBuscable label={!verTodos && delRubro.length && rubroAncla ? `+ Sumar servicio de ${rubroAncla}` : '+ Sumar servicio a esta ancla'} value={null} deshabilitado={guardando}
             opciones={candidatos.map((a) => a.nombre || a.name).filter(Boolean)}
             onChange={(nombreElegido) => {
               const a = candidatos.find((x) => (x.nombre || x.name) === nombreElegido);
               if (a) guardar({ tipo: 'derivado', ancla: articleId, factor: 1 }, Number(a.id ?? a.articulo_id));
             }} />
         </Box>
+      )}
+      {!soloLectura && delRubro.length > 0 && delRubro.length < todosCand.length && (
+        <Typography component="button" type="button" onClick={() => setVerTodos((v) => !v)}
+          style={{ all: 'unset', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#2492C8', marginTop: 4, marginLeft: 4 }}>
+          {verTodos ? `Ver solo los de ${rubroAncla || 'su rubro'}` : 'Ver todos los artículos'}
+        </Typography>
       )}
       <Typography sx={{ ...gris, fontSize: 11.5, mt: 0.75, px: 0.5 }}>
         Cada servicio vale un % de la hora de la ancla (más de 150 % se toma como horas: 370 % = 3,7 horas). Cuando suben tus costos, sube la hora y todos se recalculan solos.
