@@ -58,12 +58,26 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
   const [aviso, setAviso] = useState(null);
   // Los maestros se piden al abrir el Panel: cuando se abre el modal ya están.
   const { data: maestros, isError } = useMaestrosFactura(true);
-  const lugar = lugarDe(maestros?.lugares, sucursalCaja, businessId);
+  const lugarPanel = lugarDe(maestros?.lugares, sucursalCaja, businessId);
+  // Con varias sucursales elegidas («Todas»), tocar una celda vacía primero pregunta en qué PDV se carga
+  // (Diego 23/11/2026: «debería dejarme pero pregunta primero PDV de carga»).
+  const [elegirPdv, setElegirPdv] = useState(null); // pedido en espera de PDV
+  const [pedidoConPdv, setPedidoConPdv] = useState(null);
+  const [lugarCarga, setLugarCarga] = useState(null);
+  const lugar = lugarCarga ?? lugarPanel;
   const puede = true;
   const reglasCarga = useReglasCarga(lugar?.id ?? null, maestros?.lugares ?? []);
 
   useEffect(() => {
+    if (!pedido || !maestros) return;
+    if (sucursalCaja === undefined && (maestros.lugares?.length ?? 0) > 1) { setElegirPdv(pedido); onPedidoAtendido?.(); return; }
+    setPedidoConPdv(pedido);
+    onPedidoAtendido?.();
+  }, [pedido, maestros, sucursalCaja, onPedidoAtendido]);
+
+  useEffect(() => {
     // Espera los maestros: con ellos se sabe si el concepto es un sueldo (va a Empleados).
+    const pedido = pedidoConPdv;
     if (!pedido || !maestros) return undefined;
     let vivo = true;
     // ¿Es un empleado? Lo decide el servidor: ese proveedor tiene liquidaciones (filas con período) y su
@@ -81,11 +95,11 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
       const p = emp ? pedido : { ...pedido, empleadoCodigo: undefined };
       setCtx(ctxDesdeCelda(p, fechaPagoPrev, aprendido, esSueldo));
       setAbierto(true);
-      onPedidoAtendido?.();
+      setPedidoConPdv(null);
     });
     if (!pedido.prev) { abrir(null); return () => { vivo = false; }; }
     // Del mes anterior se trae la fecha de pago; si no llega, la carga abre igual.
-    GestionAPI.detalle({ year: pedido.anio, sucursal, conceptoCodigo: pedido.conceptoCodigo, mes: pedido.prev.mes })
+    GestionAPI.detalle({ year: pedido.anio, sucursal: pedido.sucursalDetalle !== undefined ? pedido.sucursalDetalle : sucursal, conceptoCodigo: pedido.conceptoCodigo, mes: pedido.prev.mes })
       .catch(() => null)
       .then((d) => {
         const todas = [...(d?.data ?? [])].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')));
@@ -95,8 +109,15 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
         abrir(filas[0]?.fechaPago ? String(filas[0].fechaPago) : null, conProv ? { proveedorId: conProv.proveedorRef.id } : null);
       });
     return () => { vivo = false; };
-  }, [pedido, sucursal, onPedidoAtendido, maestros, lugar?.id]);
-  const cerrar = () => { setAbierto(false); setCtx(null); };
+  }, [pedidoConPdv, sucursal, maestros, lugar?.id]);
+  const cerrar = () => { setAbierto(false); setCtx(null); setLugarCarga(null); };
+  const conPdv = (l) => {
+    const p = elegirPdv;
+    setElegirPdv(null);
+    setLugarCarga(l);
+    // La fecha de pago del mes anterior se busca en ese PDV (null = la principal).
+    setPedidoConPdv({ ...p, sucursalDetalle: l.branchId == null ? null : l.branchId });
+  };
 
   return (
     <>
@@ -107,6 +128,20 @@ export default function CargarFactura({ pedido, onPedidoAtendido, etiqueta = 'Ca
       >
         <AddIcon sx={{ fontSize: 15 }} /> {etiqueta}
       </Box>
+      <Dialog open={!!elegirPdv} onClose={() => setElegirPdv(null)} PaperProps={{ sx: { borderRadius: 3, p: 2.5, width: 340 } }}>
+        <Box sx={{ fontWeight: 700, fontSize: 16, mb: 0.5 }}>¿En qué PDV lo cargás?</Box>
+        <Box sx={{ fontSize: 13, color: 'text.secondary', mb: 2 }}>{elegirPdv?.conceptoNombre ? `${elegirPdv.conceptoNombre} · ` : ''}estás viendo todas las sucursales</Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {(maestros?.lugares ?? []).map((l) => (
+            <Box key={l.id} component="button" type="button" onClick={() => conPdv(l)}
+              sx={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 44, px: 2, display: 'flex', alignItems: 'center', borderRadius: 2, border: 1, borderColor: 'divider', fontSize: 14, fontWeight: 600, '&:hover': { borderColor: '#5BC2EA', bgcolor: '#f0f9ff' } }}>
+              {l.nombre}
+            </Box>
+          ))}
+        </Box>
+        <Box component="button" type="button" onClick={() => setElegirPdv(null)}
+          sx={{ all: 'unset', cursor: 'pointer', mt: 1.5, alignSelf: 'flex-end', fontSize: 13, color: 'text.secondary', textAlign: 'right', width: '100%' }}>Cancelar</Box>
+      </Dialog>
       {abierto && puede && (maestros ? (
         <ModalNuevaCarga
           maestros={maestros}

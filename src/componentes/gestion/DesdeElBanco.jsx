@@ -32,7 +32,7 @@ function useDesdeElBanco() {
   });
 }
 
-export function FilasDesdeElBanco({ months, sinColTotal }) {
+export function FilasDesdeElBanco({ months, sinColTotal, extra = 0 }) {
   const { year } = usePanelGestion();
   const { data } = useDesdeElBanco();
   const [abierto, setAbierto] = useState(false);
@@ -63,7 +63,7 @@ export function FilasDesdeElBanco({ months, sinColTotal }) {
         </Box>
       </TableCell>
       {celdas(data.values, data.total, { py: 1 })}
-      <TableCell />
+      <TableCell colSpan={1 + extra} />
     </TableRow>
     {abierto && data.grupos.map((g) => (
       <TableRow key={g.grupo} hover sx={{ '& td': { bgcolor: FONDO } }}>
@@ -74,7 +74,7 @@ export function FilasDesdeElBanco({ months, sinColTotal }) {
           </Box>
         </TableCell>
         {celdas(g.values, g.total, { py: 0.75, fontSize: 12 })}
-        <TableCell />
+        <TableCell colSpan={1 + extra} />
       </TableRow>
     ))}
   </>);

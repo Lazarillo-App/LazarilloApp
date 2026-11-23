@@ -111,7 +111,7 @@ export function SectionDivider({ label, icon: Icon, colSpan }) {
 const SUB_SUAVE = 'rgba(0,0,0,.25)';
 // Diego 14/11/2026: menos filas. Con «$», Gastos / Ventas y la rentabilidad van en el tooltip de Egresos;
 // con «% ing» aparece la fila Rentabilidad. El punto de equilibrio va debajo de Egresos, como sub-fila más chica que Egresos.
-export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady, sinTotal = false, modoCelda = 'importe' }) {
+export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal, egresosTotal, ingresosReady, sinTotal = false, modoCelda = 'importe', extra = 0 }) {
   const { year, abrirVentas } = usePanelGestion();
   // Mes con ventas incompletas → tooltip con la proyección de cierre. Para el color del mapa de
   // calor ese mes cuenta con lo proyectado, no con lo facturado a medias.
@@ -170,7 +170,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
           }, hasVal ? () => abrirVentas({ mes }) : undefined);
         })}
         {celda('t', fmtARS(ingresosTotal), { fontSize: 15, fontWeight: 600, px: 2, color: RESULT_COLORS.positive }, ingresosTotal ? () => abrirVentas({}) : undefined)}
-        <TableCell />
+        <TableCell colSpan={1 + extra} />
       </TableRow>
       {/* Sin línea entre Egresos y su sub-fila de equilibrio: se leen como un bloque. */}
       <TableRow sx={conEquilibrio ? { '& > td': { borderBottom: 0 } } : undefined}>
@@ -184,7 +184,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
         {celda('t', !verPct && ratioTotal !== null
           ? <TipProyectado subrayado={SUB_SUAVE} titulo="Gastos / Ventas" grande={`${ratioTotal.toFixed(1)}%`} filas={[['Rentabilidad', `${(100 - ratioTotal).toFixed(1)}%`]]}>{fmtARS(egresosTotal)}</TipProyectado>
           : fmtARS(egresosTotal), { fontWeight: 500, px: 2, color: 'text.secondary' })}
-        <TableCell />
+        <TableCell colSpan={1 + extra} />
       </TableRow>
       {conEquilibrio && (
         <TableRow>
@@ -207,7 +207,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
             });
           })}
           {celda('t', '—', { px: 2, py: 0.25, fontSize: 12.5, color: 'text.disabled' })}
-          <TableCell />
+          <TableCell colSpan={1 + extra} />
         </TableRow>
       )}
       <TableRow>
@@ -231,7 +231,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
           });
         })}
         {celda('t', fmtARS(resTotal), { fontWeight: 700, px: 2, color: resTotal < 0 ? RESULT_COLORS.negative : RESULT_COLORS.positive })}
-        <TableCell />
+        <TableCell colSpan={1 + extra} />
       </TableRow>
       {/* Vista «% ing»: Rentabilidad (resultado / ventas) en vez de Gastos / Ventas, debajo del
           resultado: se lee directo, positivo es bueno (Diego 14/11/2026). */}
@@ -257,7 +257,7 @@ export function KpiBlock({ months, ingresosPorMes, egresosPorMes, ingresosTotal,
         {celda('t', ratioTotal !== null ? `${(100 - ratioTotal).toFixed(1)}%` : '—', {
           fontWeight: 600, px: 2, color: ratioTotal === null ? 'text.disabled' : colorRatio(ratioTotal),
         })}
-        <TableCell />
+        <TableCell colSpan={1 + extra} />
       </TableRow>
       )}
     </>

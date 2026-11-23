@@ -88,7 +88,7 @@ const Punto = ({ color, title }) => (
 export default function PivotCompras({
   data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort, historiaPrev,
 }) {
-  const { abrirDetalle, pedirCarga, year, modo, sucursalCaja } = usePanelGestion();
+  const { abrirDetalle, pedirCarga, year, modo } = usePanelGestion();
   // Rol a medida: sin totales por rubro (fila del rubro sin números y sin "Total gastos")
   // y/o sin el bloque Ingresos · Egresos · Resultado · Equilibrio.
   const { oculto = () => false } = useAccess() || {};
@@ -284,7 +284,8 @@ export default function PivotCompras({
 
   // Mes vacío de un concepto: carga un Gasto Vario ya armado (no en Financiera ni Insumos). En la vista
   // Proveedor también (Diego 20/11/2026: el alquiler), a nombre de ese proveedor.
-  const cargaEnCelda = (agrupacion === 'concepto' || agrupacion === 'proveedor') && modo !== 'financiera' && sucursalCaja !== undefined && !!pedirCarga;
+  // Con «Todas» también: la carga pregunta primero el PDV (Diego 23/11/2026).
+  const cargaEnCelda = (agrupacion === 'concepto' || agrupacion === 'proveedor') && modo !== 'financiera' && !!pedirCarga;
   const celdaConcepto = (c, mes, filtro) => {
     if (hasValue(c.values[mes])) return { props: { onClick: () => abrirDetalle({ mes, ...filtro }) }, sx: sxClic };
     if (!cargaEnCelda) return { props: {}, sx: {} };
@@ -425,7 +426,7 @@ export default function PivotCompras({
 
   return (
     <Box sx={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
-      <Table size="small" sx={[sxTablaPanel, pocos && { width: 'auto', '& td, & th': { minWidth: 118 } }]}>
+      <Table size="small" sx={[sxTablaPanel, pocos && { '& td, & th': { minWidth: 110 } }]}>
         <TableHead>
           <TableRow>
             <TableCell sx={{ ...sxStickyNombre(MUTED), top: 0, zIndex: 3, px: 2, py: 1.5, fontWeight: 500, color: 'text.secondary', minWidth: { xs: 150, md: 200 }, ...(pocos ? { width: 300, maxWidth: 300 } : {}), whiteSpace: 'nowrap' }}>
@@ -458,6 +459,7 @@ export default function PivotCompras({
             egresosTotal={data.grandTotal}
             ingresosReady={ingresosReady}
             sinTotal={sinColTotal}
+            extra={pocos ? 2 : 0}
             modoCelda={modoCelda}
           />
           )}
@@ -473,7 +475,7 @@ export default function PivotCompras({
           )}
           {(() => {
             // «Desde el banco» (19/11/2026): debajo de Sin rubro (o arriba de todo si no hay), informativo.
-            const banco = sinTotalesRubro ? null : <FilasDesdeElBanco key="__banco" months={months} sinColTotal={sinColTotal} />;
+            const banco = sinTotalesRubro ? null : <FilasDesdeElBanco key="__banco" months={months} sinColTotal={sinColTotal} extra={pocos ? 2 : 0} />;
             const plegadas = plegarConceptosSinMovimiento(filas, expanded);
             const iSin = plegadas.findIndex((f) => (f.type === 'rubro' || f.type === 'rubroTop') && f.data.rubroCodigo === '__sin_rubro');
             const corte = iSin < 0 ? 0 : (() => { const j = plegadas.findIndex((f, k) => k > iSin && (f.type === 'rubro' || f.type === 'rubroTop')); return j < 0 ? plegadas.length : j; })();
