@@ -187,7 +187,7 @@ function CheckFila({ seleccion }) {
 }
 
 export default function ComprasDetalleModal({ filter, onClose }) {
-  const { businessId, modo, nombreLugar, sucursal } = usePanelGestion();
+  const { businessId, modo, nombreLugar, sucursal, pedirCarga } = usePanelGestion();
   // Con «Todas» las sucursales, cada registro dice de qué PDV es (Diego 23/11/2026).
   const todas = sucursal === undefined;
   // Para que Observación no quede sin lugar, la columna nueva se compensa achicando Detalle, Rubro y Concepto.
@@ -402,6 +402,27 @@ export default function ComprasDetalleModal({ filter, onClose }) {
 
   const guardar = (state) => { if (loteDe(state)) setPendiente(state); else guardarConfirmado(state); };
   const cerrar = () => { setEditing(null); setLineas(null); setTildadas(new Map()); setSaveError(null); onClose(); };
+  // «+ Cargar gasto» con lo filtrado (Diego 23/11/2026: «cuando ya hay gastos cargados no me da la opción de
+  // carga desde la tabla»): mismo concepto (y proveedor si no es Gastos Varios), en el mes que se está viendo.
+  const { data: datosDetalleCarga } = useQuery({ queryKey, queryFn, enabled: false, staleTime: 60_000 }); // caché del modal
+  const filasAca = datosDetalleCarga?.data ?? [];
+  const conceptoAca = stable?.conceptoCodigo
+    ? { codigo: stable.conceptoCodigo, nombre: filasAca.find((f) => f.concepto)?.concepto ?? null }
+    : null;
+  const hoyCarga = new Date();
+  const mesCarga = periodo?.modo === 'mes' ? periodo.mes : (periodo?.year === hoyCarga.getFullYear() ? hoyCarga.getMonth() + 1 : 12);
+  const puedeCargarAca = !!pedirCarga && modo !== 'financiera' && !!conceptoAca && periodo?.modo !== 'historico';
+  const cargarAca = () => {
+    const ultima = [...filasAca].sort((a, b) => String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')))[0];
+    const conProv = filasAca.find((f) => f.proveedorRef?.id != null && f.codigoProveedor !== 'GV');
+    const mesPrev = ultima?.fecha ? Number(String(ultima.fecha).slice(5, 7)) : null;
+    cerrar();
+    pedirCarga({
+      anio: periodo.year, mes: mesCarga, conceptoCodigo: conceptoAca.codigo, conceptoNombre: conceptoAca.nombre,
+      prev: mesPrev && String(ultima.fecha).slice(0, 4) === String(periodo.year) ? { mes: mesPrev } : null,
+      ...(conProv ? { proveedorId: conProv.proveedorRef.id } : {}),
+    });
+  };
 
   const abrirEdicion = (item) => {
     const esDistribuida = item.esDistribuido || item.distribucionId != null;
@@ -586,7 +607,15 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         seleccion={conSeleccion ? { ids: new Set(tildadas.keys()), idDe: (r) => r.rowId, onCambiar: cambiarTildadas, onLimpiar: () => setTildadas(new Map()) } : undefined}
         saveError={saveError}
         footerNote={nota}
-        headerControls={conPeriodo ? <DetallePeriodoControls periodo={periodo} onChange={setPeriodo} /> : null}
+        headerControls={conPeriodo ? <>
+          <DetallePeriodoControls periodo={periodo} onChange={setPeriodo} />
+          {puedeCargarAca && (
+            <Box component="button" type="button" onClick={cargarAca} title={`Cargar ${conceptoAca?.nombre ?? 'un gasto'} en ${labelPeriodo({ ...periodo, modo: 'mes', mes: mesCarga })}`}
+              sx={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', height: 36, px: 1.5, ml: 1, display: 'inline-flex', alignItems: 'center', gap: 0.5, borderRadius: 2, bgcolor: 'grey.900', color: '#fff', fontSize: 13.5, fontWeight: 500, whiteSpace: 'nowrap', '&:hover': { bgcolor: 'grey.800' } }}>
+              + Cargar gasto
+            </Box>
+          )}
+        </> : null}
         periodoLabel={conPeriodo ? labelPeriodo(periodo) : null}
         // Un registro puntual (click en un gasto de la vista económica): la edición queda arriba,
         // tal cual, y abajo la cuenta corriente del proveedor.
