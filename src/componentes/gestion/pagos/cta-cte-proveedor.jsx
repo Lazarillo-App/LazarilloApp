@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { numeroPago } from "@/gestion/pagosImputar";
 import { FormPagoProveedor } from "./pago-proveedor";
+import { abrirComprobante, facturasQueSuman } from "@/gestion/comprobantePago";
 import { useSucursalModales } from "@/gestion/sucursalModales";
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const MESES_LARGO = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -105,6 +106,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const queryClient = useQueryClient();
     const [tildadas, setTildadas] = useState(() => new Set((pagar ?? []).map(claveF)));
     const [form, setForm] = useState(pagar?.length ? { tipo: "facturas" } : null);
+    const [leido, setLeido] = useState(null); // comprobante adjunto en la barra de pago (Diego 23/11/2026)
     const [guardando, setGuardando] = useState(false);
     const [anulando, setAnulando] = useState(null);
     const { data: locales } = useFetchQuery(["locales"], "/api/locales");
@@ -187,6 +189,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         if (!err) {
             setForm(null);
             setTildadas(new Set());
+            setLeido(null);
         }
         return err;
     }
@@ -245,7 +248,20 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         return [...m.entries()].sort((a, b) => b[1].total - a[1].total);
     })();
     useEffect(() => { filaSel.current?.scrollIntoView({ block: "center" }); }, [data]);
-    const cambiarProv = (c) => { setOrigen({ codPro: c }); setSel(null); setBusca(""); setAgrupar(false); setTildadas(new Set()); setForm(null); };
+    const cambiarProv = (c) => { setOrigen({ codPro: c }); setSel(null); setBusca(""); setAgrupar(false); setTildadas(new Set()); setForm(null); setLeido(null); };
+    // Al leer un comprobante: si el importe no es lo tildado, se tildan solas las impagas que lo suman.
+    const alLeerComprobante = (r) => {
+        const imp = r?.datos?.importe;
+        if (!(imp > 0) || !form || form.tipo === "editar") { setLeido(r); return; }
+        if (form.tipo === "facturas" && Math.abs(saldoElegidas - imp) <= 1) { setLeido(r); return; }
+        const claves = facturasQueSuman(facturas.filter((f) => PAGABLE(f.estado)).map((f) => ({ clave: claveF(f), saldo: saldoDe(f), fecha: f.fecha })), imp);
+        if (claves) {
+            setTildadas(new Set(claves));
+            setForm({ tipo: "facturas" });
+            setLeido({ ...r, nota: `Tildé ${claves.length === 1 ? "la factura" : `las ${claves.length} facturas`} que suma${claves.length === 1 ? "" : "n"} ${fmtPesos(imp)}.` });
+        }
+        else setLeido(r);
+    };
     const tituloNodo = <span className="text-[19px] font-normal whitespace-nowrap">— cuenta corriente</span>;
     const nombreHeader = data?.proveedor ?? origen.nombre ?? "";
     const toolbar = (rotulo, placeholder) => (<div className="flex flex-wrap items-center gap-2 mb-2.5 shrink-0">
@@ -443,6 +459,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                   {!fact && <div className="mt-0.5 text-[12px] text-zinc-500">a {fmtComprobante(f.comprobante)} · {dmy(f.fecha)}</div>}
                   <div className="mt-0.5 text-[12.5px] text-zinc-600 dark:text-zinc-300">
                     {p.medio}{p.referencia && <span className="font-mono text-[11.5px]"> · ID {p.referencia}</span>} · {numeroPago(p.pagoId)}
+                    {p.comprobanteId && <button type="button" onClick={() => void abrirComprobante(p.comprobanteId).catch((e) => toast.error(e.message))} className="ml-1.5 text-[#0d6fa8] hover:underline" title="Abrir el comprobante de pago">· 📎 comprobante</button>}
                     {p.totalPago - p.importe > 0.004 && <span className="text-zinc-400"> · parte de {fmtPesos(p.totalPago)}</span>}
                     <span className="ml-1.5 rounded border border-[#5BC2EA] bg-[#ecfaff] px-1 text-[10px] font-semibold text-[#0e7490]">Lazarillo</span>
                   </div>
@@ -481,6 +498,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                   {aCuenta.map((p) => (<div key={p.id} className="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-[#bfe6f6] bg-[#f0faff] dark:border-sky-900 dark:bg-sky-950/40 px-3.5 py-2.5 text-[13px]">
                       <div className="min-w-0">
                         <b>{numeroPago(p.id)}</b> · {dmy(p.fecha)} · {p.medio}{p.referencia && <span className="font-mono text-[11.5px]"> · ID {p.referencia}</span>}
+                        {p.comprobanteId && <button type="button" onClick={() => void abrirComprobante(p.comprobanteId).catch((e) => toast.error(e.message))} className="ml-1.5 text-[#0d6fa8] hover:underline" title="Abrir el comprobante de pago">· 📎 comprobante</button>}
                         <div className="text-[12px] text-zinc-500">
                           Pagado {fmtPesos(p.importe)} · usado {fmtPesos(p.importe - p.disponible)} · <b className="text-[#0e7490]">disponible {fmtPesos(p.disponible)}</b>
                         </div>
@@ -508,14 +526,14 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
             const pc = form.tipo === "editar" ? aCuenta.find((x) => x.id === form.pagoId) : null;
             const modo = form.tipo === "facturas" ? (elegidas.length ? { tipo: "facturas", n: elegidas.length, saldo: saldoElegidas } : null)
                 : form.tipo === "cuenta" ? { tipo: "cuenta" }
-                    : pe ? { tipo: "editar", pago: { id: pe.pagoId, fecha: pe.fecha, medio: pe.medio, referencia: pe.referencia, importe: pe.totalPago,
+                    : pe ? { tipo: "editar", pago: { id: pe.pagoId, fecha: pe.fecha, medio: pe.medio, referencia: pe.referencia, importe: pe.totalPago, comprobanteId: pe.comprobanteId ?? null,
                             pdvPagaId: pdvs.find((x) => x.label === pe.pdvPaga)?.id ?? pdvs[0]?.id ?? 0 } }
-                        : pc ? { tipo: "editar", pago: { id: pc.id, fecha: pc.fecha, medio: pc.medio, referencia: pc.referencia, importe: pc.importe, pdvPagaId: pc.pdvPagaId } }
+                        : pc ? { tipo: "editar", pago: { id: pc.id, fecha: pc.fecha, medio: pc.medio, referencia: pc.referencia, importe: pc.importe, pdvPagaId: pc.pdvPagaId, comprobanteId: pc.comprobanteId ?? null } }
                             : null;
             if (!modo)
                 return null;
-            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : form.tipo} modo={modo} proveedor={data.proveedor} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} onCancel={() => { if (form.tipo === "facturas")
-                setTildadas(new Set()); setForm(null); }} onConfirm={confirmarPago}/>);
+            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : form.tipo} modo={modo} proveedor={data.proveedor} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (form.tipo === "facturas")
+                setTildadas(new Set()); setForm(null); setLeido(null); }} onConfirm={confirmarPago}/>);
         })()}
 
       {/* ===== pie: totales de lo que se ve ===== */}
