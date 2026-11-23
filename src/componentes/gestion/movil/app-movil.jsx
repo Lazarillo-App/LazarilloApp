@@ -417,8 +417,13 @@ const plataCorta = (n, dec = 1) => {
         return `${sg}${(a / 1e6).toLocaleString("es-AR", { maximumFractionDigits: a >= 1e8 ? 0 : dec })}M`;
     return `${sg}${Math.round(a / 1e3).toLocaleString("es-AR")}k`;
 };
+// Cantidades (tickets, cubiertos): con muchas barras, en miles para que entren.
+const cantCorta = (v, corta) => (corta && Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })}k` : Math.round(v).toLocaleString("es-AR"));
+const UNIDADES = [{ k: "pesos", t: "$" }, { k: "tickets", t: "Tickets" }, { k: "cubiertos", t: "Cubiertos" }];
 function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     const [n, setN] = useState(6);
+    // Ventas en $, tickets o cubiertos (Diego 23/11/2026): el mismo gráfico, cambia la unidad.
+    const [unidad, setUnidad] = useState("pesos");
     // Ventas: debajo del gráfico va el detalle de un día o de un mes (Diego 08/11/2026).
     const esVentas = clave === "ventas";
     const [periodo, setPeriodo] = useState({ modo: "dia", dia: null, mes: null });
@@ -428,13 +433,22 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
     const necesitaAnt = hasta.mes < n;
     const antes = useMulti(sel, (s) => ["m-anual", s.localId, s.pdvId, ant], (s) => (necesitaAnt ? `/api/m/anual?localId=${s.localId}&pdvId=${s.pdvId}&anio=${ant}` : null), 10 * 60_000).list;
     const anualAnt = antes ? sumarAnual(antes) : undefined;
+    const todosMeses = [...(anualAnt?.meses ?? []).map((m) => ({ ...m, anio: ant })), ...anualActual.map((m) => ({ ...m, anio: hasta.anio }))];
+    // Sin cubiertos cargados en el POS no se ofrece verlos.
+    const hayCubiertos = esVentas && todosMeses.some((m) => (m.cubiertos ?? 0) > 0);
+    const u = esVentas && (unidad === "tickets" || (unidad === "cubiertos" && hayCubiertos)) ? unidad : "pesos";
+    const cant = u !== "pesos";
+    // En unidades, el mes proyectado se estima con la misma proporción que las ventas.
+    const delMes = anualActual.find((m) => m.mes === hasta.mes);
+    const actualU = !cant || !actual ? actual
+        : { ...actual, valor: actual.proyectado && delMes?.ventas > 0 && actual.valor != null ? (delMes[u] ?? 0) * (actual.valor / delMes.ventas) : delMes?.[u] ?? null };
     const serie = serieIndicador({
-        meses: [...(anualAnt?.meses ?? []).map((m) => ({ ...m, anio: ant })), ...anualActual.map((m) => ({ ...m, anio: hasta.anio }))],
-        clave, hasta, n, actual,
+        meses: cant ? todosMeses.map((m) => ({ ...m, ventas: m[u] ?? 0 })) : todosMeses,
+        clave, hasta, n, actual: actualU,
     });
     const info = INFO_INDICADOR[clave];
-    const plata = info.tipo === "plata";
-    const unidad = plata ? "%" : " pp";
+    const plata = info.tipo === "plata" && !cant;
+    const unidadDif = plata || cant ? "%" : " pp";
     const vals = serie.map((x) => x.valor).filter((v) => v != null);
     const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
     // La barra más baja queda en 40%: se ven las diferencias sin exagerarlas.
@@ -447,16 +461,21 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
         <span className="ml-auto text-[12px] text-zinc-500">hasta {MESES[hasta.mes - 1]} {hasta.anio}</span>
       </div>
       <div className="px-4 pt-3 pb-10">
-        <div className="inline-flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
-          {[3, 6, 9, 12].map((k) => (<button key={k} type="button" onClick={() => setN(k)} className={cn("rounded-lg px-3.5 py-1 text-[13px] font-semibold", n === k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{k}</button>))}
-          <span className="self-center px-2 text-[12px] text-zinc-500">meses</span>
+        <div className="flex flex-wrap gap-2">
+          {esVentas && <div className="inline-flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
+            {UNIDADES.filter((x) => x.k !== "cubiertos" || hayCubiertos).map((x) => (<button key={x.k} type="button" onClick={() => setUnidad(x.k)} className={cn("min-h-[36px] rounded-lg px-3 py-1 text-[13px] font-semibold", u === x.k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{x.t}</button>))}
+          </div>}
+          <div className="inline-flex rounded-xl bg-zinc-100 dark:bg-zinc-800 p-1">
+            {[3, 6, 9, 12].map((k) => (<button key={k} type="button" onClick={() => setN(k)} className={cn("min-h-[36px] rounded-lg px-3 py-1 text-[13px] font-semibold", n === k ? "bg-white dark:bg-zinc-700 shadow-sm" : "text-zinc-500")}>{k}</button>))}
+            <span className="self-center px-2 text-[12px] text-zinc-500">meses</span>
+          </div>
         </div>
         <div className="mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
           {serie.map((x) => {
             const elegido = esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x);
             return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
               onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
-              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
+              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{cant ? cantCorta(x.valor, n > 6) : plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
               <div className={cn("w-full rounded-t-md", x.valor != null && x.valor < 0 ? "bg-red-400" : elegido ? "bg-sky-700" : x.proyectado ? "bg-sky-500" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
             </div>);
           })}
@@ -465,18 +484,70 @@ function Evolucion({ clave, sel, hasta, anualActual, actual, onClose }) {
           {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("min-w-0 flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
         </div>
         {esVentas && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un mes para verlo abajo</p>}
+        {esVentas && <MesAnios sel={sel} anio={periodo.modo === "mes" && periodo.mes ? Number(periodo.mes.slice(0, 4)) : hasta.anio} mes={periodo.modo === "mes" && periodo.mes ? Number(periodo.mes.slice(5, 7)) : hasta.mes} unidad={u}/>}
         {esVentas && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
         <div className="mt-4">
           {[...serie].reverse().map((x) => (<div key={`${x.anio}-${x.mes}`} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-2 text-[14px]">
               <span className="flex-1">{MESES[x.mes - 1]} {x.anio !== hasta.anio ? x.anio : ""}{x.proyectado && <span className="ml-1.5 text-[11.5px] text-zinc-500">proyectado</span>}</span>
-              <b className={cn("text-right tabular-nums", plata ? "w-24" : "w-16")}>{plata ? (x.valor == null ? "—" : $m(x.valor)) : pc(x.valor)}</b>
+              <b className={cn("text-right tabular-nums", plata ? "w-24" : "w-16")}>{cant ? (x.valor == null ? "—" : Math.round(x.valor).toLocaleString("es-AR")) : plata ? (x.valor == null ? "—" : $m(x.valor)) : pc(x.valor)}</b>
               <span className={cn("w-20 text-right text-[12.5px] font-bold tabular-nums", { bueno: "text-emerald-700", malo: "text-red-600", nada: "text-zinc-400" }[sentido(clave, x.dif) ?? "nada"])}>
-                {x.dif == null ? "—" : Math.abs(x.dif) < 0.05 ? "=" : `${x.dif > 0 ? "▲" : "▼"} ${Math.abs(x.dif).toLocaleString("es-AR", { maximumFractionDigits: 1 })}${unidad}`}</span>
+                {x.dif == null ? "—" : Math.abs(x.dif) < 0.05 ? "=" : `${x.dif > 0 ? "▲" : "▼"} ${Math.abs(x.dif).toLocaleString("es-AR", { maximumFractionDigits: 1 })}${unidadDif}`}</span>
             </div>))}
         </div>
-        <p className="mt-2 text-[11.5px] text-zinc-500">{plata ? "% contra el mes anterior" : "pp = puntos contra el mes anterior"} · verde: mejora · rojo: empeora</p>
+        <p className="mt-2 text-[11.5px] text-zinc-500">{plata || cant ? "% contra el mes anterior" : "pp = puntos contra el mes anterior"} · verde: mejora · rojo: empeora</p>
       </div>
     </div>);
+}
+// El mes, año por año (Diego 23/11/2026): una barra por año del mismo mes. Si el mes está en curso se
+// compara del 1 al último día con ventas en todos los años. Los pesos van a «pesos de hoy» con el IPC
+// del INDEC; tickets y cubiertos no se ajustan. Varios PDV: se suman por año.
+function MesAnios({ sel, anio, mes, unidad }) {
+    const [todos, setTodos] = useState(false);
+    const q = useMulti(sel, (s) => ["m-mes-anios", s.localId, s.pdvId, anio, mes], (s) => `/api/m/mes-anios?localId=${s.localId}&pdvId=${s.pdvId}&anio=${anio}&mes=${mes}`, 30 * 60_000);
+    if (!q.list) return q.isError ? null : <div className="mt-5 h-40 animate-pulse rounded-2xl bg-zinc-100 dark:bg-zinc-800"/>;
+    const porAnio = new Map();
+    for (const r of q.list)
+        for (const a of r.anios) {
+            const x = porAnio.get(a.anio) ?? { anio: a.anio, ventas: 0, ventasHoy: 0, tickets: 0, cubiertos: 0 };
+            x.ventas += a.ventas; x.tickets += a.tickets; x.cubiertos += a.cubiertos;
+            x.ventasHoy = x.ventasHoy == null || a.ventasHoy == null ? null : x.ventasHoy + a.ventasHoy;
+            porAnio.set(a.anio, x);
+        }
+    const ipc = q.list[0]?.ipc ?? { disponible: false };
+    const hastaDia = q.list[0]?.hastaDia ?? null;
+    const ajusta = unidad === "pesos" && ipc.disponible;
+    const valorDe = (a) => unidad === "pesos" ? (ajusta ? a.ventasHoy : a.ventas) : a[unidad] > 0 ? a[unidad] : null;
+    const lista = [...porAnio.values()].sort((a, b) => a.anio - b.anio).map((a) => ({ anio: a.anio, valor: valorDe(a) }));
+    if (lista.length < 2) return null;
+    const vista = todos ? lista : lista.slice(-6);
+    const vals = vista.map((x) => x.valor).filter((v) => v != null);
+    const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
+    const alto = (v) => 40 + (max > min ? ((v - min) / (max - min)) * 60 : 40);
+    const fmt = (v) => (unidad === "pesos" ? plataCorta(v, vista.length > 6 ? 0 : 1) : cantCorta(v, vista.length > 6));
+    const este = lista.find((x) => x.anio === anio)?.valor;
+    const previos = lista.filter((x) => x.anio < anio && x.valor != null);
+    const contra = [previos[previos.length - 1], vista.find((x) => x.anio < anio && x.valor != null)].filter((x, i, arr) => x && arr.findIndex((y) => y?.anio === x.anio) === i);
+    const nombreIpc = (ym) => `${MESES[Number(ym.slice(5, 7)) - 1].slice(0, 3).toLowerCase()} ${ym.slice(0, 4)}`;
+    return (<div className="mt-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
+        <b className="text-[16px]">{MESES[mes - 1]}, año por año</b>
+        <p className="text-[12px] text-zinc-500">
+          {hastaDia ? `del 1 al ${hastaDia} en todos los años` : "mes completo"}
+          {unidad === "pesos" ? (ajusta ? ` · pesos de hoy (IPC INDEC a ${nombreIpc(ipc.hasta)})` : " · sin ajustar: no se pudo traer el IPC") : ""}
+        </p>
+        <div className="mt-4 flex h-36 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
+          {vista.map((x) => (<div key={x.anio} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+              <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{x.valor != null ? fmt(x.valor) : "—"}</span>
+              <div className={cn("w-full rounded-t-md", x.anio === anio ? "bg-sky-700" : "bg-[#5BC2EA]")} style={{ height: x.valor != null ? `${alto(x.valor) * 0.8}%` : 0 }}/>
+            </div>))}
+        </div>
+        <div className="flex gap-1.5">
+          {vista.map((x) => <span key={x.anio} className={cn("min-w-0 flex-1 text-center text-[10.5px]", x.anio === anio ? "font-bold text-sky-700" : "text-zinc-500")}>{vista.length > 6 ? `'${String(x.anio).slice(2)}` : x.anio}</span>)}
+        </div>
+        {este != null && contra.length > 0 && <p className="mt-2 text-[13px]">
+            {contra.map((c, i) => { const d = (este / c.valor - 1) * 100; return (<span key={c.anio}>{i > 0 && " · "}<b className={d >= 0 ? "text-emerald-700" : "text-red-600"}>{d >= 0 ? "▲" : "▼"} {Math.abs(d).toLocaleString("es-AR", { maximumFractionDigits: 0 })}%</b> vs {c.anio}</span>); })}
+          </p>}
+        {lista.length > 6 && <button type="button" onClick={() => setTodos(!todos)} className="mt-2 min-h-[36px] text-[13px] font-semibold text-sky-700">{todos ? "ver los últimos 6" : `ver los ${lista.length} años`}</button>}
+      </div>);
 }
 // Un rubro de "Gastos del mes por rubro": tocándolo se despliega su detalle de mayor a menor
 // (Diego 29/10/2026). Personal por empleado (vista Proveedor del Panel); el resto por insumo
