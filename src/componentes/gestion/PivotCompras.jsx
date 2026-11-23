@@ -263,7 +263,9 @@ export default function PivotCompras({
       props: {
         title: `Cargar ${c.nombre} en este mes ${agrupacion === 'proveedor' && filtro?.proveedorId != null ? 'como factura de este proveedor' : 'como gasto vario'}`,
         onClick: () => pedirCarga({ anio: year, mes, conceptoCodigo: c.conceptoCodigo, conceptoNombre: c.nombre, prev: mesAnteriorConValor(c.values, mes),
-          ...(agrupacion === 'proveedor' && filtro?.proveedorId != null ? { proveedorId: filtro.proveedorId } : {}) }),
+          ...(agrupacion === 'proveedor' && filtro?.proveedorId != null ? { proveedorId: filtro.proveedorId } : {}),
+          // Un sueldo (proveedor del POS con legajo, ej. «309 - Diego»): va a Empleados con esa persona (Diego 23/11/2026).
+          ...(agrupacion === 'proveedor' && filtro?.proveedorTexto != null && filtro?.codigo != null ? { empleadoCodigo: String(filtro.codigo) } : {}) }),
       },
       sx: { cursor: 'copy', '&:hover': { bgcolor: '#f0f9ff' } },
     };
