@@ -941,8 +941,28 @@ export default function ArticulosMain(props) {
       }
     };
     window.addEventListener('insumo:mermas-changed', onMermas);
+    // Servicios (Diego 23/11/2026): al cambiar horas o costos de una ancla, el servidor recalcula
+    // toda su familia; se piden solo esos artículos y se mezclan con lo que ya está en pantalla.
+    const onServicio = async (e) => {
+      const ids = (e?.detail?.ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+      if (!ids.length) return;
+      try {
+        const res = await Promise.all(ids.map((articleId) => RecetasAPI.getCostos(Number(activeBizId), { articleId }).catch(() => null)));
+        const costos = Object.assign({}, ...res.map((r) => r?.costos || {}));
+        if (Object.keys(costos).length) {
+          setRecetasCostos(prev => ({ ...prev, ...costos }));
+          queryClient.setQueryData(qk.articleCostsConfig(Number(activeBizId)), (old) => (old ? {
+            ...old, costosRes: { ...(old.costosRes || {}), costos: { ...(old.costosRes?.costos || {}), ...costos } },
+          } : old));
+        }
+      } catch (err) {
+        console.warn('[servicio:costos] refetch parcial falló:', err.message);
+      }
+    };
+    window.addEventListener('servicio:costos', onServicio);
     return () => {
       window.removeEventListener('recetas:bulk-deleted', handler);
+      window.removeEventListener('servicio:costos', onServicio);
       window.removeEventListener('recetas:bulk-added', handler);
       window.removeEventListener('insumo:mermas-changed', onMermas);
     };
