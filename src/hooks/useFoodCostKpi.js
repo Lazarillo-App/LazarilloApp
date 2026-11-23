@@ -116,7 +116,8 @@ export function useFoodCostKpi({ bizId, from, to, activeBranchFilter }) {
     staleTime: STALE.SALES,
     queryFn: () => purchasesFoodCost(biz, { from, to, branch_id: branchParam }),
   });
-  const compras = useMemo(() => (comprasData || []).filter((i) => i.importe > 0), [comprasData]);
+  // Los ítems «sin insumo» (ajuste a la fuente del Panel) pueden ser negativos: cuentan igual (Diego 23/11/2026).
+  const compras = useMemo(() => (comprasData || []).filter((i) => Math.abs(i.importe) >= 0.5), [comprasData]);
 
   // Evolución mensual (13 meses terminando en el mes de `to`) — mismas claves
   // que ArticulosMain para compartir la caché.

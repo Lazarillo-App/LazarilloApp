@@ -25,6 +25,10 @@ export function proyectarGastos(p) {
   const ventasHist = p.historia.reduce((s, h) => s + h.ventas, 0);
   for (const [k, r] of m) {
     const hist = p.historia.reduce((s, h) => s + h.rubros.filter((x) => norm(x.rubro) === k).reduce((a, x) => a + x.total, 0), 0);
+    // Mercaderías con la proyección única del servidor (la misma de Artículos, Diego 23/11/2026).
+    if (esMercaderia(r.rubro) && Number.isFinite(p.mercaderiaProy)) {
+      r.total = p.mercaderiaProy; r.variable = r.total - (r.cargado + r.sinCargar); continue;
+    }
     const objetivo = !meses ? 0
       : esMercaderia(r.rubro) ? (ventasHist > 0 ? (hist / ventasHist) * p.ventasProy : hist / meses)
       : hist / meses;
