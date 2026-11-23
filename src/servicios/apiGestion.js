@@ -99,6 +99,8 @@ export const GestionAPI = {
   compraLineas: (compraId) => api(`${base()}/dashboard/compra-lineas/${encodeURIComponent(compraId)}`),
   conceptosEdicion: () => api(`${base()}/config/conceptos`),
   editarCompra: (rowId, body) => api(`${base()}/dashboard/compras/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
+  // Varias compras de una vez (todo o nada): un solo aviso en la Actividad (Diego 23/11/2026).
+  editarComprasLote: (items, motivo) => api(`${base()}/dashboard/compras-lote`, { method: 'PATCH', body: { items, motivo } }),
   // Fecha de un pago del informe 80 corregida a mano ({ fechaPagoManual: 'YYYY-MM-DD' | null, negocio }).
   editarPago: (rowId, body) => api(`${base()}/dashboard/pagos/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
   editarVenta: (rowId, body) => api(`${base()}/dashboard/ventas/${encodeURIComponent(rowId)}`, { method: 'PATCH', body }),
