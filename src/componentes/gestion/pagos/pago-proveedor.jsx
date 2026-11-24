@@ -325,7 +325,7 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
           </button>
           {!usado && (<>
               <button type="button" disabled={leyendo} onClick={() => archivoRef.current?.click()} title={comp && !editando ? "Otro comprobante: va como otro pago (ej. la parte que salió de otro banco). Para cambiar el primero, sacalo con la ×." : "PDF o foto de la transferencia: completa importe, fecha, medio e ID. Podés elegir varios o soltarlos sobre esta barra."}
-                className="h-11 sm:h-8 flex-1 sm:flex-none min-w-28 px-3 rounded-md border border-dashed border-[#5BC2EA] bg-white text-[#0e7490] text-sm whitespace-nowrap disabled:opacity-50 dark:bg-zinc-900">
+                className="h-11 sm:h-8 flex-1 max-sm:basis-full sm:flex-none min-w-28 px-3 rounded-md border border-dashed border-[#5BC2EA] bg-white text-[#0e7490] text-sm whitespace-nowrap disabled:opacity-50 dark:bg-zinc-900">
                 {leyendo ? "Leyendo…" : comp && editando ? "📎 Cambiar comprobante" : comp ? "📎 Otro comprobante" : "📎 Adjuntar comprobante"}
               </button>
               <input ref={archivoRef} type="file" accept={TIPOS_COMPROBANTE} multiple={!editando} className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.target.value = ""; void adjuntar(fs); }}/>
