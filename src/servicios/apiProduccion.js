@@ -46,4 +46,13 @@ export const ProduccionAPI = {
   consumos: (bid, desde, hasta) => http(`${base(bid)}/consumos?desde=${desde}&hasta=${hasta}`, sin),
   sugerencias: (bid, semana) => http(`${base(bid)}/sugerencias?semana=${semana}`, sin),
   panel: (bid, desde, hasta) => http(`${base(bid)}/panel?desde=${desde}&hasta=${hasta}`, sin),
+  novedades: (bid) => http(`${base(bid)}/novedades`, sin),
+  crearNovedad: (bid, body) => http(`${base(bid)}/novedades`, { method: 'POST', body }),
+  subirFotoNovedad: (bid, file) => {
+    const fd = new FormData();
+    fd.append('file', file, file?.name || 'novedad.jpg');
+    return http(`${base(bid)}/novedades/foto`, { method: 'POST', body: fd });
+  },
+  marcarNovedadVista: (bid, id) => http(`${base(bid)}/novedades/${id}/vista`, { method: 'POST' }),
+  borrarNovedad: (bid, id) => http(`${base(bid)}/novedades/${id}`, { method: 'DELETE' }),
 };

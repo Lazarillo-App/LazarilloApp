@@ -17,6 +17,7 @@ import ProgramarModal from '@/componentes/produccion/ProgramarModal';
 import TareaDetalle from '@/componentes/produccion/TareaDetalle';
 import { TurnosModal, Estimados, Cambios, PanelGeneral, EquipoAreas } from '@/componentes/produccion/Paneles';
 import { MiseEnPlace, Registros, Consumos } from '@/componentes/produccion/Registros';
+import Novedades from '@/componentes/produccion/Novedades';
 import Sugerencias from '@/componentes/produccion/Sugerencias';
 import { useNavigate } from 'react-router-dom';
 import { Boton, Pastilla, Vacio, Texto } from '@/componentes/produccion/ui';
@@ -178,11 +179,13 @@ export default function Produccion() {
     { k: 'prod-mias', t: <>En <b>Mis tareas</b> cada cocinero ve lo que le toca hoy, sigue la receta escalada a las tandas con el <b>cronómetro</b> y avisa si cambió o faltó algún ingrediente.</> },
     { k: 'prod-panel', t: <>En <b>Panel</b> seguís el avance y los tiempos reales contra los estimados, y en <b>Estimados</b> configurás cuánto lleva cada tanda y su vida útil.</> },
     { k: 'prod-registros', t: <>En <b>Mermas y desperdicios</b> registrás lo que se pierde al limpiar un insumo o un descarte de cocina.</> },
+    { k: 'prod-novedades', t: <>En <b>Novedades</b> el equipo de cocina deja avisos con foto opcional (algo dañado, algo sucio, se hizo limpieza o cómo quedó un puesto) que notifican a todos.</> },
   ] : [
     { k: 'prod-mias', t: <>En <b>Mis tareas</b> ves las producciones que tenés asignadas para hoy. Tocá una tarea para ver los ingredientes escalados a las tandas y usar el <b>cronómetro</b> (Iniciar, Pausar y Terminar).</> },
     { k: 'prod-cuerpo', t: <>Adentro de cada tarea también podés cargar un <b>cambio de ingrediente</b> (si usaste otro insumo, otra cantidad o faltó algo, solo por hoy o como cambio de receta) y anotar cuánto rindió al terminar.</> },
     { k: 'prod-semana_staff', t: <>En <b>Semana</b> consultás todo lo que tenés programado en los distintos turnos y días de la semana.</> },
     { k: 'prod-registros', t: <>En <b>Mermas y desperdicios</b> anotás lo que se pierde al limpiar un insumo o cualquier descarte de cocina.</> },
+    { k: 'prod-novedades', t: <>En <b>Novedades</b> dejás avisos para el equipo con foto opcional: si encontraste algo dañado o sucio, si hiciste una limpieza o cómo dejaste tu puesto.</> },
   ];
   const pasosProd = usePasosPresentes(listaPasosProd, `${clave}:${!!ctx}:${ctx?.planifica}:${cargado}:${tareas.length}:${vista}`);
   const recProd = useRecorrido('produccion', pasosProd.length,
@@ -198,9 +201,9 @@ export default function Produccion() {
   if (!ctx) return <div style={{ padding: 24, fontFamily: FB, color: T.text3 }}>Cargando…</div>;
 
   const pestañas = ctx.planifica
-    ? [['turno', 'Semana'], ['persona', 'Por persona'], ['plaza', 'Por plaza'], ['sugerencia', 'Según ventas'], ['mias', 'Mis tareas'], ['panel', 'Panel'], ...(ctx.decide ? [['cambios', 'Cambios']] : []), ['registros', 'Mermas y desperdicios'], ['consumos', 'Consumos'],
+    ? [['turno', 'Semana'], ['persona', 'Por persona'], ['plaza', 'Por plaza'], ['sugerencia', 'Según ventas'], ['mias', 'Mis tareas'], ['panel', 'Panel'], ...(ctx.decide ? [['cambios', 'Cambios']] : []), ['registros', 'Mermas y desperdicios'], ['novedades', 'Novedades'], ['consumos', 'Consumos'],
       ['mise', 'Mise en place'], ['estimados', 'Estimados'], ['equipo', 'Equipo']]
-    : [['mias', 'Mis tareas'], ['semana_staff', 'Semana'], ['registros', 'Mermas y desperdicios']];
+    : [['mias', 'Mis tareas'], ['semana_staff', 'Semana'], ['registros', 'Mermas y desperdicios'], ['novedades', 'Novedades']];
   const enSemana = ['turno', 'persona', 'plaza', 'semana_staff', 'panel', 'registros', 'consumos', 'sugerencia'].includes(vista);
   const mias = tareas.filter((t) => t.responsable_user_id === ctx.uid || (!t.responsable_user_id && !ctx.planifica));
 
@@ -274,6 +277,7 @@ export default function Produccion() {
         {vista === 'equipo' && <EquipoAreas businessId={bid} ctx={ctx} onCambio={cargarCtx} />}
         {vista === 'mise' && <MiseEnPlace businessId={bid} ctx={ctx} cel={cel} />}
         {vista === 'registros' && <Registros businessId={bid} ctx={ctx} desde={lunes} hasta={sumarDias(lunes, 6)} cel={cel} />}
+        {vista === 'novedades' && <Novedades businessId={bid} ctx={ctx} cel={cel} />}
         {vista === 'consumos' && <Consumos businessId={bid} desde={lunes} hasta={sumarDias(lunes, 6)} cel={cel} />}
       </div>
 

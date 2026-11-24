@@ -101,6 +101,7 @@ const COCINA_KINDS = {
   produccion_desperdicio: { icono: '🗑️', color: '#C0392B', abrir: () => '/produccion?vista=registros' },
   produccion_decision: { icono: '✅', color: '#1F8A5B', abrir: aTarea },
   produccion_tarea: { icono: '📋', color: '#15213E', abrir: aTarea },
+  produccion_novedad: { icono: '📌', color: '#2492C8', abrir: () => '/produccion?vista=novedades' },
   mant_falla: { icono: '🛠️', color: '#C0392B', abrir: aOrden },
   mant_orden: { icono: '🔧', color: '#15213E', abrir: aOrden },
 };
@@ -598,6 +599,16 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
         const id = notif.metadata?.orden_id;
         setOpen(false);
         navigate(id ? `/mantenimiento?orden=${id}` : '/mantenimiento');
+      }
+      if (notif.kind === 'produccion_novedad' || notif.metadata?.kind === 'produccion_novedad') {
+        setOpen(false);
+        navigate('/produccion?vista=novedades');
+        return;
+      }
+      if (notif.kind === 'produccion_desperdicio' || notif.metadata?.kind === 'produccion_desperdicio') {
+        setOpen(false);
+        navigate('/produccion?vista=registros');
+        return;
       }
       if (String(notif.kind || '').startsWith('produccion_')) {
         const id = notif.metadata?.tarea_id ?? notif.metadata?.ids?.[0];

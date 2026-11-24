@@ -101,6 +101,15 @@ Cada rol ve lo que necesita para su trabajo:
 - **Mermas de limpieza:** en **Mermas y desperdicios** podés pesar un insumo antes y después de limpiarlo. El sistema calcula el porcentaje de merma real y lo compara con la merma configurada del insumo.
 - **Desperdicios:** permite anotar mercadería o elaborados que hubo que descartar indicando el motivo; todo queda reflejado en la pestaña **Consumos**.`,
       },
+      {
+        id: 'novedades-de-cocina',
+        titulo: 'Novedades de cocina',
+        texto: `En la pestaña **Novedades** cualquier integrante de la cocina puede dejar avisos operativos para el resto del equipo con una foto opcional (que en el celular se puede sacar directo con la cámara):
+
+- **Tipos de novedad:** **Algo dañado**, **Algo sucio**, **Se hizo limpieza**, **Cómo quedó algo** u **Otro**.
+- **Aviso al equipo:** al publicar una novedad les llega una notificación en pantalla y en la campana a todo el equipo de cocina de la sucursal (cocineros y jefes) y al dueño y administrador; al tocarla abre directo la pestaña **Novedades**.
+- **Filtros y control:** la lista se ordena de la más nueva a la más vieja y se puede filtrar por **tipo** y por **persona**. Solo el **dueño** y el **administrador** pueden marcar una novedad como **✓ Vista** o **Eliminarla**.`,
+      },
     ],
   },
   {
