@@ -59,7 +59,7 @@ function BuscadorProveedor({ valor, onElegir, autoFocus }) {
     const buscando = texto !== null && texto !== valor && q.length >= 2;
     const opciones = buscando ? data?.proveedores ?? [] : [];
     const elegir = (c) => { setTexto(null); onElegir(c); };
-    return (<div className="relative w-60">
+    return (<div className="relative w-60 max-sm:w-auto max-sm:flex-1">
       <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"/>
       <input autoFocus={autoFocus} value={texto ?? valor} placeholder="Buscar proveedor..." onFocus={(e) => { setTexto(valor); e.currentTarget.select(); }} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && opciones[0])
         elegir(opciones[0].codPro); if (e.key === "Escape") {
@@ -82,7 +82,9 @@ function FilaMes({ ym, n, total, unidad }) {
       <span className="w-[78px]"/>
     </div>);
 }
-export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCerrar, titulo }) {
+// soloPago (Diego 24/11/2026: «antes al poner pagar estas 2 me abría directo el pago»): al venir con
+// facturas para pagar se ve solo lo que se paga y el formulario; «Ver la cuenta corriente» abre el resto.
+export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCerrar, titulo, soloPago = false, onVerCuenta }) {
     const [origen, setOrigen] = useState(origenInicial);
     const esMovs = !!(origen.nombre && origen.pdvId);
     // Sin proveedor (botón PROVEEDORES del header, Diego 10/11/2026): no se pide nada hasta elegir uno.
@@ -106,6 +108,13 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const queryClient = useQueryClient();
     const [tildadas, setTildadas] = useState(() => new Set((pagar ?? []).map(claveF)));
     const [form, setForm] = useState(pagar?.length ? { tipo: "facturas" } : null);
+    // Celular/tablet: todo scrollea junto y el formulario de pago queda abajo de las listas;
+    // al abrirlo se lleva a la vista (Diego 24/11/2026).
+    const refForm = useRef(null);
+    useEffect(() => {
+        if (form && refForm.current && window.matchMedia("(max-width: 1023.95px)").matches)
+            refForm.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [form?.tipo, form?.pagoId]);
     const [leido, setLeido] = useState(null); // comprobante adjunto en la barra de pago (Diego 23/11/2026)
     const [guardando, setGuardando] = useState(false);
     const [anulando, setAnulando] = useState(null);
@@ -146,7 +155,9 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const fact = facturas.find((f) => claveF(f) === sel) ?? null;
     const aCuenta = data?.modo === "facturas" ? data.aCuenta : [];
     const disponibleACuenta = aCuenta.reduce((s, p) => s + p.disponible, 0);
-    const elegidas = facturas.filter((f) => tildadas.has(claveF(f)) && PAGABLE(f.estado));
+    // Lo tildado se paga aunque el filtro de sucursal lo esconda (una factura aperturada se tilda
+    // desde la sucursal que recibe la parte, pero es de la que compró).
+    const elegidas = (data?.modo === "facturas" ? data.facturas : []).filter((f) => tildadas.has(claveF(f)) && PAGABLE(f.estado));
     const saldoElegidas = elegidas.reduce((s, f) => s + saldoDe(f), 0);
     // Todos los pagos de Lazarillo del proveedor (para "ver orden", editar y anular).
     const pagosLzPorId = new Map();
@@ -209,6 +220,9 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
             setForm(null);
             setTildadas(new Set());
             setLeido(null);
+            // Pago directo: hecho el pago, no queda nada que mirar acá.
+            if (soloPago && onCerrar)
+                onCerrar();
         }
         return err;
     }
@@ -281,7 +295,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         }
         else setLeido(r);
     };
-    const tituloNodo = <span className="text-[19px] font-normal whitespace-nowrap">— cuenta corriente</span>;
+    const tituloNodo = <span className="text-[19px] font-normal whitespace-nowrap max-sm:order-2 max-sm:basis-full max-sm:text-[17px]">— cuenta corriente</span>;
     const nombreHeader = data?.proveedor ?? origen.nombre ?? "";
     const toolbar = (rotulo, placeholder) => (<div className="flex flex-wrap items-center gap-2 mb-2.5 shrink-0">
       <span className="text-[11.5px] font-bold uppercase tracking-wide text-zinc-500">{rotulo}</span>
@@ -329,13 +343,13 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         <span className="flex-1 min-w-0 flex items-baseline gap-2 text-[13px] whitespace-nowrap">
           {/* El comprobante es el vínculo a la factura (Diego 06/11/2026: sin botón "Ver / editar"). */}
           {f.rowId
-                ? <span role="button" title="Ver la factura" onClick={(e) => { e.stopPropagation(); setVerFact({ rowId: f.rowId, detalle: fmtComprobante(f.comprobante) }); }} className="tabular-nums shrink-0 text-[#0369a1] underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer">{fmtComprobante(f.comprobante)}</span>
-                : <span className="tabular-nums shrink-0">{fmtComprobante(f.comprobante)}</span>}
+                ? <span role="button" title="Ver la factura" onClick={(e) => { e.stopPropagation(); setVerFact({ rowId: f.rowId, detalle: fmtComprobante(f.comprobante) }); }} className="tabular-nums shrink-0 max-sm:shrink max-sm:min-w-0 max-sm:truncate text-[#0369a1] underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer">{fmtComprobante(f.comprobante)}</span>
+                : <span className="tabular-nums shrink-0 max-sm:shrink max-sm:min-w-0 max-sm:truncate">{fmtComprobante(f.comprobante)}</span>}
           {f.solo80 && <span className="text-[10px] text-muted-foreground shrink-0" title="El pago está en el informe 80 pero la factura no está en el 14">solo 80</span>}
-          <span className="truncate text-[11.5px] text-zinc-500" title={f.pdv}>{f.pdv}</span>
+          <span className="truncate text-[11.5px] text-zinc-500 max-sm:hidden" title={f.pdv}>{f.pdv}</span>
         </span>
-        <span className="w-[110px] text-right text-[13px] font-semibold tabular-nums">{fmtPesos(f.total)}</span>
-        <span className="w-[78px] text-right">
+        <span className="w-[110px] max-sm:w-[84px] shrink-0 text-right text-[13px] font-semibold tabular-nums">{fmtPesos(f.total)}</span>
+        <span className="w-[78px] max-sm:w-[62px] shrink-0 text-right">
           {f.estado ? (<span title={f.estado === "sin-datos" && data?.modo === "facturas" ? `El informe 80 no cubre antes del ${dmy(data.desdeCobertura)}` : undefined} className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase whitespace-nowrap", BADGE[f.estado])}>
               {f.estado === "sin-datos" ? "s/datos" : f.estado === "auto" ? "automát." : ETIQUETA_ESTADO[f.estado]}
             </span>) : <span className="text-[11px] text-muted-foreground">—</span>}
@@ -354,28 +368,38 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     const vacio = (<p className="px-3 py-2.5 text-[12.5px] text-zinc-500">
       {t ? "Nada coincide con la búsqueda." : "Nada en este período — probá Año o Histórico."}
     </p>);
-    return (<div className="flex flex-col h-full min-h-0 px-6 pt-5 pb-4">
+    return (<div className="flex flex-col h-full min-h-0 px-6 pt-5 pb-4 max-sm:px-4 max-sm:pt-3 max-lg:overflow-y-auto">
       {/* ===== encabezado ===== */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0">
         <BuscadorProveedor valor={nombreHeader} onElegir={cambiarProv} autoFocus={sinProveedor}/>
         {titulo ? titulo(tituloNodo) : tituloNodo}
-        {data?.modo === "facturas" && data.pagoAutomatico && <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-zinc-100 text-zinc-600">pago automático</span>}
-        {data?.modo === "movimientos" && (<span className="text-[12.5px] text-zinc-500">
+        {data?.modo === "facturas" && data.pagoAutomatico && <span className="max-sm:order-3 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-zinc-100 text-zinc-600">pago automático</span>}
+        {data?.modo === "movimientos" && (<span className="text-[12.5px] text-zinc-500 max-sm:order-3">
             {data.esEmpleado ? "Empleado" : "Sin proveedor del maestro"} · {data.pdv}
           </span>)}
-        {opcionesSuc.length > 1 && (<label className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wide text-zinc-500">
+        {!soloPago && opcionesSuc.length > 1 && (<label className="ml-auto max-sm:order-4 max-sm:ml-0 inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wide text-zinc-500">
             Sucursal
             <select value={sucValida} onChange={(e) => setSucursal(e.target.value)} className="h-9 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-2 text-sm font-normal normal-case tracking-normal text-zinc-800 dark:text-zinc-100 outline-none focus:border-sky-500">
               <option value="all">Todas</option>
               {opcionesSuc.map((o) => <option key={o.valor} value={o.valor}>{o.nombre}</option>)}
             </select>
           </label>)}
-        {onCerrar && (<button type="button" onClick={onCerrar} aria-label="Cerrar" className={cn(opcionesSuc.length > 1 ? "ml-3" : "ml-auto", "text-zinc-400 hover:text-zinc-700")}><X className="h-5 w-5"/></button>)}
+        {onCerrar && (<button type="button" onClick={onCerrar} aria-label="Cerrar" className={cn(opcionesSuc.length > 1 ? "ml-3" : "ml-auto", "text-zinc-400 hover:text-zinc-700 max-sm:order-1 max-sm:ml-0 max-sm:h-11 max-sm:w-11 max-sm:inline-flex max-sm:items-center max-sm:justify-center")}><X className="h-5 w-5"/></button>)}
       </div>
 
-      {sinProveedor ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Buscá un proveedor arriba para ver su cuenta corriente.</div>) : isLoading ? (<div className="flex-1 flex items-center justify-center"><Spinner size="lg"/></div>) : isError || !data ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No se pudo leer la cuenta corriente.</div>) : data.modo === "movimientos" ? (
+      {soloPago && data?.modo === "facturas" && elegidas.length > 0 ? (<div className="mt-4 mb-1 shrink-0">
+          <div className="mb-1.5 flex items-baseline gap-2 text-[11.5px] font-bold uppercase tracking-wide text-zinc-500">
+            {elegidas.length === 1 ? "Factura a pagar" : `${elegidas.length} facturas a pagar`}
+            {onVerCuenta && <button type="button" onClick={onVerCuenta} className="ml-auto normal-case tracking-normal text-[12.5px] font-semibold text-[#0d6fa8] hover:underline">Ver la cuenta corriente ›</button>}
+          </div>
+          {elegidas.map((f) => (<div key={claveF(f)} className="flex items-center gap-2.5 border-b border-zinc-100 dark:border-zinc-800 px-1 py-1.5 text-[13px]">
+              <span className="w-[62px] shrink-0 text-[12.5px] text-zinc-600 tabular-nums">{dmy(f.fecha)}</span>
+              <span className="min-w-0 flex-1 truncate tabular-nums">{fmtComprobante(f.comprobante)} <span className="text-[11.5px] text-zinc-500">{f.pdv}</span></span>
+              <span className="shrink-0 text-right font-semibold tabular-nums">{fmtPesos(saldoDe(f))}</span>
+            </div>))}
+        </div>) : sinProveedor ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">Buscá un proveedor arriba para ver su cuenta corriente.</div>) : isLoading ? (<div className="flex-1 flex items-center justify-center"><Spinner size="lg"/></div>) : isError || !data ? (<div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">No se pudo leer la cuenta corriente.</div>) : data.modo === "movimientos" ? (
         /* ================= empleados / gastos varios ================= */
-        <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-6 mt-4 flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-6 mt-4 flex-1 min-h-0 max-lg:flex-none">
           <div className="flex flex-col min-h-0">
             {toolbar(data.esEmpleado ? "Liquidaciones" : "Movimientos", "Buscar concepto u observación...")}
             <div className="flex gap-2.5 px-3 pb-1.5 text-[10.5px] font-bold text-zinc-500 shrink-0">
@@ -421,15 +445,15 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
           </div>
         </div>) : (
         /* ================= proveedor del maestro ================= */
-        <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] gap-6 mt-4 flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] gap-6 mt-4 flex-1 min-h-0 max-lg:flex-none">
           <div className="flex flex-col min-h-0">
             {toolbar("Facturas", "Buscar comprobante...")}
             <div className="flex gap-2.5 px-3 pb-1.5 text-[10.5px] font-bold text-zinc-500 shrink-0">
               <span className="w-[13px]"/>
               <button type="button" onClick={() => clickOrden("fecha")} className="w-[62px] text-left">FECHA{flecha("fecha")}</button>
               <button type="button" onClick={() => clickOrden("comp")} className="flex-1 text-left">COMPROBANTE{flecha("comp")}</button>
-              <button type="button" onClick={() => clickOrden("importe")} className="w-[110px] text-right">IMPORTE{flecha("importe")}</button>
-              <button type="button" onClick={() => clickOrden("estado")} className="w-[78px] text-right">ESTADO{flecha("estado")}</button>
+              <button type="button" onClick={() => clickOrden("importe")} className="w-[110px] max-sm:w-[84px] shrink-0 text-right">IMPORTE{flecha("importe")}</button>
+              <button type="button" onClick={() => clickOrden("estado")} className="w-[78px] max-sm:w-[62px] shrink-0 text-right">ESTADO{flecha("estado")}</button>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto">
               {visiblesF.length === 0 && vacio}
@@ -450,7 +474,7 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                     ? <span role="button" title="Ver la factura" onClick={() => setVerFact({ rowId: fact.rowId, detalle: fmtComprobante(fact.comprobante) })} className="normal-case text-[#0369a1] underline decoration-dotted underline-offset-2 hover:decoration-solid cursor-pointer">{fmtComprobante(fact.comprobante)}</span>
                     : fmtComprobante(fact.comprobante)}</> : "Todos los pagos del proveedor"}
               </span>
-              <span className="ml-auto flex gap-2.5">
+              <span className="ml-auto flex flex-wrap gap-2.5">
                 {fact?.rowId
                 ? <button type="button" onClick={() => setVerFact({ rowId: fact.rowId, detalle: fmtComprobante(fact.comprobante), repetir: true })} title="Cargar una factura nueva con la estructura de esta" className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-800">⟳ Repetir</button>
                 : <Gris><button type="button" disabled className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-semibold">⟳ Repetir</button></Gris>}
@@ -551,12 +575,13 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                             : null;
             if (!modo)
                 return null;
-            return (<FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : "nuevo"} modo={modo} proveedor={data.proveedor} proveedorCuit={data.cuit} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (form.tipo === "facturas")
-                setTildadas(new Set()); setForm(null); setLeido(null); }} onConfirm={confirmarPago}/>);
+            return (<div ref={refForm} className="shrink-0 scroll-mt-2"><FormPagoProveedor key={form.tipo === "editar" ? `e${form.pagoId}` : "nuevo"} modo={modo} proveedor={data.proveedor} proveedorCuit={data.cuit} pdvs={pdvs} pdvDefault={elegidas[0]?.pdvId ?? fact?.pdvId ?? null} aCuenta={aCuenta} guardando={guardando} leido={leido} onLeido={alLeerComprobante} onCancel={() => { if (soloPago && onCerrar)
+                return onCerrar(); if (form.tipo === "facturas")
+                setTildadas(new Set()); setForm(null); setLeido(null); }} onConfirm={confirmarPago}/></div>);
         })()}
 
       {/* ===== pie: totales de lo que se ve ===== */}
-      {data && (<div className="mt-3 -mx-6 -mb-4 px-6 py-2.5 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60 flex flex-wrap items-center gap-x-6 gap-y-1 shrink-0 text-[13.5px]">
+      {data && !(soloPago && elegidas.length > 0) && (<div className="mt-3 -mx-6 -mb-4 px-6 max-sm:-mx-4 max-sm:px-4 py-2.5 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60 flex flex-wrap items-center gap-x-6 gap-y-1 shrink-0 text-[13.5px]">
           {data.modo === "movimientos" ? (<>
               <span className="text-[11.5px] text-zinc-500">{visiblesM.length} movimiento{visiblesM.length === 1 ? "" : "s"} · {etiquetaPeriodo}</span>
               <span className="ml-auto text-zinc-600 dark:text-zinc-300">Total <b className="tabular-nums text-zinc-900 dark:text-zinc-100">{fmtPesos(totalM)}</b></span>
@@ -579,10 +604,12 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
 }
 // Modal propio (desde el proveedor de Detalle de compras o desde Impagas).
 export function CtaCteModal({ origen, resaltado, pagar, onCerrar }) {
+    const [soloPago, setSoloPago] = useState(!!pagar?.length);
     return (<Dialog open onOpenChange={(o) => { if (!o)
         onCerrar(); }}>
-      <DialogContent showCloseButton={false} onOpenAutoFocus={(e) => e.preventDefault()} className="w-[min(1180px,94vw)] max-w-[94vw] sm:max-w-[1180px] h-[min(90vh,820px)] flex flex-col gap-0 p-0 overflow-hidden">
-        <CtaCteContenido origen={origen} resaltado={resaltado} pagar={pagar} onCerrar={onCerrar} titulo={(n) => <DialogTitle asChild>{n}</DialogTitle>}/>
+      <DialogContent showCloseButton={false} onOpenAutoFocus={(e) => e.preventDefault()} className={cn("w-[min(1180px,94vw)] max-w-[94vw] flex flex-col gap-0 p-0 overflow-hidden max-sm:inset-0 max-sm:top-0 max-sm:translate-y-0 max-sm:w-full max-sm:max-w-full max-sm:h-[100dvh] max-sm:max-h-none max-sm:rounded-none",
+            soloPago ? "sm:max-w-[720px] h-auto max-h-[min(90vh,820px)] max-lg:max-h-[calc(100dvh-2rem)]" : "sm:max-w-[1180px] h-[min(90vh,820px)] max-lg:h-[calc(100dvh-2rem)]")}>
+        <CtaCteContenido origen={origen} resaltado={resaltado} pagar={pagar} onCerrar={onCerrar} titulo={(n) => <DialogTitle asChild>{n}</DialogTitle>} soloPago={soloPago} onVerCuenta={() => setSoloPago(false)}/>
       </DialogContent>
     </Dialog>);
 }
