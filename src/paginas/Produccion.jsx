@@ -21,6 +21,10 @@ import Sugerencias from '@/componentes/produccion/Sugerencias';
 import { useNavigate } from 'react-router-dom';
 import { Boton, Pastilla, Vacio, Texto } from '@/componentes/produccion/ui';
 import { isoHoy, lunesDe, sumarDias, diasDeSemana, rangoSemana, diaLargo, textoError } from '@/componentes/produccion/util';
+import SpotlightTour from '@/componentes/SpotlightTour';
+import { usePasosPresentes } from '@/componentes/asistente/pasosHeader';
+import { useAbrirGuia } from '@/componentes/asistente/guias';
+import { useRecorrido } from '@/hooks/useRecorrido';
 
 function useCel() {
   const [cel, setCel] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
@@ -56,6 +60,7 @@ export default function Produccion() {
   const [turnosOpen, setTurnosOpen] = useState(false);
   const [abierta, setAbierta] = useState(null);
   const [cargando, setCargando] = useState(false);
+  const [cargado, setCargado] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => { cargarFuentes(); }, []);
@@ -68,7 +73,7 @@ export default function Produccion() {
   const cargarTareas = useCallback(async () => {
     if (!bid) return;
     setCargando(true);
-    try { const r = await ProduccionAPI.tareas(bid, lunes, sumarDias(lunes, 6)); setTareas(r.tareas || []); } catch (e) { showAlert(textoError(e), 'error'); }
+    try { const r = await ProduccionAPI.tareas(bid, lunes, sumarDias(lunes, 6)); setTareas(r.tareas || []); setCargado(true); } catch (e) { showAlert(textoError(e), 'error'); }
     finally { setCargando(false); }
   }, [bid, lunes, clave]); // eslint-disable-line react-hooks/exhaustive-deps
   const cargarElaborados = useCallback(async () => {
@@ -92,7 +97,7 @@ export default function Produccion() {
     if (b && t.scrollWidth > t.clientWidth) t.scrollTo({ left: b.offsetLeft - (t.clientWidth - b.offsetWidth) / 2, behavior: 'smooth' });
   }, [vista, ctx]);
 
-  useEffect(() => { setCtx(null); cargarCtx(); }, [cargarCtx]);
+  useEffect(() => { setCtx(null); setCargado(false); cargarCtx(); }, [cargarCtx]);
   useEffect(() => { cargarTareas(); }, [cargarTareas]);
   useEffect(() => { cargarElaborados(); cargarCambios(); }, [cargarElaborados, cargarCambios]);
   useEffect(() => { if (vista === 'panel') cargarPanel(); }, [vista, cargarPanel]);
@@ -163,6 +168,32 @@ export default function Produccion() {
     try { await ProduccionAPI.decidir(bid, c.tarea_id, c.id, dec, n || ''); refrescar(); } catch (e) { showAlert(textoError(e), 'error'); }
   };
 
+  useAbrirGuia('produccion', () => {
+    if (ctx?.planifica && !['turno', 'persona', 'plaza'].includes(vista)) setVista('turno');
+  }, !!ctx);
+
+  const listaPasosProd = ctx?.planifica ? [
+    { k: 'prod-programar', t: <>Con <b>+ Programar</b> armás la producción de la semana en tandas (1, ½, 2…), por turno, persona o plaza. Con <b>⟳ Repetir semana anterior</b> copiás la semana pasada y ajustás lo que cambie.</> },
+    { k: 'prod-turno', t: <>En <b>Semana</b> ves la grilla día por día. Tocando cualquier tarea la abrís para usar el <b>cronómetro</b>, cargar un <b>cambio de ingrediente</b> o imprimir sus <b>etiquetas</b>.</> },
+    { k: 'prod-mias', t: <>En <b>Mis tareas</b> cada cocinero ve lo que le toca hoy, sigue la receta escalada a las tandas con el <b>cronómetro</b> y avisa si cambió o faltó algún ingrediente.</> },
+    { k: 'prod-panel', t: <>En <b>Panel</b> seguís el avance y los tiempos reales contra los estimados, y en <b>Estimados</b> configurás cuánto lleva cada tanda y su vida útil.</> },
+    { k: 'prod-registros', t: <>En <b>Mermas y desperdicios</b> registrás lo que se pierde al limpiar un insumo o un descarte de cocina.</> },
+  ] : [
+    { k: 'prod-mias', t: <>En <b>Mis tareas</b> ves las producciones que tenés asignadas para hoy. Tocá una tarea para ver los ingredientes escalados a las tandas y usar el <b>cronómetro</b> (Iniciar, Pausar y Terminar).</> },
+    { k: 'prod-cuerpo', t: <>Adentro de cada tarea también podés cargar un <b>cambio de ingrediente</b> (si usaste otro insumo, otra cantidad o faltó algo, solo por hoy o como cambio de receta) y anotar cuánto rindió al terminar.</> },
+    { k: 'prod-semana_staff', t: <>En <b>Semana</b> consultás todo lo que tenés programado en los distintos turnos y días de la semana.</> },
+    { k: 'prod-registros', t: <>En <b>Mermas y desperdicios</b> anotás lo que se pierde al limpiar un insumo o cualquier descarte de cocina.</> },
+  ];
+  const pasosProd = usePasosPresentes(listaPasosProd, `${clave}:${!!ctx}:${ctx?.planifica}:${cargado}:${tareas.length}:${vista}`);
+  const recProd = useRecorrido('produccion', pasosProd.length,
+    !!bid && !!ctx && !!vista && cargado && !cargando && !errorCtx && !programar && !turnosOpen && !abierta && pasosProd.length > 0,
+    { sinDatos: cargado && !tareas.length });
+  const pasoProd = pasosProd[recProd.paso - 1];
+  const guiaProd = recProd.visible && pasoProd ? (
+    <SpotlightTour key={pasoProd.k} targetRef={pasoProd.ref} pose={recProd.paso === 1 ? 'presenta' : 'senala'}
+      placement="bottom" text={pasoProd.t} {...recProd.props(recProd.paso)} />
+  ) : null;
+
   if (errorCtx) return <div style={{ padding: 24 }}><Vacio emoji="🔒" titulo="Producción">{errorCtx}</Vacio></div>;
   if (!ctx) return <div style={{ padding: 24, fontFamily: FB, color: T.text3 }}>Cargando…</div>;
 
@@ -175,6 +206,7 @@ export default function Produccion() {
 
   return (
     <div style={{ background: T.bg, minHeight: 'calc(100vh - 64px)', padding: cel ? '10px 10px 40px' : '16px 20px 48px', boxSizing: 'border-box', fontFamily: FB }}>
+      {guiaProd}
       {/* encabezado */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={{ fontFamily: FT, fontWeight: 800, fontSize: cel ? 19 : 22, color: T.ink, marginRight: 6 }}>Producción</div>
@@ -193,7 +225,9 @@ export default function Produccion() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Boton onClick={repetir} title="Copia la semana anterior y después ajustás">⟳ Repetir semana anterior</Boton>
             <Boton onClick={() => setTurnosOpen(true)}>⚙ Turnos</Boton>
-            <Boton primario onClick={() => setProgramar({ fecha: dias.includes(isoHoy()) ? isoHoy() : lunes })}>+ Programar</Boton>
+            <span data-tour="prod-programar" style={{ display: 'inline-flex' }}>
+              <Boton primario onClick={() => setProgramar({ fecha: dias.includes(isoHoy()) ? isoHoy() : lunes })}>+ Programar</Boton>
+            </span>
           </div>
         )}
       </div>
@@ -201,11 +235,13 @@ export default function Produccion() {
       {/* pestañas */}
       <div ref={tiraRef} style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4, marginBottom: 12, position: 'relative' }}>
         {pestañas.map(([k, l]) => (
-          <Boton key={k} activo={vista === k} onClick={() => setVista(k)} style={{ flexShrink: 0 }}>
-            {l}{k === 'cambios' && cambios.length > 0 && <Pastilla color="#fff" fondo={T.warn} style={{ marginLeft: 4 }}>{cambios.length}</Pastilla>}
-            {k === 'mias' && mias.filter((t) => t.estado !== 'hecha' && t.estado !== 'cancelada').length > 0 && vista !== 'mias' &&
-              <Pastilla style={{ marginLeft: 4 }}>{mias.filter((t) => t.estado !== 'hecha' && t.estado !== 'cancelada').length}</Pastilla>}
-          </Boton>
+          <span key={k} data-tour={`prod-${k}`} style={{ display: 'inline-flex', flexShrink: 0 }}>
+            <Boton activo={vista === k} onClick={() => setVista(k)} style={{ flexShrink: 0 }}>
+              {l}{k === 'cambios' && cambios.length > 0 && <Pastilla color="#fff" fondo={T.warn} style={{ marginLeft: 4 }}>{cambios.length}</Pastilla>}
+              {k === 'mias' && mias.filter((t) => t.estado !== 'hecha' && t.estado !== 'cancelada').length > 0 && vista !== 'mias' &&
+                <Pastilla style={{ marginLeft: 4 }}>{mias.filter((t) => t.estado !== 'hecha' && t.estado !== 'cancelada').length}</Pastilla>}
+            </Boton>
+          </span>
         ))}
       </div>
 
@@ -215,7 +251,7 @@ export default function Produccion() {
         </div>
       )}
 
-      <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 16, padding: cel ? 10 : 14, boxShadow: T.sombraSuave }}>
+      <div data-tour="prod-cuerpo" style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 16, padding: cel ? 10 : 14, boxShadow: T.sombraSuave }}>
         {(vista === 'turno' || vista === 'persona' || vista === 'plaza' || vista === 'semana_staff') && (
           <>
             {cargando && !tareas.length ? <Texto sutil>Cargando…</Texto> : (
