@@ -253,18 +253,16 @@ export default function Produccion() {
 
       <div data-tour="prod-cuerpo" style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 16, padding: cel ? 10 : 14, boxShadow: T.sombraSuave }}>
         {(vista === 'turno' || vista === 'persona' || vista === 'plaza' || vista === 'semana_staff') && (
-          <>
-            {cargando && !tareas.length ? <Texto sutil>Cargando…</Texto> : (
-              <GrillaSemana dias={dias} filas={vista === 'semana_staff' ? filas : filas} tareas={tareas} claveDe={claveDe} cel={cel}
-                onAbrir={(t) => setAbierta(t.id)} onMover={mover} onNueva={nueva} puedeEditar={ctx.planifica && vista !== 'semana_staff'}
-                mostrar={vista === 'persona' ? 'turno' : 'responsable'} />
-            )}
-            {!tareas.length && !cargando && ctx.planifica && (
-              <Vacio titulo="Semana sin producción programada">
-                Tocá <b>+ Programar</b> o el «+» de un día. Si se parece a la anterior, usá <b>⟳ Repetir semana anterior</b> y ajustá lo que cambie.
-              </Vacio>
-            )}
-          </>
+          cargando && !tareas.length ? <Texto sutil>Cargando…</Texto> : !tareas.length ? (
+            <SemanaEjemplo dias={dias} filas={filas} cel={cel} planifica={ctx.planifica}
+              mostrar={vista === 'persona' ? 'turno' : 'responsable'}
+              onProgramar={() => setProgramar({ fecha: dias.includes(isoHoy()) ? isoHoy() : lunes })}
+              onRepetir={repetir} />
+          ) : (
+            <GrillaSemana dias={dias} filas={filas} tareas={tareas} claveDe={claveDe} cel={cel}
+              onAbrir={(t) => setAbierta(t.id)} onMover={mover} onNueva={nueva} puedeEditar={ctx.planifica && vista !== 'semana_staff'}
+              mostrar={vista === 'persona' ? 'turno' : 'responsable'} />
+          )
         )}
 
         {vista === 'mias' && <MisTareas tareas={mias} dias={dias} lunes={lunes} setLunes={setLunes} onAbrir={(t) => setAbierta(t.id)} cel={cel} planifica={ctx.planifica} />}
@@ -283,6 +281,49 @@ export default function Produccion() {
         ctx={ctx} elaborados={elaborados} dias={dias} cel={cel} sugerencias={sugerencias} />
       <TurnosModal abierto={turnosOpen} onCerrar={() => setTurnosOpen(false)} businessId={bid} turnos={ctx.turnos} onCambio={() => { cargarCtx(); cargarTareas(); }} cel={cel} />
       <TareaDetalle businessId={bid} tareaId={abierta} abierto={!!abierta} onCerrar={() => setAbierta(null)} onCambio={refrescar} ctx={ctx} cel={cel} />
+    </div>
+  );
+}
+
+/** Vista previa de EJEMPLO cuando la semana no tiene tareas programadas (solo se dibuja, no se guarda). */
+function SemanaEjemplo({ dias, filas, cel, planifica, mostrar, onProgramar, onRepetir }) {
+  const f0 = filas[0]?.key || SIN;
+  const f1 = (filas[1] || filas[0])?.key || SIN;
+  const hoy = isoHoy();
+  const dPrincipal = dias.includes(hoy) ? hoy : dias[0];
+  const dOtro1 = dias.find((d) => d !== dPrincipal) || dPrincipal;
+  const dOtro2 = dias.find((d) => d !== dPrincipal && d !== dOtro1) || dOtro1;
+  const ejemplo = [
+    { id: 'ej-1', tipo: 'produccion', titulo: 'Salsa fileto', tandas: 2, rinde_esperado: 10, unidad: 'lt', minutos_estimados: 45, estado: 'hecha', responsable: 'Ana López', turno: 'Mañana', plaza: 'Cocina caliente', fecha: dOtro1, filaKey: f0 },
+    { id: 'ej-2', tipo: 'produccion', titulo: 'Masa de pizza', tandas: 1, rinde_esperado: 20, unidad: 'u', minutos_estimados: 60, estado: 'en_curso', corriendo: true, responsable: 'Juan Pérez', turno: 'Mañana', plaza: 'Panadería', fecha: dPrincipal, filaKey: f0 },
+    { id: 'ej-3', tipo: 'mise_en_place', titulo: 'Mise en place · Línea caliente', tandas: 1, minutos_estimados: 30, estado: 'pendiente', responsable: 'Ana López', turno: 'Tarde', plaza: 'Línea caliente', fecha: dPrincipal, filaKey: f1 },
+    { id: 'ej-4', tipo: 'produccion', titulo: 'Caldo de verduras', tandas: 1.5, rinde_esperado: 15, unidad: 'lt', minutos_estimados: 50, estado: 'pendiente', responsable: 'Mara Díaz', turno: 'Tarde', plaza: 'Cocina caliente', fecha: dOtro2, filaKey: f1 },
+  ];
+  return (
+    <div>
+      <div aria-hidden style={{ opacity: 0.38, pointerEvents: 'none', userSelect: 'none' }}>
+        <GrillaSemana dias={dias} filas={filas} tareas={ejemplo} claveDe={(t) => t.filaKey} cel={cel}
+          onAbrir={() => {}} onMover={() => {}} onNueva={() => {}} puedeEditar={false} mostrar={mostrar} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '14px 12px 8px' }}>
+        <div style={{ width: 460, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 22, textAlign: 'center', boxSizing: 'border-box' }}>
+          <span style={{ display: 'inline-block', fontFamily: FB, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 7, padding: '2px 8px', marginBottom: 10 }}>ARRIBA, UN EJEMPLO</span>
+          <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 18, color: T.text, marginBottom: 6 }}>
+            {planifica ? 'Programá tu primera producción' : 'Semana sin producción programada'}
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 13, color: T.text2, marginBottom: planifica ? 16 : 0 }}>
+            {planifica
+              ? <>Armá la semana por turno, persona o plaza con <b>+ Programar</b>. Si se parece a la anterior, usá <b>⟳ Repetir semana anterior</b> y ajustá lo que cambie.</>
+              : 'Cuando el jefe de cocina programe las tareas de la semana, acá vas a ver qué se prepara cada día y en qué turno.'}
+          </div>
+          {planifica && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Boton primario onClick={onProgramar}>+ Programar</Boton>
+              <Boton onClick={onRepetir}>⟳ Repetir semana anterior</Boton>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

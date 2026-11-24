@@ -146,10 +146,7 @@ export default function Mantenimiento() {
       <div style={{ background: T.band, border: `1px solid ${T.border}`, borderRadius: 16, padding: cel ? 10 : 14, boxShadow: T.sombraSuave }}>
         {vista === 'agenda' && (
           !equipos.length ? (
-            <Vacio emoji="🧰" titulo="Todavía no hay equipos">
-              {ctx.planifica ? <>Cargá tus equipos (heladeras, freidoras, hornos…) con <b>+ Equipo</b> y armales los mantenimientos que se repiten.</> : 'Cuando el jefe cargue los equipos, acá ves lo que te toca.'}
-              {ctx.planifica && <div style={{ marginTop: 4 }}>Empezá cargando tu primer equipo con <b>+ Equipo</b>.</div>}
-            </Vacio>
+            <MantenimientoEjemplo vista="agenda" cel={cel} planifica={ctx.planifica} hoy={hoy} onNuevoEquipo={() => setEquipo({ nuevo: true })} />
           ) : !ordenes.length ? <Vacio emoji="✅" titulo="Nada pendiente">No hay mantenimientos para las próximas dos semanas.</Vacio> : (
             <>
               <Seccion titulo="🔴 Fallas abiertas" color={T.bad} cuenta={grupos.fallas.length}>{lista(grupos.fallas)}</Seccion>
@@ -163,9 +160,7 @@ export default function Mantenimiento() {
 
         {vista === 'equipos' && (
           !equipos.length ? (
-            <Vacio emoji="🧰" titulo="Todavía no hay equipos">
-              {ctx.planifica ? <>Empezá cargando tu primer equipo con <b>+ Equipo</b>.</> : 'Todavía no se cargaron equipos.'}
-            </Vacio>
+            <MantenimientoEjemplo vista="equipos" cel={cel} planifica={ctx.planifica} hoy={hoy} onNuevoEquipo={() => setEquipo({ nuevo: true })} />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
               {equipos.map((e) => {
@@ -207,6 +202,73 @@ export default function Mantenimiento() {
       <EquipoModal businessId={bid} equipoId={equipo?.id} abierto={!!equipo} onCerrar={() => setEquipo(null)} onCambio={cargarTodo} ctx={ctx} cel={cel}
         onFalla={(id) => setFalla({ equipoId: id })}
         onOrden={(id, o) => (o ? setOrden(o) : setNuevaOrden({ equipoId: id }))} />
+    </div>
+  );
+}
+
+const EJEMPLO_EQUIPOS = [
+  { id: 'ej-e1', nombre: 'Heladera mostrador 3 puertas', rubro: 'heladera', marca: 'Briket', ubicacion: 'Cocina', estado: 'activo', planes: 2, fallas: 0, textoProxima: 'próximo lun 1/12' },
+  { id: 'ej-e2', nombre: 'Freidora doble 30 L', rubro: 'freidora', marca: 'Sol Real', ubicacion: 'Línea caliente', estado: 'activo', planes: 1, fallas: 0, textoProxima: 'próximo jue 27/11' },
+  { id: 'ej-e3', nombre: 'Horno convector', rubro: 'horno', marca: 'Pauna', ubicacion: 'Pastelería', estado: 'en_reparacion', planes: 1, fallas: 1, textoProxima: null },
+];
+
+/** Vista previa de EJEMPLO cuando el negocio todavía no tiene equipos cargados (no se guarda). */
+function MantenimientoEjemplo({ vista, cel, planifica, hoy, onNuevoEquipo }) {
+  const ordenesEj = [
+    { id: 'ej-o1', titulo: 'No corta el termostato', equipo: 'Horno convector', ubicacion: 'Pastelería', rubro: 'horno', tipo: 'correctivo', estado: 'pendiente', urgente: true, fecha: hoy, responsable: 'Service técnico' },
+    { id: 'ej-o2', titulo: 'Limpieza de radiador y burletes', equipo: 'Heladera mostrador 3 puertas', ubicacion: 'Cocina', rubro: 'heladera', tipo: 'preventivo', frecuencia: 'Cada mes', estado: 'pendiente', fecha: hoy, responsable: 'Juan Pérez' },
+    { id: 'ej-o3', titulo: 'Cambio de aceite y limpieza profunda', equipo: 'Freidora doble 30 L', ubicacion: 'Línea caliente', rubro: 'freidora', tipo: 'preventivo', frecuencia: 'Cada semana', estado: 'pendiente', fecha: hoy, responsable: 'Ana López' },
+  ];
+  return (
+    <div>
+      <div aria-hidden style={{ opacity: 0.38, pointerEvents: 'none', userSelect: 'none' }}>
+        {vista === 'agenda' ? (
+          <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 }}>
+            {ordenesEj.map((o) => <TarjetaOrden key={o.id} o={o} hoy={hoy} onAbrir={() => {}} />)}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+            {EJEMPLO_EQUIPOS.map((e) => {
+              const est = ESTADO_EQUIPO[e.estado] || ESTADO_EQUIPO.activo;
+              return (
+                <div key={e.id} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, boxShadow: T.sombraSuave }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 24 }}>{RUBRO[e.rubro]?.emoji || '🔧'}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text }}>{e.nombre}</div>
+                      <div style={{ fontSize: 12, color: T.text3 }}>{e.marca} · {e.ubicacion}</div>
+                    </div>
+                    <Pastilla color={est.color} fondo={est.fondo}>{est.label}</Pastilla>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, fontSize: 12, color: T.text2 }}>
+                    {e.fallas > 0 && <Pastilla color={T.bad} fondo="#FBE9E9">{e.fallas} falla</Pastilla>}
+                    <span>{e.planes} mantenimiento{e.planes > 1 ? 's' : ''}</span>
+                    {e.textoProxima && <span>· {e.textoProxima}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '14px 12px 8px' }}>
+        <div style={{ width: 460, maxWidth: '100%', background: T.band, border: `1px solid ${T.border}`, borderRadius: 18, boxShadow: T.sombra, padding: 22, textAlign: 'center', boxSizing: 'border-box' }}>
+          <span style={{ display: 'inline-block', fontFamily: FB, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 7, padding: '2px 8px', marginBottom: 10 }}>ARRIBA, UN EJEMPLO</span>
+          <div style={{ fontFamily: FT, fontWeight: 800, fontSize: 18, color: T.text, marginBottom: 6 }}>
+            {planifica ? 'Cargá tu primer equipo' : 'Todavía no hay equipos'}
+          </div>
+          <div style={{ fontFamily: FB, fontSize: 13, color: T.text2, marginBottom: planifica ? 16 : 0 }}>
+            {planifica
+              ? <>Cargá tus equipos (heladeras, freidoras, hornos…) con <b>+ Equipo</b> y armales los mantenimientos que se repiten.</>
+              : 'Cuando el jefe cargue los equipos del local, acá vas a ver lo que te toca y los controles del día.'}
+          </div>
+          {planifica && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <Boton primario onClick={onNuevoEquipo}>+ Equipo</Boton>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
