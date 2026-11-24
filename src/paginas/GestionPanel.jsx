@@ -10,8 +10,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Stack, Tooltip, IconButton,
+  Box, Paper, Typography, ToggleButton, ToggleButtonGroup, Stack, Tooltip, IconButton, useMediaQuery,
 } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ScreenRotationIcon from '@mui/icons-material/ScreenRotation';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
 import GroupsIcon from '@mui/icons-material/Groups';
@@ -48,7 +51,7 @@ import { buildDetalleFilter } from '@/gestion/detalleFilter';
 import { TIPOS, TIPO_DE_PARAM } from '@/gestion/buscadorTipos';
 import { sxBotonBarra } from '@/gestion/estilos';
 import { PanelGestionContext } from '@/gestion/panelContext';
-import { MESES_IDX } from '@/gestion/formato';
+import { MESES_IDX, MESES } from '@/gestion/formato';
 import { useAccess } from '@/context/AccessContext';
 import SpotlightTour from '@/componentes/SpotlightTour';
 import { usePasosHeader, refTour } from '@/componentes/asistente/pasosHeader';
@@ -244,7 +247,18 @@ function GestionPanelContenido() {
     queryFn: () => GestionAPI.rangoAnios({ sucursal }),
     staleTime: 10 * 60 * 1000,
   });
-  const columnas = estado.meses.length ? estado.meses : MESES_IDX;
+  const mesesPeriodo = estado.meses.length ? estado.meses : MESES_IDX;
+  // Celular parado (Diego 24/11/2026: «me tiene que obligar a girar el móvil o mostrame solo 1 mes»):
+  // la tabla muestra UN mes, con ‹ › para cambiarlo y el aviso de girar para ver todos. Acostado, todos.
+  const celuParado = useMediaQuery('(max-width: 599.95px) and (orientation: portrait)');
+  const hoyPanel = new Date();
+  const mesInicial = estado.year === hoyPanel.getFullYear()
+    ? (mesesPeriodo.includes(hoyPanel.getMonth() + 1) ? hoyPanel.getMonth() + 1 : mesesPeriodo[mesesPeriodo.length - 1])
+    : mesesPeriodo[mesesPeriodo.length - 1];
+  const [mesCelu, setMesCelu] = useState(null);
+  const mesVisible = mesesPeriodo.includes(mesCelu) ? mesCelu : mesInicial;
+  const columnas = celuParado ? [mesVisible] : mesesPeriodo;
+  const idxCelu = mesesPeriodo.indexOf(mesVisible);
   // Sin ninguna venta ni compra (negocio o sucursal recién creados): ejemplo + primer paso (14/11/2026).
   const sinDatosPanel = !!rango.data && rango.data.minYear == null;
   // Panel vacío (Diego 15/11/2026): sin datos no se muestran los controles que no hacen nada todavía
@@ -290,7 +304,7 @@ function GestionPanelContenido() {
   const sinTotalesRubro = oculto('tabla.totales_rubro');
   const paramsComprasPrev = useMemo(() => ({ ...paramsCompras, year: estado.year - 1, months: [] }), [paramsCompras, estado.year]);
   const comprasPrev = useQuery({
-    enabled: !!activeBusinessId && verPanel && estado.tab === 'compras' && (sinTotalesRubro || columnas.length <= 6) && !busquedaActiva,
+    enabled: !!activeBusinessId && verPanel && estado.tab === 'compras' && (sinTotalesRubro || mesesPeriodo.length <= 6) && !busquedaActiva,
     queryKey: ['gestionPivot', activeBusinessId, paramsComprasPrev],
     queryFn: () => GestionAPI.pivot(paramsComprasPrev),
     staleTime: 10 * 60 * 1000,
@@ -459,7 +473,7 @@ function GestionPanelContenido() {
         </Box>
       )}
       {/* Tarjetas del último mes cerrado + proyección del que corre. */}
-      {verPanel && mostrarTarjetas && <Box ref={refsTour.tarjetas} sx={{ zoom: zoomPanel }}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
+      {verPanel && mostrarTarjetas && <Box ref={refsTour.tarjetas} sx={{ zoom: celuParado ? 1 : zoomPanel }}><BloqueSeguro nombre="las tarjetas del mes"><KpiTarjetas /></BloqueSeguro></Box>}
 
       {verPanel && <Paper variant="outlined" sx={{ flex: 1, minHeight: 360, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3,
         // Maximizada: ocupa toda la ventana, debajo de los modales (zIndex 1300) para que el detalle se abra encima.
@@ -504,7 +518,7 @@ function GestionPanelContenido() {
             <span>Buscar</span>
           </Box>}
           {/* A− 100 % A+ (tablero #110): al lado de pantalla completa, así se ve también maximizado. */}
-          {!panelVacio && <ZoomPanel zoom={zoomPanel} onCambiar={cambiarZoom} />}
+          {!panelVacio && !celuParado && <ZoomPanel zoom={zoomPanel} onCambiar={cambiarZoom} />}
           <Tooltip title={maximizado ? 'Salir de pantalla completa (Esc)' : 'Pantalla completa'}>
             <IconButton size="small" data-tour="panel-completa" onClick={() => setMaximizado((v) => !v)} aria-label={maximizado ? 'Salir de pantalla completa' : 'Pantalla completa'}
               sx={{ width: 32, height: 32, borderRadius: 2, border: 1, borderColor: "divider" }}>
@@ -513,7 +527,21 @@ function GestionPanelContenido() {
           </Tooltip>
           </Stack>
         </Stack>}
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', zoom: zoomPanel }}>
+        {celuParado && !panelVacio && mesesPeriodo.length > 1 && (
+          <Stack direction="row" alignItems="center" gap={1} sx={{ px: 1.5, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+            <IconButton aria-label="Mes anterior" disabled={idxCelu <= 0} onClick={() => setMesCelu(mesesPeriodo[idxCelu - 1])}
+              sx={{ width: 44, height: 44, border: 1, borderColor: 'divider', borderRadius: 2 }}><ChevronLeftIcon /></IconButton>
+            <Typography sx={{ flex: 1, textAlign: 'center', fontWeight: 700, fontSize: 16 }}>{MESES[mesVisible - 1]} {estado.year}</Typography>
+            <IconButton aria-label="Mes siguiente" disabled={idxCelu >= mesesPeriodo.length - 1} onClick={() => setMesCelu(mesesPeriodo[idxCelu + 1])}
+              sx={{ width: 44, height: 44, border: 1, borderColor: 'divider', borderRadius: 2 }}><ChevronRightIcon /></IconButton>
+          </Stack>
+        )}
+        {celuParado && !panelVacio && mesesPeriodo.length > 1 && (
+          <Stack direction="row" alignItems="center" justifyContent="center" gap={0.75} sx={{ py: 0.75, color: 'text.secondary', fontSize: 12.5, bgcolor: 'grey.50', borderBottom: 1, borderColor: 'divider' }}>
+            <ScreenRotationIcon sx={{ fontSize: 16 }} /> Girá el celular para ver los {mesesPeriodo.length} meses juntos
+          </Stack>
+        )}
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', zoom: celuParado ? 1 : zoomPanel }}>
         {panelVacio && (
           <PanelEjemplo
             puedeCargar={verCarga}
@@ -535,7 +563,8 @@ function GestionPanelContenido() {
             modoCelda={estado.modoCelda}
             sort={estado.sort}
             onSort={ordenar}
-            historiaPrev={(sinTotalesRubro || columnas.length <= 6) && !busquedaActiva ? comprasPrev.data : null}
+            historiaPrev={(sinTotalesRubro || mesesPeriodo.length <= 6) && !busquedaActiva ? comprasPrev.data : null}
+            angosto={celuParado}
           />
           </BloqueSeguro>
         )}
