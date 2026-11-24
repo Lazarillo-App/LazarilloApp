@@ -18,7 +18,7 @@ export function cargadasDe(rows, rubro) {
 }
 export function lineasRubro(p) {
     const sc = p.sinCargar.filter((s) => norm(s.rubro) === norm(p.rubro) && Math.abs(s.ultimo) > 0.5)
-        .map((s) => ({ nombre: s.nombre, total: s.ultimo, tipo: "sinCargar", nota: "sin cargar" }));
+        .map((s) => ({ nombre: s.nombre, total: s.ultimo, tipo: "sinCargar", nota: "sin cargar", item: s }));
     const est = p.estimado > 0.5 ? [{ nombre: "Resto estimado", total: p.estimado, tipo: "estimado", nota: "promedio" }] : [];
     return [...p.cargadas, ...sc, ...est].sort((a, b) => b.total - a.total);
 }
