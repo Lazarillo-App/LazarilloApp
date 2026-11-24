@@ -1,5 +1,6 @@
 /* eslint-disable */
 // Traído de lazarillo_gestion/components/movil/app-movil.tsx (misma lógica).
+import { createPortal } from "react-dom";
 import { useFoodCostGeneral, alcanceFoodCost } from "@/hooks/useFoodCostGeneral";
 import { gestionFetch } from "@/servicios/apiGestion";
 import { useBusiness } from "@/context/BusinessContext";
@@ -186,7 +187,11 @@ export function AppMovil() {
     // celular y corrida). «clip» y no «hidden», para que el header siga pegado arriba.
     return (<div className="flex min-h-svh flex-col bg-white dark:bg-zinc-950" style={{ overflowX: "clip", maxWidth: "100%" }}>
       {/* Header con el color del negocio y 56 px, igual que la barra de la app en el celular (Diego 08/11/2026). */}
-      <header className="sticky top-0 z-20 flex items-center gap-2 px-4" style={HEADER}>
+      {/* Header y barra de abajo van directo en el <body> (Diego 24/11/2026: en el iPhone, en Sin carga con
+          la lista larga, la barra quedaba en el medio de la pantalla y el header se iba con el scroll). Fuera
+          del contenedor de la app no les afecta ningún ancestro: quedan fijos arriba y abajo. */}
+      <div aria-hidden style={{ height: HEADER.height, flexShrink: 0 }}/>
+      {createPortal(<div className="gestion-tw"><header className="fixed inset-x-0 top-0 z-20 flex items-center gap-2 px-4" style={HEADER}>
         <button type="button" onClick={() => setModulos(true)} aria-label="Módulos" style={{ color: "inherit", marginLeft: -6, width: 36, height: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: 0, background: "transparent", cursor: "pointer" }}><Menu className="size-6"/></button>
         {!enInicio && (hayAtras || tab !== "inicio") && (<button type="button" onClick={atras} aria-label="Volver" className="-ml-2 flex items-center" style={{ color: "inherit" }}><ChevronLeft className="size-6"/></button>)}
         <b className="text-[19px]" style={{ flexShrink: 0 }}>{titulos[tab]}</b>
@@ -199,7 +204,7 @@ export function AppMovil() {
         <select value={actual?.pdvId ?? ""} onChange={(e) => setActualId(Number(e.target.value))} className="ml-auto truncate rounded-full px-3 py-1.5 text-[13px]" style={{ ...CHIP_HEADER, minWidth: 0, maxWidth: "60%" }}>
             {elegidos.map((p) => <option key={p.pdvId} value={p.pdvId}>{p.label}</option>)}
           </select>))}
-      </header>
+      </header></div>, document.body)}
 
       <main className="flex-1 px-4 pt-3 pb-24 touch-pan-y" onTouchStart={(e) => {
             // Las filas que se deslizan (Sin carga) tienen su propia acción: no es "volver".
@@ -244,13 +249,13 @@ export function AppMovil() {
       {eligiendo && <ElegirPdvs locales={locales ?? []} inicial={elegidos.map((p) => p.pdvId)} onListo={guardarSeleccion} onCerrar={() => setEligiendo(false)}
           negocios={negocios} negocioId={negocioId} onNegocio={cambiarNegocio}/>}
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 pb-[env(safe-area-inset-bottom)]">
+      {createPortal(<div className="gestion-tw"><nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 pb-[env(safe-area-inset-bottom)]">
         {[["inicio", Home, "Inicio"], ["cargar", Plus, "Cargar"], ["impagas", CircleDot, "Impagas"], ["sincarga", ClipboardList, "Sin carga"]].map(([k, Icono, t]) => (<button key={k} type="button" onClick={() => { if (k === "sincarga")
             setMesSc(null); if (k === "inicio" && tab === "inicio")
             setReinicio((n) => n + 1); ir(k, null); }} className={cn("flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px]", tab === k ? "font-bold text-zinc-900 dark:text-white" : "text-zinc-500")}>
             <Icono className="size-5"/>{t}
           </button>))}
-      </nav>
+      </nav></div>, document.body)}
     </div>);
 }
 function BotonGrande({ cls, icono, titulo, sub, onClick, deshabilitado }) {
@@ -290,7 +295,8 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
     const prSum = prs ? sumarProyeccion(prs.map((x) => x.proyeccion)) : null;
     const proy = prSum && prSum.anio === ym.anio && prSum.mes === ym.mes ? prSum : null;
     const scs = useMulti(sel, (s) => ["sin-carga", s.pdvId], (s) => `/api/sin-carga?pdvId=${s.pdvId}`, 60_000).list;
-    const sc = scs ? unirSinCarga(scs) : undefined;
+    // Cada gasto sin cargar sabe de qué PDV es (para «Este mes no» desde el desglose por rubro).
+    const sc = scs ? unirSinCarga(scs.map((r, i) => ({ ...r, meses: r.meses.map((m) => ({ ...m, items: m.items.map((x) => ({ ...x, pdvId: sel[i]?.pdvId })) })) }))) : undefined;
     const scActual = sc?.meses.find((m) => m.mes === clave) ?? sc?.meses[0]; // el mes que se mira (Diego 28/10)
     const scActualTot = scActual ? totales(scActual.items, false) : null;
     const scMes = sc?.meses.find((m) => m.mes === clave);
@@ -421,7 +427,7 @@ function Inicio({ sel, irImpagas, irSinCarga, reinicio = 0 }) {
         </div>)}
       <div className="mt-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 p-4">
         <div className="flex items-baseline justify-between"><b>Gastos del mes por rubro{vista?.modo === "proy" ? " · proyectado" : vista?.modo === "falta" ? " · con lo sin cargar" : ""}</b><span className="text-[11.5px] text-zinc-500">% ing</span></div>
-        {[...(vista?.rubros ?? [])].sort((a, b) => b.total - a.total).map((r) => (<RubroMes key={r.rubro} rubro={r.rubro} total={r.total} estimado={r.variable} proyectado={!!proyectado} pctIng={pctIng} abierto={abierto === r.rubro} onToggle={() => setAbiertoEn(abierto === r.rubro ? null : { clave, rubro: r.rubro })} detalle={{ sel, anio: ym.anio, mes: ym.mes }} sinCargar={vista?.modo !== "real" ? (scMes?.items ?? []) : []}/>))}
+        {[...(vista?.rubros ?? [])].sort((a, b) => b.total - a.total).map((r) => (<RubroMes key={r.rubro} rubro={r.rubro} total={r.total} estimado={r.variable} proyectado={!!proyectado} pctIng={pctIng} abierto={abierto === r.rubro} onToggle={() => setAbiertoEn(abierto === r.rubro ? null : { clave, rubro: r.rubro })} detalle={{ sel, anio: ym.anio, mes: ym.mes }} sinCargar={vista?.modo !== "real" ? (scMes?.items ?? []) : []} mesSc={clave}/>))}
         {vista && !vista.rubros.length && <p className="pt-2 text-[13px] text-zinc-500">Sin gastos en el mes.</p>}
       </div>
       <p className="mt-2 text-center text-[11.5px] text-zinc-400">← deslizá para cambiar de mes →</p>
@@ -645,7 +651,8 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
 // Un rubro de "Gastos del mes por rubro": tocándolo se despliega su detalle de mayor a menor
 // (Diego 29/10/2026). Personal por empleado (vista Proveedor del Panel); el resto por insumo
 // o concepto (vista Insumos). Se piden al abrir: un pivot del mes por agrupación, compartido.
-function RubroMes({ rubro, total, estimado, proyectado, pctIng, abierto, onToggle, detalle, sinCargar }) {
+function RubroMes({ rubro, total, estimado, proyectado, pctIng, abierto, onToggle, detalle, sinCargar, mesSc }) {
+    const queryClient = useQueryClient();
     const agrupacion = esPersonal(rubro) ? "proveedor" : "insumo";
     const { sel, anio, mes } = detalle;
     const piv = useMulti(sel, (s) => ["m-rubro-detalle", s.localId, s.pdvId, anio, mes, agrupacion], (s) => (abierto ? `/api/dashboard/pivot?year=${anio}&localId=${s.localId}&pdvId=${s.pdvId}&months=${mes}&agrupacion=${agrupacion}` : null), 5 * 60_000);
@@ -668,7 +675,15 @@ function RubroMes({ rubro, total, estimado, proyectado, pctIng, abierto, onToggl
           {isLoading && <p className="py-1.5 text-zinc-500">Cargando…</p>}
           {isError && <p className="py-1.5 text-red-600">No se pudo traer el detalle.</p>}
           {!isLoading && !isError && !lineas.length && <p className="py-1.5 text-zinc-500">Sin detalle.</p>}
-          {vis.map((l, i) => (<div key={`${l.tipo}-${l.nombre}-${i}`} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-1.5 last:border-0">
+          {vis.map((l, i) => l.tipo === "sinCargar" && l.item?.clave && l.item.pdvId != null ? (
+            // Deslizable como en Sin carga (Diego 24/11/2026): ← «Este mes no» · → «Ya no va». No cambia de mes.
+            <div key={`${l.tipo}-${l.nombre}-${i}`} className="-mx-3" onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
+              <Deslizable onTap={() => {}} onIzquierda={() => void descartarSinCarga(queryClient, l.item.pdvId, l.item, mesSc)} onDerecha={() => void descartarSinCarga(queryClient, l.item.pdvId, l.item, null)}>
+                <span className="min-w-0 flex-1 truncate pl-3 text-[13px]">{l.nombre}<span className="ml-1.5 text-[11px] font-semibold text-amber-600">{l.nota}</span></span>
+                <span className="pr-3 text-[13px] tabular-nums text-zinc-500">{$(l.total)}</span>
+              </Deslizable>
+            </div>
+          ) : (<div key={`${l.tipo}-${l.nombre}-${i}`} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-1.5 last:border-0">
               <span className="min-w-0 flex-1 truncate">{l.nombre}
                 {l.nota && <span className={cn("ml-1.5 text-[11px] font-semibold", l.tipo === "sinCargar" ? "text-amber-600" : "text-sky-700 dark:text-sky-300")}>{l.nota}</span>}</span>
               <span className={cn("tabular-nums", l.tipo !== "cargado" && "text-zinc-500")}>{$(l.total)}</span>
@@ -676,6 +691,7 @@ function RubroMes({ rubro, total, estimado, proyectado, pctIng, abierto, onToggl
           {!todas && resto.length > 0 && (<button type="button" onClick={() => setTodas(true)} className="w-full py-1.5 text-left text-[12.5px] text-sky-700">
               + {resto.length} más · {$(resto.reduce((s, l) => s + l.total, 0))}
             </button>)}
+          {vis.some((l) => l.tipo === "sinCargar" && l.item?.clave) && <p className="pt-1 text-[11.5px] text-zinc-400">Deslizá un gasto sin cargar: ← este mes no · → ya no va</p>}
         </div>)}
     </div>);
 }
@@ -793,21 +809,7 @@ function SinCarga({ pdvId, mesInicial, onCargar, nombrePdv }) {
     const [abierto, setAbierto] = useState(null);
     // Deslizar (Diego 28/10): a la izquierda "Este mes no" (sigue los próximos meses), a la derecha
     // "Ya no va" (no es de todos los meses o ya no se contrata). Con "Deshacer" en el aviso.
-    async function descartar(x, mes) {
-        // Sale de la lista en el acto (Diego 29/10: tardaba); si el servidor falla, vuelve.
-        queryClient.setQueriesData({ queryKey: ["sin-carga", pdvId] }, (v) => sinElGasto(v, x.clave, mes));
-        const r = await gestionFetch("/api/sin-carga/descartes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pdvId, clave: claveDescarte(x.clave, mes), nombre: x.nombre }) }).catch(() => null);
-        const d = await r?.json().catch(() => null);
-        if (!r?.ok) {
-            toast.error("No se pudo marcar");
-            void queryClient.invalidateQueries({ queryKey: ["sin-carga"] });
-            return;
-        }
-        void queryClient.invalidateQueries({ queryKey: ["sin-carga"] });
-        toast(mes ? `${x.nombre}: este mes no` : `${x.nombre}: ya no va`, {
-            action: { label: "Deshacer", onClick: () => { void gestionFetch(`/api/sin-carga/descartes/${d?.id}`, { method: "DELETE" }).then(() => queryClient.invalidateQueries({ queryKey: ["sin-carga"] })); } },
-        });
-    }
+    const descartar = (x, mes) => descartarSinCarga(queryClient, pdvId, x, mes);
     if (isLoading || !data)
         return <p className="py-10 text-center text-zinc-500">Cargando…</p>;
     const mes0 = data.meses.find((m) => m.mes === mesInicial) ?? data.meses[0];
@@ -849,6 +851,22 @@ function porRubro(items) {
 }
 // Fila que se desliza: ← (izquierda) y → (derecha) disparan una acción pasado el umbral; tocar, otra.
 const UMBRAL = 90;
+// «Este mes no» / «Ya no va» de un gasto esperado sin cargar. Lo usan Sin carga y el desglose por rubro de
+// Inicio (Diego 24/11/2026). Sale de la lista en el acto (Diego 29/10: tardaba); si el servidor falla, vuelve.
+async function descartarSinCarga(queryClient, pdvId, x, mes) {
+    queryClient.setQueriesData({ queryKey: ["sin-carga", pdvId] }, (v) => sinElGasto(v, x.clave, mes));
+    const r = await gestionFetch("/api/sin-carga/descartes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pdvId, clave: claveDescarte(x.clave, mes), nombre: x.nombre }) }).catch(() => null);
+    const d = await r?.json().catch(() => null);
+    if (!r?.ok) {
+        toast.error("No se pudo marcar");
+        void queryClient.invalidateQueries({ queryKey: ["sin-carga"] });
+        return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ["sin-carga"] });
+    toast(mes ? `${x.nombre}: este mes no` : `${x.nombre}: ya no va`, {
+        action: { label: "Deshacer", onClick: () => { void gestionFetch(`/api/sin-carga/descartes/${d?.id}`, { method: "DELETE" }).then(() => queryClient.invalidateQueries({ queryKey: ["sin-carga"] })); } },
+    });
+}
 function Deslizable({ children, onTap, onIzquierda, onDerecha }) {
     const [dx, setDx] = useState(0);
     const [arrastra, setArrastra] = useState(false);
