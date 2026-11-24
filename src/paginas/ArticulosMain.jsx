@@ -264,6 +264,26 @@ export default function ArticulosMain(props) {
   // listas por sucursal y queda el precio de siempre.
   const sucursalPrecios = activeBranchFilter?.mode === 'main' ? 'main'
     : activeBranchFilter?.mode === 'branch' ? activeBranchFilter.branchId : 'all';
+  // Costo de los servicios en la sucursal del chip (Diego 23/11/2026): con «Todas», la suma de las dos.
+  const { data: costosServicios = null } = useQuery({
+    enabled: Number(activeBizId) > 0,
+    queryKey: ['serviciosCostos', Number(activeBizId), String(sucursalPrecios)],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/businesses/${Number(activeBizId)}/servicios/costos?sucursal=${encodeURIComponent(String(sucursalPrecios))}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}`, 'X-Business-Id': String(activeBizId) },
+      });
+      const j = await r.json().catch(() => ({}));
+      return r.ok ? (j.costos || {}) : null;
+    },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+  const recetasCostosVista = useMemo(() => {
+    if (!costosServicios || !Object.keys(costosServicios).length) return recetasCostos;
+    const out = { ...recetasCostos };
+    for (const [k, v] of Object.entries(costosServicios)) out[k] = { ...(recetasCostos[k] || {}), ...v };
+    return out;
+  }, [recetasCostos, costosServicios]);
   const { data: preciosSucursal = null } = useQuery({
     enabled: Number(activeBizId) > 0,
     queryKey: ['preciosSucursal', Number(activeBizId), String(sucursalPrecios), sucursalPrecios === 'all' ? periodo.from : null, sucursalPrecios === 'all' ? periodo.to : null],
@@ -944,6 +964,7 @@ export default function ArticulosMain(props) {
     // Servicios (Diego 23/11/2026): al cambiar horas o costos de una ancla, el servidor recalcula
     // toda su familia; se piden solo esos artículos y se mezclan con lo que ya está en pantalla.
     const onServicio = async (e) => {
+      queryClient.invalidateQueries({ queryKey: ['serviciosCostos', Number(activeBizId)] });
       const ids = (e?.detail?.ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
       if (!ids.length) return;
       try {
@@ -3427,7 +3448,7 @@ export default function ArticulosMain(props) {
             onDiscontinuarBloque={isStaff ? undefined : handleDiscontinuarBloque}
             getAmountForId={getAmountForId}
             discIds={effectiveDiscIds}
-            recetasCostos={recetasCostos}
+            recetasCostos={recetasCostosVista}
             recetasElaborados={recetasElaborados}
             priceConfig={priceConfig}
             globalCostoIdeal={globalCostoIdeal}

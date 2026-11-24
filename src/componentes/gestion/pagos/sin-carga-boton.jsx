@@ -155,7 +155,9 @@ function SinCargaModal({ pdvId, localId, onClose }) {
     }
     if (cargando && maestros) {
         const { item, mes } = cargando;
-        const ctx = item.proveedorId
+        // Sueldo de un empleado (Diego 23/11/2026): a Empleados, con la persona y el período.
+        const ctx = item.empleadoCodigo ? { modo: "empleado", empleadoCodigo: item.empleadoCodigo, periodo: mes }
+            : item.proveedorId
             ? { proveedorId: item.proveedorId }
             : { modo: "vario", conceptoCodigo: item.conceptoCodigo, periodo: mes, importe: item.ultimoTotal };
         return (<ModalNuevaCarga maestros={maestros} pdvsRef={pdvsRef} pdvActual={nombrePdv(pdvCarga)} reglaDe={reglaDe} ctx={ctx} onCerrar={() => setCargando(null)} onGuardado={(d) => {

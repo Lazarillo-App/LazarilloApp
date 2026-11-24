@@ -102,6 +102,12 @@ const AVISO_SIN_VIGENTE = {
     registro: "Ninguna regla vigente — este registro no se apertura.",
 };
 export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLocalId, origenPdvId, lote = null, onLoteGuardado, onClose, origenEditable = false, }) {
+    // Quien abre el modal puede pasar el local/PDV como texto ("204"): se normaliza a número. Si no, el
+    // primer destino no encuentra su local (no deja elegir el PDV) y el servidor rechaza la regla
+    // («expected number, received string») — Diego 23/11/2026.
+    const aNum = (v) => (v == null || v === "" ? null : Number(v));
+    origenLocalId = aNum(origenLocalId);
+    origenPdvId = aNum(origenPdvId);
     const queryClient = useQueryClient();
     const esLote = nivel === "registro" && lote != null && lote.length > 1;
     const [view, setView] = useState(esLote ? "formulario" : "lista");
@@ -273,7 +279,7 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
         let creadas = 0;
         let conRegla = 0;
         let fallidas = 0;
-        const cuerpoDestinos = destinos.map((d) => ({ localId: d.localId, puntoDeVentaId: d.puntoDeVentaId, porcentaje: d.porcentaje }));
+        const cuerpoDestinos = destinos.map((d) => ({ localId: aNum(d.localId), puntoDeVentaId: aNum(d.puntoDeVentaId), porcentaje: Number(d.porcentaje) }));
         for (const r of lote) {
             try {
                 const res = await gestionFetch("/api/apertura/reglas", {
@@ -282,8 +288,8 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
                     body: JSON.stringify({
                         nivel: "registro",
                         entidadId: r.entidadId,
-                        origenLocalId: r.origenLocalId,
-                        origenPuntoDeVentaId: r.origenPdvId,
+                        origenLocalId: aNum(r.origenLocalId),
+                        origenPuntoDeVentaId: aNum(r.origenPdvId),
                         ...VIGENCIA_REGISTRO_CUERPO,
                         destinos: cuerpoDestinos,
                     }),
@@ -338,14 +344,14 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
             const usaFechaDesde = vigencia.modo === "entre_fechas" || vigencia.modo === "desde_adelante";
             const usaFechaHasta = vigencia.modo === "entre_fechas" || vigencia.modo === "desde_atras";
             const cuerpoComun = {
-                origenLocalId: origen.localId,
-                origenPuntoDeVentaId: origen.puntoDeVentaId,
+                origenLocalId: aNum(origen.localId),
+                origenPuntoDeVentaId: aNum(origen.puntoDeVentaId),
                 modo: vigencia.modo,
                 fechaDesde: usaFechaDesde ? fechaISOConHora(vigencia.fechaDesde) : null,
                 fechaHasta: usaFechaHasta ? fechaISOConHora(vigencia.fechaHasta) : null,
                 extremosInclusivos: vigencia.extremosInclusivos,
                 confirmarHistorico: vigencia.modo === "historico" ? vigencia.confirmarHistorico : undefined,
-                destinos: destinos.map((d) => ({ localId: d.localId, puntoDeVentaId: d.puntoDeVentaId, porcentaje: d.porcentaje })),
+                destinos: destinos.map((d) => ({ localId: aNum(d.localId), puntoDeVentaId: aNum(d.puntoDeVentaId), porcentaje: Number(d.porcentaje) })),
             };
             const res = editando
                 ? await gestionFetch(`/api/apertura/reglas/${editando.id}`, {
@@ -465,7 +471,8 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
     return (<>
       <Dialog open={entidadId !== null} onOpenChange={(o) => { if (!o)
         onClose(); }}>
-        <DialogContent className="sm:max-w-xl" style={{ maxWidth: 760 }}>
+        {/* Celular (Diego 24/11/2026: «no tengo el botón de confirmar»): pantalla completa, scrollea y las acciones quedan fijas abajo. */}
+        <DialogContent className="sm:max-w-xl max-sm:inset-0 max-sm:top-0 max-sm:translate-y-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:rounded-none max-sm:content-start" style={{ maxWidth: 760 }}>
           <DialogHeader>
             <Badge variant="secondary" className="w-fit">{NIVEL_LABELS[nivel]}</Badge>
             <DialogTitle className="text-base">
@@ -570,9 +577,9 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
 
               {errorGuardar && <p className="text-xs text-destructive">{errorGuardar}</p>}
 
-              <div className="flex flex-col items-end gap-3 pt-2">
+              <div className="sticky -bottom-4 -mx-4 -mb-4 px-4 pt-3 pb-4 bg-popover border-t flex flex-col items-stretch sm:items-end gap-2 z-10">
                 <div className="flex items-center justify-end gap-2">
-                  <button type="button" onClick={() => (esLote ? onClose() : setView("lista"))} disabled={guardando} className="h-8 px-3 rounded-md border text-xs hover:bg-muted disabled:opacity-50">
+                  <button type="button" onClick={() => (esLote ? onClose() : setView("lista"))} disabled={guardando} className="h-11 sm:h-8 px-3 rounded-md border text-sm sm:text-xs hover:bg-muted disabled:opacity-50 max-sm:flex-1">
                     Cancelar
                   </button>
                   <button type="button" onClick={handleGuardar} disabled={guardando ||
@@ -580,7 +587,7 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
                 !sumaValida ||
                 !destinosCompletos ||
                 hayDuplicado ||
-                (vigencia.modo === "historico" && !vigencia.confirmarHistorico)} className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none inline-flex items-center gap-1.5">
+                (vigencia.modo === "historico" && !vigencia.confirmarHistorico)} className="h-11 sm:h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm sm:text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none inline-flex items-center justify-center gap-1.5 max-sm:flex-[2]">
                     {guardando && <Spinner size="sm" className="text-primary-foreground"/>}
                     {esLote
                 ? `Aperturar ${lote.length} registros`

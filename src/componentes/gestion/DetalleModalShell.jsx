@@ -6,7 +6,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box, Dialog, CircularProgress, InputBase, Table, TableHead, TableBody, TableRow, TableCell, IconButton, Tooltip,
+  Box, Dialog, CircularProgress, InputBase, Table, TableHead, TableBody, TableRow, TableCell, IconButton, Tooltip, useMediaQuery,
 } from '@mui/material';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import SearchIcon from '@mui/icons-material/Search';
@@ -31,6 +31,11 @@ export default function DetalleModalShell({
   // Sección debajo de la tabla (gestion: `extra`), p. ej. la cuenta corriente de un registro puntual.
   extra,
 }) {
+  // Celular (Diego 24/11/2026: «en el celu es imposible» y «no anda el scroll lateral»): pantalla completa,
+  // la tabla se desliza de costado con el ancho de sus columnas y, con sección extra, todo scrollea junto.
+  const celu = useMediaQuery('(max-width: 899.95px)');
+  const anchoTabla = (cols || []).reduce((a, c) => a + (typeof c.width === 'number' ? c.width : parseInt(c.width, 10) || 120), 0)
+    + anchoAcciones + (seleccion ? 32 : 0);
   const [sort, setSort] = useState(null);
   const [query, setQuery] = useState('');
   const [visibles, setVisibles] = useState(TANDA);
@@ -88,10 +93,31 @@ export default function DetalleModalShell({
 
   return (
     <Dialog
-      open={open} onClose={onClose} maxWidth={false}
+      open={open} onClose={onClose} maxWidth={false} fullScreen={celu}
       // Con sección extra el alto queda fijo: la tabla toma lo justo y el resto es de la sección.
-      slotProps={{ paper: { sx: { width: { xs: 'calc(100vw - 32px)', sm: '94vw' }, maxWidth: 1600, maxHeight: '85vh', ...(extra ? { height: '85vh' } : {}), m: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 } } }}
+      slotProps={{ paper: { sx: celu
+        ? { width: '100vw', height: '100dvh', maxHeight: 'none', m: 0, display: 'flex', flexDirection: 'column', overflowX: 'hidden', overflowY: extra ? 'auto' : 'hidden', borderRadius: 0 }
+        : { width: { xs: 'calc(100vw - 32px)', sm: '94vw' }, maxWidth: 1600, maxHeight: '85vh', ...(extra ? { height: '85vh' } : {}), m: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 3 } } }}
     >
+      {celu ? (
+        // Celular: título y ✕ arriba, el buscador a todo el ancho y los controles del período debajo.
+        <Box sx={{ px: 2, pt: 1.5, pb: 1.25, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1, position: 'sticky', top: 0, zIndex: 3, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Box sx={{ fontSize: 17, fontWeight: 600 }}>{title}</Box>
+              {subtitle && <Box sx={{ fontSize: 12.5, color: 'text.secondary' }}>{subtitle}</Box>}
+            </Box>
+            <IconButton aria-label="Cerrar" onClick={onClose} sx={{ width: 44, height: 44, flexShrink: 0 }}><CloseIcon /></IconButton>
+          </Box>
+          {headerControls && <Box data-tour="ed-periodo" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, '& > *': { ml: '0 !important' } }}>{headerControls}</Box>}
+          {!error && (!!query || (!isLoading && count > 1)) && (
+            <Box data-tour="ed-buscar" sx={{ display: 'flex', alignItems: 'center', gap: 0.75, height: 44, px: 1.25, border: 1, borderColor: 'divider', borderRadius: 2 }}>
+              <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+              <InputBase value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar…" sx={{ fontSize: 15, flex: 1 }} />
+            </Box>
+          )}
+        </Box>
+      ) : (
       <Box sx={{ px: 3, pt: 2, pb: 1.5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flexWrap: 'wrap' }}>
           <Box sx={{ minWidth: 0 }}>
@@ -113,6 +139,7 @@ export default function DetalleModalShell({
         </Box>
       </Box>
 
+      )}
       {isLoading && <Box sx={{ py: 6, display: 'grid', placeItems: 'center' }}><CircularProgress size={32} /></Box>}
       {error && <Box sx={{ py: 6, textAlign: 'center', fontSize: 14, color: 'error.main' }}>Error al cargar los datos.</Box>}
       {!isLoading && !error && count === 0 && <Box sx={{ py: 6, textAlign: 'center', fontSize: 14, color: 'text.secondary' }}>Sin registros para la selección.</Box>}
@@ -125,8 +152,9 @@ export default function DetalleModalShell({
       )}
 
       {!isLoading && !error && count > 0 && (
-        <Box ref={scrollRef} sx={{ overflowY: 'auto', overflowX: 'hidden', minHeight: 0, ...(extra ? { flex: 'none', maxHeight: '40%' } : { flex: 1 }), pb: filtered.length > 1 ? 1 : 0 }}>
-          <Table size="small" sx={[sxTablaPanel, { tableLayout: 'fixed', width: '100%', '& td, & th': { fontSize: 12 } }]}>
+        <Box ref={scrollRef} sx={{ overflowY: celu && extra ? 'visible' : 'auto', overflowX: celu ? 'auto' : 'hidden', WebkitOverflowScrolling: 'touch', minHeight: 0,
+          ...(extra ? (celu ? { flex: 'none' } : { flex: 'none', maxHeight: '40%' }) : { flex: 1 }), pb: filtered.length > 1 ? 1 : 0 }}>
+          <Table size="small" sx={[sxTablaPanel, { tableLayout: 'fixed', width: '100%', ...(celu ? { minWidth: anchoTabla } : {}), '& td, & th': { fontSize: 12 } }]}>
             <TableHead>
               <TableRow>
                 {seleccion && (
@@ -170,7 +198,7 @@ export default function DetalleModalShell({
       )}
 
       {extra && !isLoading && !error && rawData && (
-        <Box sx={{ flex: 1, minHeight: 0, borderTop: 4, borderColor: 'grey.100', display: 'flex', flexDirection: 'column' }}>{extra(rawData)}</Box>
+        <Box sx={{ flex: celu ? 'none' : 1, minHeight: 0, borderTop: 4, borderColor: 'grey.100', display: 'flex', flexDirection: 'column' }}>{extra(rawData)}</Box>
       )}
       {saveError && <Box sx={{ borderTop: 1, borderColor: 'error.light', px: 3, py: 1, fontSize: 12, color: 'error.main' }}>{saveError}</Box>}
       {count > 0 && (
@@ -182,6 +210,7 @@ export default function DetalleModalShell({
               <>
                 {' · '}<Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>{seleccion.ids.size} tildado{seleccion.ids.size !== 1 ? 's' : ''}</Box>{' · '}
                 <Box component="button" type="button" onClick={seleccion.onLimpiar} sx={{ all: 'unset', cursor: 'pointer', textDecoration: 'underline', '&:hover': { color: 'text.primary' } }}>destildar</Box>
+                {seleccion.accion || null}
               </>
             )}
           </Box>

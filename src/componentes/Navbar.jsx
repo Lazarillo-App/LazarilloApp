@@ -261,6 +261,36 @@ export default function Navbar() {
   // Staff no tiene Inicio ni menú de módulos: su casa es Recetas (11/11).
   const homeTo = isAppAdmin ? '/admin' : (isStaff ? '/insumos' : '/inicio');
 
+  // Sucursales en el header (SucursalesChips): una sola definición para la compu y el celular
+  // (Diego 24/11/2026: en el celular «falta la sucursal»). Se monta en un solo lugar: con `elegir` abre su modal.
+  const chipsSucursales = (() => {
+    if (isAppAdmin) return null;
+    const path = location.pathname;
+    // Artículos, Insumos, Menú y el Panel de Gestión (Diego 10/11/2026: «le falta el selector de sucursal igual que en recetas»).
+    if (path.startsWith('/menu') || path.startsWith('/insumos') || path === '/gestion') return <SucursalesChips celu={celu} />;
+    // Movimientos bancarios y Conciliación: cada sucursal tiene su cuenta (Diego 15/11/2026): sin "Todas" y
+    // sin marcar ninguna hasta que se elige.
+    if (path.startsWith('/movimientos-bancarios') || path.startsWith('/conciliacion')) {
+      return <SucursalesChips celu={celu} sinTodas elegir ayuda={
+        <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
+          <b>Sucursales</b><br />
+          Cada sucursal cobra en su propia cuenta de Mercado Pago: elegí cuál ver.
+        </span>
+      } />;
+    }
+    // Cronogramas: cada sucursal tiene su calendario (Diego, 07/11) → sin "Todas".
+    if (path.startsWith('/rrhh/cronogramas')) {
+      return <SucursalesChips celu={celu} sinTodas ayuda={
+        <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
+          <b>Sucursales</b><br />
+          Cada sucursal tiene su propio cronograma. La nómina y los feriados son los
+          mismos para todas; los eventos son de cada sucursal.
+        </span>
+      } />;
+    }
+    return null;
+  })();
+
   // Botones de las secciones del módulo (Artículos · Insumos | Menú, Cronogramas · Nómina, las plazas…).
   // En la compu van al lado del logo; en el celular, como pestañas debajo del header. Se arma una sola
   // vez y se muestra en un solo lugar (TablerosBotonera trae datos y su modal: no montarla dos veces).
@@ -637,43 +667,14 @@ export default function Navbar() {
                 </Button>
               )}
             </Box>
-            {/* Sucursales: solo donde se ven ventas/compras (Artículos, Insumos, Menú y el Panel de
-                Gestión — Diego 10/11/2026: «le falta el selector de sucursal igual que en recetas»). */}
-            {!isAppAdmin && (location.pathname.startsWith('/menu') || location.pathname.startsWith('/insumos') || location.pathname === '/gestion') && (
-              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
-                <SucursalesChips />
-              </Box>
-            )}
             {/* Tableros (Diego 17/11/2026): debajo de los sectores, sus plazas con el diseño de las sucursales. */}
             {!isAppAdmin && location.pathname.startsWith('/tableros') && (
               <Box data-tour="hdr-plazas" sx={{ pl: 1, pb: 0.25 }}>
                 <TablerosChips />
               </Box>
             )}
-            {/* Movimientos bancarios y Conciliación: cada sucursal tiene su cuenta (Diego 15/11/2026: «me gusta
-                que te haga elegir una cuando entrás, pero después tienen que quedar arriba en el menú como en
-                el resto de las pantallas»). Sin "Todas" y sin marcar ninguna hasta que se elige. */}
-            {!isAppAdmin && (location.pathname.startsWith('/movimientos-bancarios') || location.pathname.startsWith('/conciliacion')) && (
-              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
-                <SucursalesChips sinTodas elegir ayuda={
-                  <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
-                    <b>Sucursales</b><br />
-                    Cada sucursal cobra en su propia cuenta de Mercado Pago: elegí cuál ver.
-                  </span>
-                } />
-              </Box>
-            )}
-            {/* Cronogramas: cada sucursal tiene su calendario (Diego, 07/11) → sin "Todas". */}
-            {!isAppAdmin && location.pathname.startsWith('/rrhh/cronogramas') && (
-              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>
-                <SucursalesChips sinTodas ayuda={
-                  <span style={{ display: 'block', lineHeight: 1.45, padding: 2 }}>
-                    <b>Sucursales</b><br />
-                    Cada sucursal tiene su propio cronograma. La nómina y los feriados son los
-                    mismos para todas; los eventos son de cada sucursal.
-                  </span>
-                } />
-              </Box>
+            {!celu && chipsSucursales && (
+              <Box data-tour="hdr-sucursales" sx={{ pl: 1, pb: 0.25 }}>{chipsSucursales}</Box>
             )}
             </Box>
 
@@ -798,6 +799,13 @@ export default function Navbar() {
             '& .MuiIconButton-root': { width: 36, height: 36, my: 0 },
           }}>
             {botonera}
+          </Box>
+        )}
+        {/* Celular: las sucursales en una segunda fila, como las plazas de Tableros (se deslizan de costado). */}
+        {celu && chipsSucursales && (
+          <Box data-tour="hdr-sucursales" sx={{ display: 'flex', alignItems: 'center', overflowX: 'auto', alignSelf: 'stretch', minHeight: 44, px: 1.5, pb: 0.75,
+            scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+            {chipsSucursales}
           </Box>
         )}
         {/* Celular, Tableros: las plazas del sector en una segunda fila (chips de 30 px, se deslizan de costado). */}

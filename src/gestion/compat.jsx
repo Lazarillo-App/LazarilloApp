@@ -101,7 +101,8 @@ export function DialogContent({ className, children, showCloseButton = true, sty
     <Modal open={open} onClose={() => onOpenChange?.(false)} disableEnforceFocus>
       <div className="gestion-tw" tabIndex={-1} style={{ outline: 'none' }}>
         <div className={cn(
-          'fixed top-1/2 z-[1350] grid gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none inset-x-5 -translate-y-1/2 sm:inset-x-auto sm:left-1/2 sm:w-full sm:-translate-x-1/2 sm:max-w-sm',
+          // max-h + overflow: un modal más alto que la pantalla (celular acostado) scrollea en vez de cortarse.
+          'fixed top-1/2 z-[1350] grid gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none inset-x-5 -translate-y-1/2 sm:inset-x-auto sm:left-1/2 sm:w-full sm:-translate-x-1/2 sm:max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto',
           className,
         )} style={style}>
           {children}

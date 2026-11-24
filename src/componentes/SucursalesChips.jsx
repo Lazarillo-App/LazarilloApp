@@ -43,7 +43,8 @@ const AYUDA = (
 // ayuda: texto del "?" propio de esa pantalla.
 // elegir: pantallas que al entrar piden elegir sucursal (Movimientos bancarios, Conciliación:
 // cada sucursal cobra en su propia cuenta). Mientras no se eligió, ninguna queda marcada.
-export default function SucursalesChips({ sinTodas = false, ayuda = null, elegir = false }) {
+// celu: fila del celular (Diego 24/11/2026) — pastillas de 32 px en una línea que se desliza de costado.
+export default function SucursalesChips({ sinTodas = false, ayuda = null, elegir = false, celu = false }) {
   const { branches, activeBranchId, setActiveBranch, loadBranches } = useBranch() || {};
   const { activeBusinessId } = useBusiness() || {};
   const { isStaff } = useAccess() || {};
@@ -60,13 +61,15 @@ export default function SucursalesChips({ sinTodas = false, ayuda = null, elegir
   const abrirAlta = () => { setEditBranch(null); setModalOpen(true); };
   const abrirEdicion = (e, b) => { e.stopPropagation(); setEditBranch(b); setModalOpen(true); };
 
+  const CH = celu ? { ...CHIP, height: 32, padding: '0 13px', borderRadius: 16, fontSize: 13 } : CHIP;
+  const RD = celu ? { ...REDONDO, width: 32, height: 32, fontSize: 16 } : REDONDO;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: celu ? 8 : 6, flexWrap: celu ? 'nowrap' : 'wrap' }}>
       {lista.length > 0 && (
         <>
           {varias && !sinTodas && (
             <button type="button" onClick={() => setActiveBranch?.(null)}
-              style={{ ...CHIP, ...(esTodas ? CHIP_ON : null) }}>
+              style={{ ...CH, ...(esTodas ? CHIP_ON : null) }}>
               Todas
             </button>
           )}
@@ -81,7 +84,7 @@ export default function SucursalesChips({ sinTodas = false, ayuda = null, elegir
                 onClick={() => setActiveBranch?.(varias ? b.id : null)}
                 onMouseEnter={() => setHover(b.id)} onMouseLeave={() => setHover(null)}
                 title={b.isMain ? `${b.name} (principal)` : b.name}
-                style={{ ...CHIP, ...(on ? CHIP_ON : null) }}>
+                style={{ ...CH, ...(on ? CHIP_ON : null) }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0, border: '1px solid rgba(0,0,0,.15)' }} />
                 {b.name || 'Todas'}
                 {!isStaff && hover === b.id && (
@@ -96,14 +99,14 @@ export default function SucursalesChips({ sinTodas = false, ayuda = null, elegir
       {!isStaff && (
         <Tooltip title="Agregar sucursal" arrow>
           <button type="button" onClick={abrirAlta} aria-label="Agregar sucursal"
-            style={{ ...REDONDO, border: '1px dashed color-mix(in srgb, var(--on-primary) 45%, transparent)' }}>
+            style={{ ...RD, border: '1px dashed color-mix(in srgb, var(--on-primary) 45%, transparent)' }}>
             +
           </button>
         </Tooltip>
       )}
       <Tooltip title={ayuda || AYUDA} arrow>
         <span aria-label="Qué son las sucursales"
-          style={{ ...REDONDO, width: 16, height: 16, fontSize: 10, cursor: 'help', opacity: 0.75,
+          style={{ ...REDONDO, width: celu ? 22 : 16, height: celu ? 22 : 16, fontSize: celu ? 12 : 10, cursor: 'help', opacity: 0.75,
             border: '1px solid color-mix(in srgb, var(--on-primary) 40%, transparent)' }}>
           ?
         </span>

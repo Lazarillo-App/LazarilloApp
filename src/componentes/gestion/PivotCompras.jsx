@@ -86,7 +86,7 @@ const Punto = ({ color, title }) => (
 );
 
 export default function PivotCompras({
-  data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort, historiaPrev,
+  data, isLoading, error, ventas, ventasLoading, months, agrupacion, modoCelda, sort, onSort, historiaPrev, angosto = false,
 }) {
   const { abrirDetalle, pedirCarga, year, modo } = usePanelGestion();
   // Rol a medida: sin totales por rubro (fila del rubro sin números y sin "Total gastos")
@@ -95,7 +95,8 @@ export default function PivotCompras({
   const sinTotalesRubro = oculto('tabla.totales_rubro');
   const sinIngEgr = oculto('tabla.ing_egr');
   // Columna Total: un rol a medida no la ve salvo que se la habiliten (Diego 12/11/2026).
-  const sinColTotal = oculto('tabla.col_total');
+  // angosto: celular parado, un mes (Diego 24/11/2026) — el Total repetiría el mes.
+  const sinColTotal = oculto('tabla.col_total') || angosto;
   const aperturaPanel = useAperturaPanel();
   const { pdvId: lugarPanel } = useDashboard();
   // Sin carga (misma clave de caché que el botón «Sin carga»: no repite el pedido) → los meses con
@@ -189,7 +190,7 @@ export default function PivotCompras({
 
   // Pocos meses (Diego 23/11/2026): la tabla no se estira y, al lado del %, Prom./mes y la
   // variación contra los mismos meses del año anterior (historiaPrev = pivot de year − 1).
-  const pocos = months.length <= 6 && !sinTotalesRubro;
+  const pocos = months.length <= 6 && !sinTotalesRubro && !angosto;
   const hoy = new Date();
   const mesesCerrados = year < hoy.getFullYear() ? months : year > hoy.getFullYear() ? [] : months.filter((m) => m < hoy.getMonth() + 1);
   const celdasExtra = (fila, sx = {}) => {

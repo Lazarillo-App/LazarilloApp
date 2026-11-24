@@ -15,7 +15,7 @@ function esNumeroValido(texto) {
     return Number.isFinite(Number(texto));
 }
 export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onChange, onRemove, removable, }) {
-    const localSeleccionado = locales.find((l) => l.id === destino.localId);
+    const localSeleccionado = locales.find((l) => Number(l.id) === Number(destino.localId));
     const puntosDeVenta = localSeleccionado?.puntosDeVenta ?? [];
     const monto = total !== null ? montoDesdePct(destino.porcentaje, total) : null;
     // ¿Alguna otra fila ya usa un destino que compite por la misma plata que
@@ -100,11 +100,12 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
     // útil al campo por dentro sin que se note, y eran parte de por qué el monto
     // (hasta 11-12 dígitos con totales reales en ARS) aparecía cortado.
     const sinSpinner = "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
-    return (<div className="flex items-center gap-2">
+    // Celular: Local y PDV en un renglón; %, $ y ✕ en el de abajo (Diego 24/11/2026).
+    return (<div className="flex flex-wrap sm:flex-nowrap items-center gap-2 max-sm:pb-2 max-sm:border-b max-sm:last-of-type:border-0">
       <Select value={destino.localId != null ? String(destino.localId) : ""} 
     // Si al elegir el local queda una sola opción de punto de venta libre, se elige sola.
     onValueChange={(v) => onChange(autocompletarDestino({ ...destino, localId: Number(v), puntoDeVentaId: -Number(v) }, locales, otrosDestinos))}>
-        <SelectTrigger className="w-48 shrink-0 text-xs" size="sm">
+        <SelectTrigger className="w-[calc(50%-4px)] sm:w-48 shrink-0 text-xs max-sm:h-11" size="sm">
           <SelectValue placeholder="Local"/>
         </SelectTrigger>
         <SelectContent>
@@ -115,7 +116,7 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
       </Select>
 
       <Select value={destino.puntoDeVentaId != null ? String(destino.puntoDeVentaId) : TODO_EL_LOCAL} onValueChange={(v) => onChange({ ...destino, puntoDeVentaId: v === TODO_EL_LOCAL ? null : Number(v) })} disabled={!localSeleccionado}>
-        <SelectTrigger className="w-48 shrink-0 text-xs" size="sm">
+        <SelectTrigger className="w-[calc(50%-4px)] sm:w-48 shrink-0 text-xs max-sm:h-11" size="sm">
           <SelectValue placeholder="Punto de venta"/>
         </SelectTrigger>
         <SelectContent>
@@ -126,7 +127,7 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
       </Select>
 
       <div className="flex shrink-0 items-center gap-1">
-        <Input type="number" step="0.01" min={0} max={100} className={`h-7 w-16 text-xs text-right ${sinSpinner}`} value={pctDraft} onFocus={() => setCampoActivo("pct")} onBlur={() => desenfocar("pct")} onChange={(e) => handlePctChange(e.target.value)}/>
+        <Input type="number" step="0.01" min={0} max={100} className={`h-11 sm:h-7 w-20 sm:w-16 text-sm sm:text-xs text-right ${sinSpinner}`} value={pctDraft} onFocus={() => setCampoActivo("pct")} onBlur={() => desenfocar("pct")} onChange={(e) => handlePctChange(e.target.value)}/>
         <span className="text-xs text-muted-foreground">%</span>
       </div>
 
@@ -135,7 +136,7 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
             (hay de sobra: Local/PDV/% ya tienen su ancho fijo) en vez de un
             w-24 arbitrario que se queda corto con totales grandes. */}
       <div className="flex min-w-0 flex-1 items-center gap-1">
-        <Input type="text" inputMode="decimal" className="h-7 min-w-0 flex-1 text-xs text-right" 
+        <Input type="text" inputMode="decimal" className="h-11 sm:h-7 min-w-0 flex-1 text-sm sm:text-xs text-right" 
     // Sin total conocido no hay contra qué convertir: se muestra "—" en
     // vez de un $0 que parecería dato real (mismo criterio que el total
     // agregado del modal).
@@ -143,7 +144,7 @@ export function AperturaDestinoRow({ destino, locales, total, otrosDestinos, onC
         <span className="shrink-0 text-xs text-muted-foreground">$</span>
       </div>
 
-      <button type="button" onClick={onRemove} disabled={!removable} title={removable ? "Quitar destino" : "Tiene que quedar al menos un destino"} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none">
+      <button type="button" onClick={onRemove} disabled={!removable} title={removable ? "Quitar destino" : "Tiene que quedar al menos un destino"} className="flex h-11 w-11 sm:h-6 sm:w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none">
         <X className="h-3.5 w-3.5"/>
       </button>
     </div>);

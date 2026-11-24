@@ -74,6 +74,10 @@ const DEPENDIENTES = ['gestionDetalle', 'gestionPivot', 'gestionAnual', 'gestion
 // comprobante Z9999…): su fecha de pago es la de la caja y se corrige en la compra (Diego 23/11/2026).
 const esGastoVario = (c) => !c.comprobante || !c.codigoProveedor || String(c.codigoProveedor).trim().toUpperCase() === 'GV'
   || ['E', 'G'].includes(String(c.comprobante).charAt(0).toUpperCase());
+// Todo lo que es «Gastos Varios» (el GV de Lazarillo y los proveedores del POS que se llaman igual) abre
+// UNA cuenta corriente: la de Gastos Varios (Diego 23/11/2026).
+const esDeGV = (c) => String(c.codigoProveedor ?? '').trim().toUpperCase() === 'GV'
+  || String(c.proveedor ?? c.proveedorRef?.nombre ?? '').trim().toLowerCase() === 'gastos varios';
 const pagosConFechaManual = (c) => (c.estadoPago?.pagos80 ?? []).some((p) => p.manual);
 const esEditada = (c) => c.importeManual != null || c.fechaManual != null || c.conceptoCodigoManual != null || c.observacManual != null
   || c.fechaPagoManual != null || pagosConFechaManual(c);
@@ -260,8 +264,9 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const origenDe = (item) => origenDeFila({
     codigo: item.codigoProveedor, pdvId: lugarDeCompra(item.pdvCompraId), nombre: item.proveedor, tieneMaestro: !!item.proveedorRef,
   });
+  const origenCta = (item) => (esDeGV(item) ? { codPro: 'GV' } : origenDe(item));
   const abrirCtaCte = (item) => {
-    const origen = origenDe(item);
+    const origen = origenCta(item);
     const pdvId = lugarDeCompra(item.pdvCompraId);
     if (origen) setCtaCte({ origen, resaltado: item.comprobante && pdvId != null ? { pdvId, comprobante: item.comprobante } : null });
   };
@@ -552,7 +557,9 @@ export default function ComprasDetalleModal({ filter, onClose }) {
           {/* Gasto vario (Diego 23/11/2026: «quería ver la forma de pago»): no tiene cuenta corriente; en su
               lugar se ve con qué se pagó (la caja del POS o el medio cargado). */}
           {esGastoVario(item) ? (
-            <>{prov}{item.cajaPago && <Box component="span" sx={{ color: 'text.secondary' }}> · {String(item.cajaPago).toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase())}</Box>}</>
+            <>{esDeGV(item) ? (
+              <Box component="button" type="button" title="Ver la cuenta corriente de Gastos Varios" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
+            ) : prov}{item.cajaPago && <Box component="span" sx={{ color: 'text.secondary' }}> · {String(item.cajaPago).toLowerCase().replace(/(^|\s)\S/g, (x) => x.toUpperCase())}</Box>}</>
           ) : origenDe(item) ? (
             <Box component="button" type="button" data-tour="ed-proveedor" title="Ver cuenta corriente" onClick={() => abrirCtaCte(item)} sx={{ all: 'unset', cursor: 'pointer', color: '#0369a1', textDecoration: 'underline dotted', textUnderlineOffset: 2, '&:hover': { textDecorationStyle: 'solid' } }}>{prov}</Box>
           ) : prov}
@@ -571,7 +578,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <TableCell sx={celda} title={normalize(concepto?.rubro?.nombre)}>{normalize(concepto?.rubro?.nombre)}</TableCell>
         <TableCell sx={celda} title={normalize(concepto?.nombre)}>{normalize(concepto?.nombre)}</TableCell>
         <TableCell sx={{ ...celda, textAlign: 'right', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-          {fmtARS(importe != null ? Number(importe) : null)}<Semaforo estado={item.estadoPago} onClick={!stable?.rowId && origenDe(item) ? () => abrirCtaCte(item) : undefined} />
+          {fmtARS(importe != null ? Number(importe) : null)}<Semaforo estado={item.estadoPago} onClick={!stable?.rowId && origenCta(item) ? () => abrirCtaCte(item) : undefined} />
         </TableCell>
         <TableCell sx={{ px: 1, py: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -611,6 +618,35 @@ export default function ComprasDetalleModal({ filter, onClose }) {
   const pasoEd = pasosTourEd[recEd.paso - 1];
 
   const lotePendiente = pendiente ? loteDe(pendiente) : null;
+  // Pagar los tildados (Diego 23/11/2026): si todos son comprobantes impagos del mismo proveedor (o de
+  // Gastos Varios), se abre su cuenta corriente con esos tildados y la barra de pago lista, donde también
+  // se adjunta el comprobante.
+  const accionPagar = (() => {
+    const fs = [...tildadas.values()];
+    if (!fs.length || !fs.every((x) => x.comprobante && ['impaga', 'parcial'].includes(x.estadoPago?.estado))) return null;
+    const cods = new Set(fs.map((x) => origenCta(x)?.codPro ?? null));
+    if (cods.size !== 1 || cods.has(null)) return null;
+    const origen = origenCta(fs[0]);
+    const saldo = fs.reduce((a, x) => a + Math.max(0, Number(x.estadoPago?.total ?? 0) - Number(x.estadoPago?.pagado ?? 0)), 0);
+    // Aperturadas (Diego 24/11/2026: «no coincide con los registros»): la fila muestra la parte de esta
+    // sucursal, pero se paga la factura entera. El botón lo dice y muestra la parte de acá.
+    const parteAca = fs.reduce((a, x) => a + Number(x.importeVista ?? x.importeManual ?? x.importe ?? 0), 0);
+    const aperturadas = Math.abs(parteAca - saldo) > 1;
+    const nombre = fs.length === 1 ? (aperturadas ? 'la factura completa' : 'el tildado') : (aperturadas ? `las ${fs.length} facturas completas` : `los ${fs.length} tildados`);
+    return (
+      <>
+      <Button size="small" variant="contained" disableElevation onClick={() => setCtaCte({ origen, resaltado: null, pagar: fs.map((x) => ({ pdvId: lugarDeCompra(x.pdvCompraId), comprobante: x.comprobante })) })}
+        sx={{ ml: 1, height: 28, textTransform: 'none', fontSize: 12, fontWeight: 600, bgcolor: '#111', '&:hover': { bgcolor: '#333' } }}>
+        Pagar {nombre}{saldo > 0 ? ` (${fmtARS(saldo)})` : ''}
+      </Button>
+      {aperturadas && (
+        <Tooltip title="Las facturas están aperturadas entre sucursales: el pago salda la factura entera. Acá se ve solo la parte que le toca a esta sucursal.">
+          <Box component="span" sx={{ ml: 1, fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>· en esta sucursal {fmtARS(parteAca)}</Box>
+        </Tooltip>
+      )}
+      </>
+    );
+  })();
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
     ? `Fecha de gasto, fecha de pago, concepto y observación se aplican a los ${tildadas.size} tildados; el importe, solo a este (salvo $0: va a todos)`
     : editing?.ajena ? 'Se carga en otro negocio y se reparte: el importe es el total; al guardar se corrige allá y se vuelve a repartir'
@@ -630,7 +666,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         onServerQuery={buscaEnServidor ? setQServidor : undefined}
         searchFields={searchFields}
         sortFn={sortCompras}
-        seleccion={conSeleccion ? { ids: new Set(tildadas.keys()), idDe: (r) => r.rowId, onCambiar: cambiarTildadas, onLimpiar: () => setTildadas(new Map()) } : undefined}
+        seleccion={conSeleccion ? { ids: new Set(tildadas.keys()), idDe: (r) => r.rowId, onCambiar: cambiarTildadas, onLimpiar: () => setTildadas(new Map()), accion: accionPagar } : undefined}
         saveError={saveError}
         footerNote={nota}
         headerControls={conPeriodo ? <>
@@ -663,7 +699,7 @@ export default function ComprasDetalleModal({ filter, onClose }) {
         <SpotlightTour key={pasoEd.k} targetRef={pasoEd.ref} pose={recEd.paso === 1 ? 'presenta' : 'senala'} placement="bottom" text={pasoEd.t} {...recEd.props(recEd.paso)} />
       </>)}
       <ModalAperturaPanel panel={aperturaPanel} />
-      {ctaCte && <ScopeGestion><CtaCteModal origen={ctaCte.origen} resaltado={ctaCte.resaltado} onCerrar={() => setCtaCte(null)} /></ScopeGestion>}
+      {ctaCte && <ScopeGestion><CtaCteModal origen={ctaCte.origen} resaltado={ctaCte.resaltado} pagar={ctaCte.pagar} onCerrar={() => setCtaCte(null)} /></ScopeGestion>}
       <VerFactura rowId={lineas?.rowId ?? null} detalle={lineas?.detalle ?? null} onClose={() => setLineas(null)} />
       <Dialog open={pendiente !== null} onClose={() => setPendiente(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontSize: 16 }}>Aplicar a los registros tildados</DialogTitle>

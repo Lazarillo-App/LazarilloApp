@@ -7,6 +7,8 @@
 // Tablero #3 (17/11/2026): el mes cerrado se puede elegir (por defecto, el último); vale para el año
 // que se mira y vuelve al último al cambiar de año.
 
+import { useFoodCostGeneral } from '@/hooks/useFoodCostGeneral';
+import { useBranch } from '@/hooks/useBranch';
 import { ScopeGestion, useDashboard, useFetchQuery } from '@/gestion/compat';
 import { ImpagasBoton } from './pagos/impagas-boton';
 import { SinCargaBoton } from './pagos/sin-carga-boton';
@@ -35,7 +37,7 @@ const pc = (x) => (x == null ? '—' : `${(x * 100).toLocaleString('es-AR', { mi
 const ppTxt = (d) => `${d > 0 ? '▲' : '▼'} ${Math.abs(d).toLocaleString('es-AR', { maximumFractionDigits: 1 })}`;
 
 export default function KpiTarjetas() {
-  const { year, modo, sucursalCaja, busquedaActiva } = usePanelGestion();
+  const { year, modo, sucursalCaja, busquedaActiva, businessId } = usePanelGestion();
   // Rol a medida: tarjetas que el rol no ve (sin rol a medida se ve todo).
   const { oculto = () => false } = useAccess() || {};
   const ver = (k) => !oculto(`tarjeta.${k}`);
@@ -57,10 +59,18 @@ export default function KpiTarjetas() {
   const mc = ultimo && elegido?.year === year && cerrados.includes(elegido.mes) ? elegido.mes : ultimo;
   const canasta = useCanasta(mc ? { anio: year, mes: mc } : null);
   const rc = canasta.data && canasta.data.componentes.length ? resumirCanasta(canasta.data) : null;
+  // Food cost = el KPI «General» de Artículos tal como está configurado (Diego 23/11/2026); Mix = ese + personal.
+  const { activeBranchFilter } = useBranch() || {};
+  const fcGen = useFoodCostGeneral(businessId ? { bizId: businessId, activeBranchFilter } : null);
+  const fcDe = (anio, mes, proy = false) => {
+    const r = fcGen?.get(`${anio}-${String(mes).padStart(2, '0')}`);
+    return r ? (proy && r.proyPct != null ? r.proyPct : r.pct) : null;
+  };
 
   if (modo !== 'economica' || busquedaActiva) return null;
   const anteriorDic = anualAnt?.meses.find((m) => m.mes === 12) ?? null;
-  const t = anual && mc ? tarjetasDelMes(anual.meses, mc, eq ? eq.porMes[mc]?.total ?? 0 : null, mc === 1 ? anteriorDic : undefined) : null;
+  const t = anual && mc ? tarjetasDelMes(anual.meses, mc, eq ? eq.porMes[mc]?.total ?? 0 : null, mc === 1 ? anteriorDic : undefined,
+    { actual: fcDe(year, mc), anterior: mc === 1 ? fcDe(year - 1, 12) : fcDe(year, mc - 1) }) : null;
   if (!anual || !t) return null;
 
   // Mes en curso: ventas proyectadas, egresos proyectados y equilibrio con el % variable de los cerrados.
@@ -74,7 +84,8 @@ export default function KpiTarjetas() {
   const toggle = (k) => setAbierta((a) => (a === k ? null : k));
   const e = t.equilibrio;
   const alertasTodas = [
-    ...alertasDelMes(conPersonalCompleto([...anual.meses].sort((a, b) => a.mes - b.mes)), t, t.mes <= 6 ? (anualAnt?.meses ?? []).filter((m) => m.mes > t.mes + 6) : []),
+    ...alertasDelMes(conPersonalCompleto([...anual.meses].sort((a, b) => a.mes - b.mes)), t, t.mes <= 6 ? (anualAnt?.meses ?? []).filter((m) => m.mes > t.mes + 6) : [],
+      (m, delAnterior) => fcDe(delAnterior ? year - 1 : year, m.mes)),
     ...(eqProy && eqProy.falta > 0 && enCurso ? [{ texto: `${MES[enCurso - 1]}: faltan ${fmtMillones(eqProy.falta)} para el equilibrio`, nivel: 'ambar' }] : []),
   ];
   // Sin la tarjeta de Equilibrio o de Resultado, tampoco se cuentan por las alertas.
@@ -196,7 +207,7 @@ export default function KpiTarjetas() {
       {abierta && abierta !== 'canasta' && (
         <Evolucion
           clave={abierta} anio={year} mesHasta={t.mes} meses={anual.meses} mesesAnt={anualAnt?.meses ?? []}
-          variablePorMes={eq?.porMes ?? null} onCerrar={() => setAbierta(null)}
+          variablePorMes={eq?.porMes ?? null} onCerrar={() => setAbierta(null)} fcDe={fcGen ? fcDe : null}
           proyectado={enCurso ? { mes: enCurso, ventas: ventasProy, gastos: egrProy.total, rubros: egrProy.rubros, equilibrio: eqProy?.equilibrio ?? null } : null}
         />
       )}
@@ -309,7 +320,7 @@ function Tarjeta({ titulo, activa, deshabilitada, onClick, children }) {
 }
 
 // Evolución de la tarjeta tocada, a todo el ancho (como en el celu): barras de los últimos 3/6/9/12 meses.
-function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onCerrar, proyectado }) {
+function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onCerrar, proyectado, fcDe = null }) {
   const [n, setN] = useState(6);
   // Mismo criterio que las tarjetas (Diego 06/11/2026: "en la barra dice una cosa y en el número otra"):
   // el personal a medio cargar se completa con el último mes completo y la barra queda marcada.
@@ -326,7 +337,9 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
     if (!conProy) return null;
     const i = indicadores(conProy.ventas, conProy.rubros);
     const res = conProy.ventas - conProy.gastos;
-    return { ...i, gastos: conProy.gastos, resultado: res, rentabilidad: res / conProy.ventas }[k];
+    const fc = fcDe ? fcDe(anio, conProy.mes, true) : null;
+    const conFc = fc == null ? {} : { foodCost: fc, mix: fc + (i.personal ?? 0) };
+    return { ...i, gastos: conProy.gastos, resultado: res, rentabilidad: res / conProy.ventas, ...conFc }[k];
   };
   const actualDe = (k) => (conProy ? { valor: valorProy(k), proyectado: true } : undefined);
   let serie;
@@ -344,7 +357,7 @@ function Evolucion({ clave, anio, mesHasta, meses, mesesAnt, variablePorMes, onC
     });
   } else {
     titulo = INFO_INDICADOR[clave].titulo; plata = INFO_INDICADOR[clave].tipo === 'plata'; claveSentido = clave;
-    serie = serieIndicador({ meses: todos, clave, hasta, n: nn, actual: actualDe(clave) });
+    serie = serieIndicador({ meses: todos, clave, hasta, n: nn, actual: actualDe(clave), foodCostDe: fcDe ? (a, m) => fcDe(a, m) : null });
   }
   // Misma escala para barras y marca; la más baja arranca en 25% para que se vean las diferencias
   // sin exagerarlas (como en el celu).
