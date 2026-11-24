@@ -15,11 +15,14 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined';
+import DoNotDisturbOnOutlinedIcon from '@mui/icons-material/DoNotDisturbOnOutlined';
+import { useCelular } from '@/componentes/base';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBusiness } from '@/context/BusinessContext';
 import { GestionAPI } from '@/servicios/apiGestion';
 import { CODIGO_MIN_LAZARILLO, TIPOS_CONCEPTO, esPropio, proximoCodigoLazarillo } from '@/gestion/cargaUtils';
 import { rangosLibres, cantidadLibres, textoRango, libreDesde, MAX_CODIGO_CONCEPTO } from '@/gestion/codigosLibres';
+import DiscontinuarConcepto, { fechaCorta } from '@/componentes/gestion/DiscontinuarConcepto';
 
 const sxLabel = { display: 'flex', flexDirection: 'column', gap: 0.5, fontSize: 12, color: 'text.secondary' };
 const sxOriginal = { fontSize: 11, color: 'text.disabled' };
@@ -148,11 +151,22 @@ function CopiarCodigo({ codigo, grande = false }) {
   );
 }
 
+// Uso (Diego 20/11/2026): «sin uso» = nada en los últimos 12 meses (con la fecha del último), «nunca usado»
+// = ningún registro. Se ve con una etiqueta de color, no con un punto gris que no se nota.
+const sxChip = (estado) => ({
+  display: 'inline-flex', alignItems: 'center', height: 20, px: 1, borderRadius: 10, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0,
+  ...(estado === 'nunca' ? { bgcolor: '#fdecec', color: '#a32d2d' } : estado === 'dormido' ? { bgcolor: '#fdf3e0', color: '#8a5300' } : { bgcolor: 'grey.200', color: 'text.secondary' }),
+});
+const estadoUso = (u) => (!u?.ultimo ? 'nunca' : u.n12 > 0 ? 'activo' : 'dormido');
+const textoChip = (u, corto) => (!u?.ultimo ? (corto ? 'Nunca' : 'Nunca usado') : `${corto ? '' : 'Sin uso desde '}${fechaCorta(u.ultimo).slice(3)}`);
+const sxBotonTexto = { all: 'unset', cursor: 'pointer', fontSize: 12, color: 'text.secondary', px: 0.75, height: 24, display: 'inline-flex', alignItems: 'center', borderRadius: 1, flexShrink: 0, '&:hover': { bgcolor: 'action.hover', color: 'text.primary' } };
+
 const Flecha = ({ abierta }) => <ExpandMoreIcon sx={{ fontSize: 16, flexShrink: 0, color: 'text.secondary', transition: 'transform .15s', transform: abierta ? 'none' : 'rotate(-90deg)' }} />;
 
 export default function GestionConceptos() {
   const { activeBusinessId } = useBusiness() || {};
   const queryClient = useQueryClient();
+  const celular = useCelular();
   const { data, isLoading, error } = useQuery({
     queryKey: ['gestionConceptos', activeBusinessId],
     queryFn: () => GestionAPI.conceptos(),
@@ -169,6 +183,8 @@ export default function GestionConceptos() {
   const [formEn, setFormEn] = useState(null);
   const [aBorrar, setABorrar] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [verDiscontinuados, setVerDiscontinuados] = useState(false);
+  const [aDiscontinuar, setADiscontinuar] = useState(null);
 
   // Crear o cambiar un concepto también cambia lo que ofrecen la carga y el modal de edición.
   const refrescar = () => {
@@ -189,6 +205,66 @@ export default function GestionConceptos() {
   const conceptos = useMemo(() => data?.conceptos ?? [], [data]);
   const conRegistros = useMemo(() => (data?.conRegistros ? new Set(data.conRegistros) : null), [data]);
   const sinUso = (c) => conRegistros != null && !conRegistros.has(String(c.codigo));
+  const negocios = useMemo(() => data?.negocios ?? [], [data]);
+  // Uso por concepto: total y por negocio.
+  const uso = useMemo(() => {
+    const m = new Map();
+    for (const f of data?.uso ?? []) {
+      const k = String(f.c);
+      const t = m.get(k) ?? { ultimo: null, n12: 0, porNegocio: new Map() };
+      if (!t.ultimo || f.ultimo > t.ultimo) t.ultimo = f.ultimo;
+      t.n12 += f.n12;
+      t.porNegocio.set(f.b, { ultimo: f.ultimo, n12: f.n12 });
+      m.set(k, t);
+    }
+    return m;
+  }, [data]);
+  const usoDe = (cs) => {
+    const t = { ultimo: null, n12: 0, porNegocio: new Map() };
+    for (const c of cs) {
+      const u = uso.get(String(c.codigo));
+      if (!u) continue;
+      if (!t.ultimo || u.ultimo > t.ultimo) t.ultimo = u.ultimo;
+      t.n12 += u.n12;
+      for (const [b, x] of u.porNegocio) {
+        const y = t.porNegocio.get(b) ?? { ultimo: null, n12: 0 };
+        t.porNegocio.set(b, { ultimo: !y.ultimo || x.ultimo > y.ultimo ? x.ultimo : y.ultimo, n12: y.n12 + x.n12 });
+      }
+    }
+    return t;
+  };
+  // Discontinuados: alcance 'org' (toda la organización) o la lista de negocios.
+  const alcance = useMemo(() => {
+    const m = new Map();
+    for (const d of data?.discontinuados ?? []) {
+      const k = `${d.tipo}:${d.codigo}`;
+      if (d.businessId == null) m.set(k, 'org');
+      else if (m.get(k) !== 'org') m.set(k, [...(m.get(k) ?? []), d.businessId]);
+    }
+    return m;
+  }, [data]);
+  const textoAlcance = (a) => (a === 'org' || negocios.length <= 1 ? 'Discontinuado' : `Discontinuado en ${a.map((id) => negocios.find((n) => n.id === id)?.nombre ?? id).join(', ')}`);
+  const alcanceRubro = (cs) => (cs[0]?.codRubro != null ? alcance.get(`rubro:${cs[0].codRubro}`) : undefined);
+  const nDiscontinuados = (data?.discontinuados ? new Set(data.discontinuados.map((d) => `${d.tipo}:${d.codigo}`)).size : 0);
+  async function discontinuar(item, businessIds) {
+    try {
+      await GestionAPI.discontinuarConcepto({ tipo: item.tipo, codigo: String(item.codigo), businessIds });
+      setADiscontinuar(null);
+      setAviso({ sev: 'success', txt: `«${item.nombre}» discontinuado` });
+      refrescar();
+    } catch (e) {
+      setAviso({ sev: 'error', txt: e?.data?.error ?? 'No se pudo discontinuar' });
+    }
+  }
+  async function reactivar(item) {
+    try {
+      await GestionAPI.reactivarConcepto({ tipo: item.tipo, codigo: String(item.codigo) });
+      setAviso({ sev: 'success', txt: `«${item.nombre}» reactivado` });
+      refrescar();
+    } catch (e) {
+      setAviso({ sev: 'error', txt: e?.data?.error ?? 'No se pudo reactivar' });
+    }
+  }
   const porCodigo = useMemo(() => new Map(conceptos.map((c) => [c.codigo, c])), [conceptos]);
   const deMaxirest = useMemo(() => conceptos.filter((c) => !esPropio(c.codigo)), [conceptos]);
   const maximo = useMemo(() => Math.max(MAX_CODIGO_CONCEPTO, ...deMaxirest.map((c) => c.codigo)), [deMaxirest]);
@@ -210,8 +286,17 @@ export default function GestionConceptos() {
       const k = c.rubro ? `${c.codRubro ?? ''} · ${c.rubro}` : 'Sin rubro';
       m.set(k, [...(m.get(k) ?? []), c]);
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }));
-  }, [conceptos, q]);
+    const visibles = [...m.entries()]
+      .map(([k, cs]) => {
+        const rubroFuera = cs[0]?.codRubro != null && alcance.has(`rubro:${cs[0].codRubro}`);
+        if (verDiscontinuados || t) return [k, cs];
+        if (rubroFuera) return null;
+        const quedan = cs.filter((c) => !alcance.has(`concepto:${c.codigo}`));
+        return quedan.length ? [k, quedan] : null;
+      })
+      .filter(Boolean);
+    return visibles.sort((a, b) => a[0].localeCompare(b[0], 'es', { numeric: true }));
+  }, [conceptos, q, alcance, verDiscontinuados]);
 
   const formulario = form && (
     <Formulario
@@ -289,12 +374,18 @@ export default function GestionConceptos() {
                 <Box component="button" type="button" onClick={() => setRubrosAbiertos(rubrosAbiertos.size >= grupos.length ? new Set() : new Set(grupos.map(([r]) => r)))} sx={{ all: 'unset', cursor: 'pointer', fontSize: 12, color: 'text.secondary', '&:hover': { textDecoration: 'underline' } }}>
                   {rubrosAbiertos.size >= grupos.length ? 'Cerrar todos' : 'Abrir todos'}
                 </Box>
-                {conRegistros && <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 12, color: 'text.secondary' }}><Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'grey.300' }} /> sin registros en el Panel</Box>}
+                {conRegistros && <Box component="span" title="Sin registros en los últimos 12 meses" sx={sxChip('dormido')}>Sin uso +12 meses</Box>}
+                {conRegistros && <Box component="span" title="Sin ningún registro" sx={sxChip('nunca')}>Nunca usado</Box>}
+                {nDiscontinuados > 0 && (
+                  <Box component="button" type="button" onClick={() => setVerDiscontinuados(!verDiscontinuados)} sx={{ ...sxBotonTexto, color: verDiscontinuados ? '#0369a1' : 'text.secondary' }}>
+                    {verDiscontinuados ? 'Ocultar' : 'Ver'} discontinuados ({nDiscontinuados})
+                  </Box>
+                )}
                 <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, fontSize: 12, color: 'text.secondary' }}><Box component="span" sx={sxEtiqueta('#e0f2fe', '#0369a1')}>LZ</Box> de Lazarillo (desde {CODIGO_MIN_LAZARILLO})</Box>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: { xs: 'wrap', sm: 'nowrap' }, width: { xs: '100%', sm: 'auto' } }}>
                 <Button size="small" variant="contained" startIcon={<AddIcon />} disabled={sinRubros} onClick={() => nuevo()}>Nuevo concepto</Button>
-                <TextField size="small" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar código, concepto o rubro" sx={{ width: 256 }} />
+                <TextField size="small" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar código, concepto o rubro" sx={{ width: { xs: '100%', sm: 256 } }} />
               </Box>
             </Box>
             {sinRubros && <Box sx={{ px: 2, py: 1.5, fontSize: 13, color: 'text.secondary' }}>Esta organización todavía no tiene rubros: sin rubros no se pueden crear conceptos.</Box>}
@@ -303,9 +394,14 @@ export default function GestionConceptos() {
               {grupos.map(([rubro, cs]) => {
                 const abierto = q.trim() !== '' || rubrosAbiertos.has(rubro);
                 const nSinUso = cs.filter(sinUso).length;
+                // El uso del rubro es de todos sus conceptos, aunque el buscador muestre solo algunos.
+                const uR = usoDe(cs[0]?.codRubro != null ? conceptos.filter((c) => c.codRubro === cs[0].codRubro) : cs);
+                const eR = conRegistros ? estadoUso(uR) : 'activo';
+                const aR = alcanceRubro(cs);
+                const itemR = cs[0]?.codRubro != null ? { tipo: 'rubro', codigo: cs[0].codRubro, nombre: cs[0].rubro, usoPorNegocio: uR.porNegocio, alcance: aR === 'org' ? null : aR } : null;
                 return (
-                  <Box key={rubro} sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', '&:last-child': { borderBottom: 0 } }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box key={rubro} sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', '&:last-child': { borderBottom: 0 }, ...(aR ? { bgcolor: 'grey.50' } : {}) }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, '&:hover > .accion-uso': { opacity: 1 } }}>
                       <Box
                         component="button" type="button" aria-expanded={abierto}
                         onClick={() => {
@@ -316,9 +412,20 @@ export default function GestionConceptos() {
                         sx={{ all: 'unset', cursor: 'pointer', minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 1, fontSize: 12, fontWeight: 500, color: 'text.secondary' }}
                       >
                         <Flecha abierta={abierto} />
-                        <Box component="span" sx={{ color: 'text.primary' }}>{rubro}</Box>
-                        <Box component="span" sx={{ fontWeight: 400 }}>· {cs.length} concepto{cs.length === 1 ? '' : 's'}{nSinUso ? ` · ${nSinUso} sin registros` : ''}</Box>
+                        <Box component="span" sx={{ color: aR ? 'text.secondary' : 'text.primary', ...(aR ? { textDecoration: 'line-through' } : {}) }}>{rubro}</Box>
+                        <Box component="span" sx={{ fontWeight: 400 }}>· {cs.length} concepto{cs.length === 1 ? '' : 's'}{nSinUso && eR === 'activo' ? ` · ${nSinUso} nunca usado${nSinUso === 1 ? '' : 's'}` : ''}</Box>
+                        {aR ? <Box component="span" sx={sxChip()}>{celular ? 'Discontinuado' : textoAlcance(aR)}</Box> : eR !== 'activo' && <Box component="span" title={textoChip(uR)} sx={sxChip(eR)}>{textoChip(uR, celular)}</Box>}
                       </Box>
+                      {conRegistros && uR.ultimo && (
+                        <Box component="span" title="Último registro · registros en los últimos 12 meses" sx={{ display: { xs: 'none', sm: 'inline' }, fontSize: 12, color: 'text.secondary', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                          {fechaCorta(uR.ultimo)} · {uR.n12.toLocaleString('es-AR')} en 12 m
+                        </Box>
+                      )}
+                      {itemR && (aR
+                        ? <Box component="button" type="button" onClick={() => reactivar(itemR)} sx={{ ...sxBotonTexto, color: '#0369a1' }}>Reactivar</Box>
+                        : celular
+                          ? <IconButton size="small" title="Discontinuar…" aria-label="Discontinuar rubro" onClick={() => setADiscontinuar(itemR)} sx={{ width: 36, height: 36, color: eR === 'activo' ? 'text.disabled' : 'text.secondary' }}><DoNotDisturbOnOutlinedIcon sx={{ fontSize: 18 }} /></IconButton>
+                          : <Box component="button" type="button" className="accion-uso" onClick={() => setADiscontinuar(itemR)} sx={{ ...sxBotonTexto, opacity: eR === 'activo' ? 0 : 1, '&:focus-visible': { opacity: 1 } }}>Discontinuar…</Box>)}
                       {cs[0]?.codRubro != null && (
                         <IconButton
                           size="small" title={`Nuevo concepto en ${rubro}`}
@@ -333,14 +440,32 @@ export default function GestionConceptos() {
                     {abierto && (
                       <Box sx={{ mt: 0.5, columnCount: { xs: 1, sm: 2 }, columnGap: 4, fontSize: 14 }}>
                         {cs.map((c) => (
-                          <Box key={c.codigo} title={sinUso(c) ? 'Sin registros en el Panel' : undefined} sx={{ display: 'flex', breakInside: 'avoid', alignItems: 'center', gap: 1.5, py: 0.25 }}>
+                          <Box key={c.codigo} sx={{ display: 'flex', breakInside: 'avoid', alignItems: 'center', gap: 1.5, py: 0.25, '&:hover .accion-uso': { opacity: 1 } }}>
                             <Box component="span" sx={{ width: 40, flexShrink: 0, textAlign: 'right', color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>{c.codigo}</Box>
-                            <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(sinUso(c) ? { color: 'text.secondary' } : {}) }}>
+                            <Box component="span" sx={{ minWidth: { xs: 96, sm: 0 }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(sinUso(c) || alcance.has(`concepto:${c.codigo}`) ? { color: 'text.secondary' } : {}), ...(alcance.has(`concepto:${c.codigo}`) ? { textDecoration: 'line-through' } : {}) }}>
                               {c.nombre}
                               {c.editado && c.original && <Box component="span" sx={{ ml: 0.75, ...sxOriginal }}>MaxiRest: {c.original.nombre}</Box>}
                             </Box>
-                            {sinUso(c) && <Box component="span" sx={{ width: 6, height: 6, flexShrink: 0, borderRadius: '50%', bgcolor: 'grey.300' }} />}
+                            {(() => {
+                              const aC = alcance.get(`concepto:${c.codigo}`);
+                              const uC = uso.get(String(c.codigo));
+                              const eC = conRegistros ? estadoUso(uC) : 'activo';
+                              const itemC = { tipo: 'concepto', codigo: c.codigo, nombre: c.nombre, usoPorNegocio: uC?.porNegocio ?? new Map(), alcance: aC === 'org' ? null : aC };
+                              if (aC) return <Box component="span" sx={sxChip()}>{celular ? 'Discontinuado' : textoAlcance(aC)}</Box>;
+                              if (aR || eC === 'activo') return null;
+                              return <Box component="span" title={textoChip(uC)} sx={sxChip(eC)}>{textoChip(uC, celular)}</Box>;
+                            })()}
                             <Box component="span" sx={{ ml: 'auto', display: 'flex', flexShrink: 0, alignItems: 'center', gap: 0.5 }}>
+                              {(() => {
+                                const aC = alcance.get(`concepto:${c.codigo}`);
+                                const uC = uso.get(String(c.codigo));
+                                const itemC = { tipo: 'concepto', codigo: c.codigo, nombre: c.nombre, usoPorNegocio: uC?.porNegocio ?? new Map(), alcance: aC === 'org' ? null : aC };
+                                if (aC) return <Box component="button" type="button" onClick={() => reactivar(itemC)} sx={{ ...sxBotonTexto, color: '#0369a1' }}>Reactivar</Box>;
+                                if (aR) return null;
+                                const quieto = conRegistros && estadoUso(uC) !== 'activo';
+                                if (celular) return <IconButton size="small" title="Discontinuar…" aria-label="Discontinuar" onClick={() => setADiscontinuar(itemC)} sx={{ width: 36, height: 36, color: quieto ? 'text.secondary' : 'text.disabled' }}><DoNotDisturbOnOutlinedIcon sx={{ fontSize: 18 }} /></IconButton>;
+                                return <Box component="button" type="button" className="accion-uso" onClick={() => setADiscontinuar(itemC)} sx={{ ...sxBotonTexto, opacity: quieto ? 1 : 0, '&:focus-visible': { opacity: 1 } }}>Discontinuar…</Box>;
+                              })()}
                               {esPropio(c.codigo)
                                 ? <Box component="span" sx={sxEtiqueta('#e0f2fe', '#0369a1')}>LZ</Box>
                                 : c.editado && <Box component="span" title="Modificado en Lazarillo" sx={sxEtiqueta('#ede9fe', '#6d28d9')}>EDITADO</Box>}
@@ -375,6 +500,9 @@ export default function GestionConceptos() {
             </Box>
           </Paper>
         </>
+      )}
+      {aDiscontinuar && (
+        <DiscontinuarConcepto item={aDiscontinuar} negocios={negocios} onCerrar={() => setADiscontinuar(null)} onConfirmar={(ids) => discontinuar(aDiscontinuar, ids)} />
       )}
       <Snackbar open={!!aviso} autoHideDuration={3000} onClose={() => setAviso(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {aviso ? <Alert severity={aviso.sev} variant="filled" onClose={() => setAviso(null)}>{aviso.txt}</Alert> : undefined}

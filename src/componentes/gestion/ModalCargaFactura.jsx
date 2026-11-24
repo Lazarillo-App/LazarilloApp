@@ -613,7 +613,7 @@ function ModalNuevaCarga(props) {
   const [envCambios, setEnvCambios] = useState({}); // codigo → [{tipo, envase, factor}]
   const [envPanel, setEnvPanel] = useState(null); // { i, modo: "nuevo" | "editar" }
   const qcMaestros = useQueryClient();
-  const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo }));
+  const MAESTRO_CONCEPTOS = [...maestros.conceptos, ...concNuevos].map((c) => ({ rubro: c.rubro, concepto: c.nombre, codigo: c.codigo, discontinuado: !!c.discontinuado }));
   // Concepto que viene armado (celda del Panel, Sin carga): por nombre o por código. También arma la
   // factura si se pasa a esa pestaña (Diego 20/11/2026).
   const conceptoCtx = ctx.concepto || (ctx.conceptoCodigo && (MAESTRO_CONCEPTOS.find((c) => c.codigo === ctx.conceptoCodigo) || {}).concepto) || "";
@@ -957,8 +957,9 @@ function ModalNuevaCarga(props) {
   const [nCuotas, setNCuotas] = useState(12);
 
   const rubroDe = (con) => (MAESTRO_CONCEPTOS.find((m) => m.concepto === con) || {}).rubro || "";
-  const conceptosDe = (rub) => MAESTRO_CONCEPTOS.filter((m) => !rub || m.rubro === rub).map((m) => m.concepto);
-  const rubros = [...new Set(MAESTRO_CONCEPTOS.map((m) => m.rubro))];
+  // Lo discontinuado en este negocio no se ofrece para elegir (Diego 24/11/2026); lo ya cargado se sigue viendo.
+  const conceptosDe = (rub) => MAESTRO_CONCEPTOS.filter((m) => !m.discontinuado && (!rub || m.rubro === rub)).map((m) => m.concepto);
+  const rubros = [...new Set(MAESTRO_CONCEPTOS.filter((m) => !m.discontinuado).map((m) => m.rubro))];
 
   const netoTotal = lineas.reduce((a, l) => a + netoDe(l), 0);
   // IVA redondeado por línea, igual que lo guarda el servidor y lo trae MaxiRest.
