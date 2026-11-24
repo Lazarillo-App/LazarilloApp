@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { useCelular } from '@/componentes/base';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const fechaCorta = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—');
 
 // item: { tipo, codigo, nombre, usoPorNegocio: Map(businessId → { ultimo, n12 }), alcance: null | 'org' | [ids] }

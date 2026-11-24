@@ -450,7 +450,6 @@ export default function GestionConceptos() {
                               const aC = alcance.get(`concepto:${c.codigo}`);
                               const uC = uso.get(String(c.codigo));
                               const eC = conRegistros ? estadoUso(uC) : 'activo';
-                              const itemC = { tipo: 'concepto', codigo: c.codigo, nombre: c.nombre, usoPorNegocio: uC?.porNegocio ?? new Map(), alcance: aC === 'org' ? null : aC };
                               if (aC) return <Box component="span" sx={sxChip()}>{celular ? 'Discontinuado' : textoAlcance(aC)}</Box>;
                               if (aR || eC === 'activo') return null;
                               return <Box component="span" title={textoChip(uC)} sx={sxChip(eC)}>{textoChip(uC, celular)}</Box>;
