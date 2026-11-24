@@ -40,6 +40,117 @@ const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(DIACR
 const urlImagen = (u) => (String(u || '').startsWith('/api/') ? String(BASE).replace(/\/api\/?$/, '') + u : u);
 const slugGuia = (id) => id.replace(/_/g, '-');
 
+// Capítulos incorporados en el código para que siempre estén disponibles en el Manual y su buscador
+// (si además existen en la tabla manual_capitulos del servidor, prevalece la versión de la base).
+const CAPITULOS_PROPIOS = [
+  {
+    id: 'produccion',
+    grupo: 'Operación',
+    titulo: 'Producción',
+    resumen: 'Programación semanal de elaborados y mise en place por sucursal, ejecución con cronómetro, cambios de ingredientes, avisos en pantalla, mermas, etiquetas y sugerencias según ventas.',
+    guia_id: 'produccion',
+    orden: 20,
+    secciones: [
+      {
+        id: 'quien-ve-que',
+        titulo: 'Para qué sirve y quién ve qué',
+        texto: `El módulo de **Producción** organiza el trabajo diario de la cocina por sucursal: qué elaborados y mise en place hay que preparar cada día, en qué turno y plaza, quién los hace y cuánto rinden.
+
+Cada rol ve lo que necesita para su trabajo:
+
+- **Cocinero (staff):** entra directo a **Mis tareas** con las producciones asignadas para hoy (o sin responsable en su plaza o sector), puede consultar su **Semana** y registrar **Mermas y desperdicios**. Nunca ve costos ni precios.
+- **Jefe de cocina:** además de ejecutar tareas, programa la **Semana** (por turno, por persona o por plaza), consulta **Según ventas**, sigue los tiempos en **Panel** y configura **Mise en place**, **Estimados** y **Equipo**.
+- **Dueño y administrador:** tienen acceso completo a todas las pestañas, incluyendo **Cambios** y **Consumos**, y aprueban o rechazan las propuestas de cambio permanente de receta en **Configuración › Aprobaciones**.`,
+      },
+      {
+        id: 'programar-semana',
+        titulo: 'Cómo se programa la semana y Según ventas',
+        texto: `En las vistas **Semana**, **Por persona** o **Por plaza** podés armar la producción día por día:
+
+- **+ Programar:** elegís el elaborado (o una tarea de **Mise en place** de una plaza, o una tarea libre), la cantidad de **tandas** (1, ½, 2…), el día, el turno, la plaza y el responsable. El rinde esperado y los minutos estimados se calculan solos a partir de la receta.
+- **Reorganizar:** podés arrastrar cualquier tarea pendiente a otro día, turno, persona o plaza.
+- **⟳ Repetir semana anterior:** copia todas las tareas no canceladas de la semana pasada como pendientes en la semana actual, para que solo ajustes lo que cambie.
+- **Según ventas:** cruza las ventas reales del POS con las recetas y lo ya producido en la semana para mostrarte qué elaborados faltan y programar las tandas sugeridas con un clic.`,
+        tip: 'En **Estimados** podés definir para cada elaborado cuántos minutos lleva una tanda, su plaza, su responsable habitual y los **días de vida útil**; esos valores se usan solos al programar y al imprimir etiquetas.',
+      },
+      {
+        id: 'ejecucion-y-cambios',
+        titulo: 'Cronómetro y cambios de ingrediente',
+        texto: `Cuando el cocinero toca una tarea en **Mis tareas** (o desde la grilla semanal), se abre la ficha con los ingredientes de la receta **escalados a las tandas** programadas y los pasos de preparación.
+
+- **Cronómetro:** con **▶ Iniciar**, **⏸ Pausar** y **✓ Terminar** se mide el tiempo real de elaboración. Al terminar, el cocinero indica cuánto rindió realmente y puede dejar notas u observaciones.
+- **Cambio de ingrediente:** si faltó un insumo, se reemplazó por otro, se agregó uno o se usó otra cantidad, se registra ahí mismo eligiendo el alcance:
+- **Solo esta producción:** el cambio se aplica únicamente a esa tanda para que los consumos reales queden bien registrados y aparece en la pestaña **Cambios** para control del dueño o administrador, sin modificar la receta maestra.
+- **Cambio de receta:** si la receta cambió de forma permanente, genera automáticamente una propuesta en **Configuración › Aprobaciones** (escalada a 1 tanda, con el antes, el después y el impacto en costo) para que el dueño o administrador la apruebe o la rechace.`,
+      },
+      {
+        id: 'avisos-en-pantalla',
+        titulo: 'Avisos de cocina en pantalla',
+        texto: `Los eventos operativos de la cocina generan avisos que suben por la cadena de responsabilidad y quedan visibles en pantalla hasta que se descartan:
+
+- Lo que registra un **cocinero** (cambios de ingrediente, observaciones al terminar, mermas o desperdicios y fallas de equipos) le avisa al **jefe de cocina** y al **dueño / administrador**.
+- Lo que programa o registra el **jefe de cocina** le avisa al **dueño / administrador** (y al cocinero cuando se le asignan tareas de la semana).
+- Al tocar un aviso en pantalla (o desde la campana de notificaciones), Lazarillo te lleva directo a la tarea o registro correspondiente.`,
+      },
+      {
+        id: 'mermas-y-etiquetas',
+        titulo: 'Mermas, desperdicios y etiquetas',
+        texto: `El control de lo producido se completa con las etiquetas de trazabilidad y el registro de pérdidas:
+
+- **🏷 Etiquetas:** dentro de cualquier tarea en curso o terminada, el botón de etiquetas arma e imprime desde el navegador etiquetas de **60 × 40 mm** con el nombre del elaborado, contenido opcional por envase, fecha de **Elaboración**, fecha de **Vencimiento** (calculada sola sumando los días de vida útil del elaborado), número de **lote** automático (**L** + fecha + número de tarea), responsable y conservación en heladera o freezer.
+- **Mermas de limpieza:** en **Mermas y desperdicios** podés pesar un insumo antes y después de limpiarlo. El sistema calcula el porcentaje de merma real y lo compara con la merma configurada del insumo.
+- **Desperdicios:** permite anotar mercadería o elaborados que hubo que descartar indicando el motivo; todo queda reflejado en la pestaña **Consumos**.`,
+      },
+    ],
+  },
+  {
+    id: 'mantenimiento',
+    grupo: 'Operación',
+    titulo: 'Mantenimiento',
+    resumen: 'Inventario de equipos por sucursal, planes de mantenimiento preventivo que generan órdenes solas, reporte de fallas urgentes y registros rápidos de temperatura, limpieza y aceite.',
+    guia_id: 'mantenimiento',
+    orden: 21,
+    secciones: [
+      {
+        id: 'para-que-sirve',
+        titulo: 'Para qué sirve y quién ve qué',
+        texto: `El módulo de **Mantenimiento** reúne en un solo lugar las máquinas e instalaciones de cada sucursal (heladeras, freidoras, hornos, máquinas y otros equipos), sus mantenimientos preventivos, los arreglos por fallas y los controles diarios de cocina.
+
+- **Cualquiera del equipo (staff):** ve **Mis órdenes** (los mantenimientos asignados a él o sin responsable), puede tocar **⚠ Reportar falla** cuando algo se rompe y cargar **Registros** diarios de aceite, limpieza o temperatura. No ve precios de compra ni costos de reparación.
+- **Jefe de cocina:** además de lo anterior, ve la **Agenda** completa de la sucursal, da de alta y edita **Equipos**, configura los planes preventivos que se repiten y crea órdenes con **+ Orden**.
+- **Dueño y administrador:** tienen acceso completo y son los únicos que ven y cargan los importes de plata (**Precio de compra** en la ficha del equipo y **Costo** al cerrar una orden).`,
+      },
+      {
+        id: 'equipos-y-planes',
+        titulo: 'Equipos y planes preventivos',
+        texto: `En la pestaña **Equipos** (o con el botón **+ Equipo**) armás el padrón de máquinas de la sucursal:
+
+- **Ficha del equipo:** nombre, rubro (heladera, freidora, horno, máquina u otro), marca, modelo, ubicación, área, responsable, proveedor o service, código interno, fechas de compra e instalación, estado (**Activo**, **En reparación** o **De baja**) y notas.
+- **Mantenimientos que se repiten (planes):** dentro de cada equipo podés cargar tareas preventivas (por ejemplo *Limpieza de radiador* o *Service de quemadores*) indicando cada cuántos **días, semanas o meses** se hacen, en qué días de la semana se permiten y si exigen nota obligatoria al marcarlas como hechas.
+- **Generación automática:** las órdenes preventivas aparecen solas en la **Agenda** cuando falta una semana o menos para su próxima fecha. Al marcar la orden como hecha (o al saltearla), el plan calcula automáticamente el próximo vencimiento.`,
+      },
+      {
+        id: 'fallas-y-agenda',
+        titulo: 'Fallas y órdenes en la Agenda',
+        texto: `La pestaña **Agenda** agrupa todo por prioridad: **🔴 Fallas abiertas**, **Vencidas**, **Hoy**, **Próximos días** y **Hechas (últimos 14 días)**.
+
+- **⚠ Reportar falla:** cualquier persona del equipo elige el equipo, escribe qué le pasa y puede marcar **No funciona** (cambia el equipo a estado *En reparación*) y **Es urgente**.
+- **Aviso inmediato:** al reportar una falla se crea la orden correctiva y les llega un aviso en pantalla y en Notificaciones al jefe de cocina, al dueño y al administrador.
+- **Resolver o reprogramar:** al abrir una orden pendiente podés anotar qué se hizo y tocar **✓ Hecho** (sumando costo y técnico/proveedor si sos dueño o admin), o cambiar la fecha en **Pasarlo a** y tocar **Reprogramar**. Cuando se resuelve la última falla de un equipo que estaba *En reparación*, vuelve solo a **Activo** y le avisa a quien la había reportado.`,
+      },
+      {
+        id: 'registros-diarios',
+        titulo: 'Registros rápidos (aceite, limpieza y temperatura)',
+        texto: `Para las tareas rutinarias del día a día que no requieren abrir una orden de mantenimiento:
+
+- **Desde la tarjeta del equipo:** en la pestaña **Equipos**, cada heladera o freidora activa tiene botones rápidos de un toque para registrar **Temperatura (°C)**, **Limpieza** y **Filtrado, cambio o carga de aceite (litros)**.
+- **Pestaña Registros:** permite cargar esos mismos controles para cualquier equipo activo agregando una nota opcional, y muestra el listado de todos los registros de los últimos 30 días con la persona, la fecha y la hora.`,
+        tip: 'Si te equivocaste al cargar un registro rápido, podés borrarlo con **✕** durante el mismo día (el jefe de cocina, el dueño y el administrador pueden borrarlo en cualquier momento).',
+      },
+    ],
+  },
+];
+
 // Texto del capítulo: párrafos separados por línea en blanco, **negrita** y renglones «- » como lista.
 function Negritas({ t }) {
   const partes = String(t).split(/(\*\*[^*]+\*\*)/g);
@@ -97,7 +208,11 @@ export default function Manual() {
 
   // Capítulos escritos + las guías que todavía no tienen capítulo (con su paso a paso).
   const capitulos = useMemo(() => {
-    const escritos = (datos || []).filter((c) => !(isStaff && GUIAS.find((g) => g.id === c.guia_id)?.soloGestion));
+    const base = [
+      ...(datos || []),
+      ...CAPITULOS_PROPIOS.filter((p) => !(datos || []).some((d) => d.id === p.id || (p.guia_id && d.guia_id === p.guia_id))),
+    ];
+    const escritos = base.filter((c) => !(isStaff && GUIAS.find((g) => g.id === c.guia_id)?.soloGestion));
     const conCap = new Set(escritos.map((c) => c.guia_id).filter(Boolean));
     const faltan = GUIAS.filter((g) => !conCap.has(g.id) && !(g.soloGestion && isStaff)).map((g, i) => ({
       id: slugGuia(g.id), grupo: g.grupo, titulo: g.titulo, resumen: g.detalle, guia_id: g.id, orden: 100 + i, secciones: [], pendiente: true,
