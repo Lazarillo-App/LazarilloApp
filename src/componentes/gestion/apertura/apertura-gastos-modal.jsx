@@ -471,7 +471,8 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
     return (<>
       <Dialog open={entidadId !== null} onOpenChange={(o) => { if (!o)
         onClose(); }}>
-        <DialogContent className="sm:max-w-xl" style={{ maxWidth: 760 }}>
+        {/* Celular (Diego 24/11/2026: «no tengo el botón de confirmar»): pantalla completa, scrollea y las acciones quedan fijas abajo. */}
+        <DialogContent className="sm:max-w-xl max-sm:inset-0 max-sm:top-0 max-sm:translate-y-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:rounded-none max-sm:content-start" style={{ maxWidth: 760 }}>
           <DialogHeader>
             <Badge variant="secondary" className="w-fit">{NIVEL_LABELS[nivel]}</Badge>
             <DialogTitle className="text-base">
@@ -576,9 +577,9 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
 
               {errorGuardar && <p className="text-xs text-destructive">{errorGuardar}</p>}
 
-              <div className="flex flex-col items-end gap-3 pt-2">
+              <div className="sticky -bottom-4 -mx-4 -mb-4 px-4 pt-3 pb-4 bg-popover border-t flex flex-col items-stretch sm:items-end gap-2 z-10">
                 <div className="flex items-center justify-end gap-2">
-                  <button type="button" onClick={() => (esLote ? onClose() : setView("lista"))} disabled={guardando} className="h-8 px-3 rounded-md border text-xs hover:bg-muted disabled:opacity-50">
+                  <button type="button" onClick={() => (esLote ? onClose() : setView("lista"))} disabled={guardando} className="h-11 sm:h-8 px-3 rounded-md border text-sm sm:text-xs hover:bg-muted disabled:opacity-50 max-sm:flex-1">
                     Cancelar
                   </button>
                   <button type="button" onClick={handleGuardar} disabled={guardando ||
@@ -586,7 +587,7 @@ export function AperturaGastosModal({ nivel, entidadId, entidadNombre, origenLoc
                 !sumaValida ||
                 !destinosCompletos ||
                 hayDuplicado ||
-                (vigencia.modo === "historico" && !vigencia.confirmarHistorico)} className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none inline-flex items-center gap-1.5">
+                (vigencia.modo === "historico" && !vigencia.confirmarHistorico)} className="h-11 sm:h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm sm:text-xs font-medium hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none inline-flex items-center justify-center gap-1.5 max-sm:flex-[2]">
                     {guardando && <Spinner size="sm" className="text-primary-foreground"/>}
                     {esLote
                 ? `Aperturar ${lote.length} registros`

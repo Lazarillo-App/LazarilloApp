@@ -298,6 +298,9 @@
 .gestion-tw .right-2\.5 {
     right: calc(var(--spacing) * 2.5);
   }
+.gestion-tw .-bottom-4 {
+    bottom: calc(var(--spacing) * -4);
+  }
 .gestion-tw .bottom-0 {
     bottom: 0px;
   }
@@ -351,6 +354,9 @@
     @media (width >= 96rem) {
       max-width: 96rem;
     }
+  }
+.gestion-tw .-mx-3 {
+    margin-inline: calc(var(--spacing) * -3);
   }
 .gestion-tw .-mx-4 {
     margin-inline: calc(var(--spacing) * -4);
@@ -594,6 +600,9 @@
 .gestion-tw .max-h-\[90vh\] {
     max-height: 90vh;
   }
+.gestion-tw .max-h-\[calc\(100dvh-2rem\)\] {
+    max-height: calc(100dvh - 2rem);
+  }
 .gestion-tw .min-h-0 {
     min-height: 0px;
   }
@@ -624,9 +633,6 @@
 .gestion-tw .w-5 {
     width: calc(var(--spacing) * 5);
   }
-.gestion-tw .w-6 {
-    width: calc(var(--spacing) * 6);
-  }
 .gestion-tw .w-7 {
     width: calc(var(--spacing) * 7);
   }
@@ -638,6 +644,9 @@
   }
 .gestion-tw .w-10 {
     width: calc(var(--spacing) * 10);
+  }
+.gestion-tw .w-11 {
+    width: calc(var(--spacing) * 11);
   }
 .gestion-tw .w-12 {
     width: calc(var(--spacing) * 12);
@@ -695,6 +704,9 @@
   }
 .gestion-tw .w-\[110px\] {
     width: 110px;
+  }
+.gestion-tw .w-\[calc\(50\%-4px\)\] {
+    width: calc(50% - 4px);
   }
 .gestion-tw .w-\[calc\(100vw-2rem\)\] {
     width: calc(100vw - 2rem);
@@ -846,6 +858,9 @@
   }
 .gestion-tw .items-start {
     align-items: flex-start;
+  }
+.gestion-tw .items-stretch {
+    align-items: stretch;
   }
 .gestion-tw .justify-between {
     justify-content: space-between;
@@ -2052,6 +2067,50 @@
       background-color: transparent;
     }
   }
+@media (width < 40rem) {
+    .gestion-tw .max-sm\:inset-0 {
+      inset: 0px;
+    }
+    .gestion-tw .max-sm\:top-0 {
+      top: 0px;
+    }
+    .gestion-tw .max-sm\:h-11 {
+      height: calc(var(--spacing) * 11);
+    }
+    .gestion-tw .max-sm\:h-\[100dvh\] {
+      height: 100dvh;
+    }
+    .gestion-tw .max-sm\:max-h-none {
+      max-height: none;
+    }
+    .gestion-tw .max-sm\:flex-1 {
+      flex: 1;
+    }
+    .gestion-tw .max-sm\:flex-\[2\] {
+      flex: 2;
+    }
+    .gestion-tw .max-sm\:translate-y-0 {
+      --tw-translate-y: 0px;
+      translate: var(--tw-translate-x) var(--tw-translate-y);
+    }
+    .gestion-tw .max-sm\:content-start {
+      align-content: flex-start;
+    }
+    .gestion-tw .max-sm\:rounded-none {
+      border-radius: 0;
+    }
+    .gestion-tw .max-sm\:border-b {
+      border-bottom-style: var(--tw-border-style);
+      border-bottom-width: 1px;
+    }
+    .gestion-tw .max-sm\:pb-2 {
+      padding-bottom: calc(var(--spacing) * 2);
+    }
+    .gestion-tw .max-sm\:last-of-type\:border-0:last-of-type {
+      border-style: var(--tw-border-style);
+      border-width: 0px;
+    }
+  }
 @media (width >= 40rem) {
     .gestion-tw .sm\:inset-x-auto {
       inset-inline: auto;
@@ -2062,14 +2121,29 @@
     .gestion-tw .sm\:table-cell {
       display: table-cell;
     }
+    .gestion-tw .sm\:h-6 {
+      height: calc(var(--spacing) * 6);
+    }
+    .gestion-tw .sm\:h-7 {
+      height: calc(var(--spacing) * 7);
+    }
     .gestion-tw .sm\:h-8 {
       height: calc(var(--spacing) * 8);
+    }
+    .gestion-tw .sm\:w-6 {
+      width: calc(var(--spacing) * 6);
+    }
+    .gestion-tw .sm\:w-16 {
+      width: calc(var(--spacing) * 16);
     }
     .gestion-tw .sm\:w-32 {
       width: calc(var(--spacing) * 32);
     }
     .gestion-tw .sm\:w-40 {
       width: calc(var(--spacing) * 40);
+    }
+    .gestion-tw .sm\:w-48 {
+      width: calc(var(--spacing) * 48);
     }
     .gestion-tw .sm\:w-56 {
       width: calc(var(--spacing) * 56);
@@ -2126,6 +2200,12 @@
     .gestion-tw .sm\:flex-row {
       flex-direction: row;
     }
+    .gestion-tw .sm\:flex-nowrap {
+      flex-wrap: nowrap;
+    }
+    .gestion-tw .sm\:items-end {
+      align-items: flex-end;
+    }
     .gestion-tw .sm\:items-start {
       align-items: flex-start;
     }
@@ -2139,6 +2219,10 @@
     .gestion-tw .sm\:border-l {
       border-left-style: var(--tw-border-style);
       border-left-width: 1px;
+    }
+    .gestion-tw .sm\:text-xs {
+      font-size: var(--text-xs);
+      line-height: var(--tw-leading, var(--text-xs--line-height));
     }
   }
 @media (width >= 64rem) {
