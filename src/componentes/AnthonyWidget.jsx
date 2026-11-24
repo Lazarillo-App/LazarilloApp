@@ -39,7 +39,17 @@ export default function AnthonyWidget() {
   const location = useLocation();
   const { items: negocios } = useBusiness() || {};
   const enAlta = location.pathname.startsWith('/alta') || (location.pathname.startsWith('/perfil') && (!negocios || negocios.length === 0));
-  if (enAlta) return null;
+  // Con un modal abierto Anthony se esconde (Diego 24/11/2026): en el celular tapaba «Crear regla».
+  // MUI (Dialog, Drawer, menús) y los modales compat montan un .MuiModal-root en el body mientras están abiertos.
+  const [hayModal, setHayModal] = useState(false);
+  useEffect(() => {
+    const revisar = () => setHayModal(!!document.querySelector('body > .MuiModal-root:not(.MuiModal-hidden)'));
+    revisar();
+    const obs = new MutationObserver(revisar);
+    obs.observe(document.body, { childList: true, attributes: true, subtree: false, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+  if (enAlta || hayModal) return null;
 
   if (minimizado) {
     // Pestañita en el borde derecho: asoma la cabeza de Anthony.
