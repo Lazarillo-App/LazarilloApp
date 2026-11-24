@@ -3,7 +3,7 @@
 // cargar-factura.tsx y ver-factura.tsx). Se carga en la sucursal elegida arriba.
 
 import React, { useEffect, useState } from 'react';
-import { Alert, Box, CircularProgress, Dialog, Snackbar } from '@mui/material';
+import { Alert, Box, CircularProgress, Dialog, Snackbar, useMediaQuery } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GestionAPI, gestionFetch } from '@/servicios/apiGestion';
@@ -191,7 +191,7 @@ export function NuevaFacturaProveedor({ codPro, nombre, onClose, onGuardada }) {
     <>
       {abierto && (
       // En un Dialog propio (portal) para quedar arriba de la cuenta corriente, como «Ver factura».
-      <Dialog open onClose={cerrar} maxWidth={false} sx={{ zIndex: 1400 }} slotProps={{ paper: { sx: { width: 'min(1120px, 96vw)', maxHeight: '92vh', overflow: 'auto', borderRadius: 3 } } }}>
+      <DialogFactura onClose={cerrar} sx={{ zIndex: 1400 }}>
         {maestros ? (
         <ModalNuevaCarga
           embebido vista="nueva" maestros={maestros} pdvsRef={maestros.lugares} pdvActual={lugar?.nombre}
@@ -210,7 +210,7 @@ export function NuevaFacturaProveedor({ codPro, nombre, onClose, onGuardada }) {
         ) : (
           <Box onClick={isError ? cerrar : undefined} sx={{ py: 8, display: 'grid', placeItems: 'center', fontSize: 14, color: 'text.secondary' }}>{isError ? 'No se pudieron leer los maestros. Tocá para cerrar.' : <CircularProgress size={32} />}</Box>
         )}
-      </Dialog>
+      </DialogFactura>
       )}
       <Aviso aviso={aviso} onClose={() => { setAviso(null); onClose?.(); }} />
     </>
@@ -227,6 +227,21 @@ const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR') : '
 // Renglones de insumos sin rubro en MaxiRest (Diego 06/11/2026: "sin concepto de caja asociado", no
 // "no está en Caja", que suena a no pagado).
 const SIN_CONCEPTO_TXT = 'Tiene insumos sin concepto de caja asociado: en MaxiRest el concepto sale del rubro del insumo y estos no tienen rubro.';
+// Diálogo de una factura (ver / editar / repetir / nueva del proveedor). En el celular (Diego 24/11/2026:
+// «en el celu es imposible») va a pantalla completa y la factura conserva su ancho de compu: se desliza
+// de costado en vez de apretarse hasta pisarse.
+function DialogFactura({ onClose, sx, children }) {
+  const celu = useMediaQuery('(max-width: 899.95px)');
+  return (
+    <Dialog open onClose={onClose} maxWidth={false} fullScreen={celu} sx={sx}
+      slotProps={{ paper: { sx: celu
+        ? { width: '100vw', height: '100dvh', maxHeight: 'none', m: 0, overflow: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 0 }
+        : { width: 'min(1120px, 96vw)', maxHeight: '92vh', overflow: 'auto', borderRadius: 3 } } }}>
+      <Box sx={celu ? { minWidth: 960 } : undefined}>{children}</Box>
+    </Dialog>
+  );
+}
+
 export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver', facturaDirecta = null }) {
   const { businessId } = usePanelGestion();
   const queryClient = useQueryClient();
@@ -259,7 +274,7 @@ export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver', fact
 
   return (
     <>
-      <Dialog open onClose={cerrar} maxWidth={false} slotProps={{ paper: { sx: { width: 'min(1120px, 96vw)', maxHeight: '92vh', overflow: 'auto', borderRadius: 3 } } }}>
+      <DialogFactura onClose={cerrar}>
         {isLoading || !fa || !maestros ? (
           <Box sx={{ py: 8, display: 'grid', placeItems: 'center' }}><CircularProgress size={32} /></Box>
         ) : vista === 'repetir' ? (
@@ -285,7 +300,7 @@ export function VerFactura({ rowId, detalle, onClose, vistaInicial = 'ver', fact
             onEliminado={() => { setAviso({ txt: 'Factura eliminada' }); refrescarCompras(queryClient); cerrar(); }}
           />
         )}
-      </Dialog>
+      </DialogFactura>
       <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </>
   );
