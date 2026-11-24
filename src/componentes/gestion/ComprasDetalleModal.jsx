@@ -628,11 +628,23 @@ export default function ComprasDetalleModal({ filter, onClose }) {
     if (cods.size !== 1 || cods.has(null)) return null;
     const origen = origenCta(fs[0]);
     const saldo = fs.reduce((a, x) => a + Math.max(0, Number(x.estadoPago?.total ?? 0) - Number(x.estadoPago?.pagado ?? 0)), 0);
+    // Aperturadas (Diego 24/11/2026: «no coincide con los registros»): la fila muestra la parte de esta
+    // sucursal, pero se paga la factura entera. El botón lo dice y muestra la parte de acá.
+    const parteAca = fs.reduce((a, x) => a + Number(x.importeVista ?? x.importeManual ?? x.importe ?? 0), 0);
+    const aperturadas = Math.abs(parteAca - saldo) > 1;
+    const nombre = fs.length === 1 ? (aperturadas ? 'la factura completa' : 'el tildado') : (aperturadas ? `las ${fs.length} facturas completas` : `los ${fs.length} tildados`);
     return (
+      <>
       <Button size="small" variant="contained" disableElevation onClick={() => setCtaCte({ origen, resaltado: null, pagar: fs.map((x) => ({ pdvId: lugarDeCompra(x.pdvCompraId), comprobante: x.comprobante })) })}
         sx={{ ml: 1, height: 28, textTransform: 'none', fontSize: 12, fontWeight: 600, bgcolor: '#111', '&:hover': { bgcolor: '#333' } }}>
-        Pagar {fs.length === 1 ? 'el tildado' : `los ${fs.length} tildados`}{saldo > 0 ? ` (${fmtARS(saldo)})` : ''}
+        Pagar {nombre}{saldo > 0 ? ` (${fmtARS(saldo)})` : ''}
       </Button>
+      {aperturadas && (
+        <Tooltip title="Las facturas están aperturadas entre sucursales: el pago salda la factura entera. Acá se ve solo la parte que le toca a esta sucursal.">
+          <Box component="span" sx={{ ml: 1, fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>· en esta sucursal {fmtARS(parteAca)}</Box>
+        </Tooltip>
+      )}
+      </>
     );
   })();
   const nota = editing && tildadas.has(editing.rowId) && tildadas.size > 1
