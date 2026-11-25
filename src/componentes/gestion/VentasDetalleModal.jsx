@@ -65,20 +65,31 @@ function agrupar(items, clave) {
   }
   return [...m].map(([k, xs]) => ({ k, ...totales(xs) }));
 }
-const porCubierto = (t) => (t.cubiertos > 0 ? fmtARS(t.importe / t.cubiertos) : '—');
+// Sin «$ por cubierto» (usuaria 25/11/2026): muchas ventas no llevan cubierto (mostrador, delivery,
+// buffet) y el número confunde. Cada día se abre para ver sus turnos.
+const ORDEN_TURNO = { Mañana: 0, Tarde: 1, Noche: 2 };
+const ordenTurno = (a, b) => (ORDEN_TURNO[a.k] ?? 9) - (ORDEN_TURNO[b.k] ?? 9) || a.k.localeCompare(b.k);
 
 function DesgloseCubiertos({ items, onClose }) {
   const [vista, setVista] = useState('dia');
+  const [abiertos, setAbiertos] = useState(() => new Set());
   if (!items) return null;
   const t = totales(items);
+  const porDia = new Map();
+  for (const v of items) {
+    const k = diaDe(v.fecha);
+    if (!porDia.has(k)) porDia.set(k, []);
+    porDia.get(k).push(v);
+  }
   const filas = vista === 'dia'
     ? agrupar(items, (v) => diaDe(v.fecha)).sort((a, b) => a.k.localeCompare(b.k))
-    : agrupar(items, (v) => nombreTurno(v.turno)).sort((a, b) => b.cubiertos - a.cubiertos);
+    : agrupar(items, (v) => nombreTurno(v.turno)).sort(ordenTurno);
   const etiqueta = (k) => {
     if (vista !== 'dia') return k;
     const d = new Date(`${k}T12:00:00`);
     return Number.isNaN(d.getTime()) ? k : `${DIAS_CORTOS[d.getDay()]} ${fmtDate(k)}`;
   };
+  const alternar = (k) => setAbiertos((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const max = Math.max(1, ...filas.map((f) => f.cubiertos));
   const celdaN = { px: 1.25, py: 0.6, fontSize: 12.5, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
   return (
@@ -86,12 +97,12 @@ function DesgloseCubiertos({ items, onClose }) {
       <DialogTitle sx={{ pr: 6, pb: 1 }}>
         Cubiertos
         <Box sx={{ fontSize: 13, fontWeight: 400, color: 'text.secondary' }}>
-          {t.cubiertos.toLocaleString('es-AR')} cubiertos · {t.mesas.toLocaleString('es-AR')} mesas/comprobantes · {porCubierto(t)} por cubierto
+          {t.cubiertos.toLocaleString('es-AR')} cubiertos · {t.mesas.toLocaleString('es-AR')} mesas/comprobantes
         </Box>
         <IconButton aria-label="Cerrar" onClick={onClose} sx={{ position: 'absolute', right: 8, top: 8 }}><CloseIcon /></IconButton>
       </DialogTitle>
       <DialogContent sx={{ pt: 0 }}>
-        <Box sx={{ display: 'flex', gap: 0.75, mb: 1.25 }}>
+        <Box sx={{ display: 'flex', gap: 0.75, mb: 1.25, alignItems: 'center', flexWrap: 'wrap' }}>
           {[['dia', 'Por día'], ['turno', 'Por turno']].map(([k, l]) => (
             <Box key={k} component="button" type="button" onClick={() => setVista(k)}
               sx={{ all: 'unset', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, px: 1.5, py: 0.6, borderRadius: 999, border: 1,
@@ -99,6 +110,7 @@ function DesgloseCubiertos({ items, onClose }) {
               {l}
             </Box>
           ))}
+          {vista === 'dia' && <Box component="span" sx={{ fontSize: 12, color: 'text.secondary', ml: 0.5 }}>Tocá un día para ver sus turnos</Box>}
         </Box>
         <Table size="small">
           <TableHead>
@@ -107,22 +119,36 @@ function DesgloseCubiertos({ items, onClose }) {
               <TableCell sx={{ ...celdaN, fontSize: 12 }}>Cubiertos</TableCell>
               <TableCell sx={{ ...celdaN, fontSize: 12 }}>Mesas</TableCell>
               <TableCell sx={{ ...celdaN, fontSize: 12 }}>Ventas</TableCell>
-              <TableCell sx={{ ...celdaN, fontSize: 12 }}>$ por cubierto</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filas.map((f) => (
-              <TableRow key={f.k}>
-                <TableCell sx={{ px: 1.25, py: 0.6, fontSize: 12.5 }}>
-                  {etiqueta(f.k)}
-                  <Box sx={{ height: 3, borderRadius: 2, bgcolor: '#5BC2EA', width: `${(f.cubiertos / max) * 100}%`, mt: 0.4 }} />
-                </TableCell>
-                <TableCell sx={{ ...celdaN, fontWeight: 600 }}>{f.cubiertos.toLocaleString('es-AR')}</TableCell>
-                <TableCell sx={celdaN}>{f.mesas.toLocaleString('es-AR')}</TableCell>
-                <TableCell sx={celdaN}>{fmtARS(f.importe)}</TableCell>
-                <TableCell sx={celdaN}>{porCubierto(f)}</TableCell>
-              </TableRow>
-            ))}
+            {filas.map((f) => {
+              const abierto = vista === 'dia' && abiertos.has(f.k);
+              const turnos = abierto ? agrupar(porDia.get(f.k) || [], (v) => nombreTurno(v.turno)).sort(ordenTurno) : [];
+              return (
+                <React.Fragment key={f.k}>
+                  <TableRow hover={vista === 'dia'} onClick={vista === 'dia' ? () => alternar(f.k) : undefined}
+                    sx={{ cursor: vista === 'dia' ? 'pointer' : 'default', ...(abierto ? { '& td': { borderBottom: 0 } } : {}) }}>
+                    <TableCell sx={{ px: 1.25, py: 0.6, fontSize: 12.5 }}>
+                      {vista === 'dia' && <Box component="span" sx={{ display: 'inline-block', width: 14, color: 'text.secondary' }}>{abierto ? '▾' : '▸'}</Box>}
+                      {etiqueta(f.k)}
+                      <Box sx={{ height: 3, borderRadius: 2, bgcolor: '#5BC2EA', width: `${(f.cubiertos / max) * 100}%`, mt: 0.4 }} />
+                    </TableCell>
+                    <TableCell sx={{ ...celdaN, fontWeight: 600 }}>{f.cubiertos.toLocaleString('es-AR')}</TableCell>
+                    <TableCell sx={celdaN}>{f.mesas.toLocaleString('es-AR')}</TableCell>
+                    <TableCell sx={celdaN}>{fmtARS(f.importe)}</TableCell>
+                  </TableRow>
+                  {turnos.map((tu) => (
+                    <TableRow key={`${f.k}|${tu.k}`} sx={{ bgcolor: 'grey.50' }}>
+                      <TableCell sx={{ pl: 4.5, pr: 1.25, py: 0.45, fontSize: 12, color: 'text.secondary' }}>{tu.k}</TableCell>
+                      <TableCell sx={{ ...celdaN, py: 0.45, fontSize: 12 }}>{tu.cubiertos.toLocaleString('es-AR')}</TableCell>
+                      <TableCell sx={{ ...celdaN, py: 0.45, fontSize: 12 }}>{tu.mesas.toLocaleString('es-AR')}</TableCell>
+                      <TableCell sx={{ ...celdaN, py: 0.45, fontSize: 12 }}>{fmtARS(tu.importe)}</TableCell>
+                    </TableRow>
+                  ))}
+                </React.Fragment>
+              );
+            })}
           </TableBody>
         </Table>
         {t.cubiertos === 0 && <Box sx={{ mt: 1.5, fontSize: 12.5, color: 'text.secondary' }}>El POS no cargó cubiertos para estas ventas.</Box>}
@@ -183,9 +209,9 @@ export default function VentasDetalleModal({ filter, onClose }) {
         const t = totales(vistas);
         if (!t.cubiertos) return null;
         return (
-          <Box component="button" type="button" onClick={() => setDesglose(vistas)} title="Ver por día y por turno"
+          <Box component="button" type="button" onClick={() => setDesglose(vistas)} title="Ver los cubiertos por día y por turno"
             sx={{ all: 'unset', cursor: 'pointer', color: 'text.primary', fontWeight: 600, textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
-            {t.cubiertos.toLocaleString('es-AR')} cubiertos · {porCubierto(t)} por cubierto
+            {t.cubiertos.toLocaleString('es-AR')} cubiertos
           </Box>
         );
       }}
