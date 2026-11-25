@@ -39,35 +39,52 @@ export function MiseEnPlace({ businessId, ctx, cel }) {
       await cargar(); setMsg('Guardado ✓');
     } catch (e) { setMsg(textoError(e)); }
   };
+  const altoCel = cel ? { minHeight: 44 } : undefined;
   return (
-    <div>
+    <div style={{ minWidth: 0 }}>
       <Texto sutil style={{ marginBottom: 10 }}>
         Lo que se deja armado en cada plaza al empezar el turno (sal, aceite, salsas…). Casi nunca cambia: cargalo una vez.
         Programá una tarea «Mise en place» por plaza y turno; al terminarla cuenta como consumo para el stock.
       </Texto>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
         {plazas.map((p) => (
-          <Boton key={p.id} activo={p.id === plaza} onClick={() => { if (sucio && !window.confirm('Hay cambios sin guardar. ¿Salir igual?')) return; setPlaza(p.id); }}>
+          <Boton key={p.id} activo={p.id === plaza} style={altoCel} onClick={() => { if (sucio && !window.confirm('Hay cambios sin guardar. ¿Salir igual?')) return; setPlaza(p.id); }}>
             {p.nombre} <span style={{ opacity: 0.6, fontWeight: 400 }}>{(datos?.[p.id] || []).length || ''}</span>
           </Boton>
         ))}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 720 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: cel ? 10 : 8, maxWidth: 720, minWidth: 0 }}>
         {lista.map((x, i) => (
-          <div key={x.id ?? `n${i}`} style={{ display: 'grid', gridTemplateColumns: cel ? '1fr 80px 80px 36px' : '1fr 110px 100px 36px', gap: 6, alignItems: 'center' }}>
-            {x.insumo_id || x.id ? <div style={{ fontFamily: FB, fontSize: 14, color: T.text, padding: '0 4px' }}>{x.nombre}</div>
-              : <BuscarInsumo businessId={businessId} valor={null} onElegir={(v) => { if (!v) return; set(i, 'nombre', v.nombre); set(i, 'insumo_id', v.id); if (v.unidad) set(i, 'unidad', v.unidad); }} />}
-            <Entrada inputMode="decimal" value={String(x.cantidad ?? '').replace('.', ',')} onChange={(e) => set(i, 'cantidad', e.target.value)} aria-label="Cantidad" />
-            <Selector value={x.unidad || ''} onChange={(v) => set(i, 'unidad', v)} opciones={UNIDADES} vacio="—" />
-            <Boton chico peligro title="Quitar" onClick={() => { setLista((l) => l.filter((_, j) => j !== i)); setSucio(true); }}>✕</Boton>
-          </div>
+          cel ? (
+            <div key={x.id ?? `n${i}`} style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 12, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {x.insumo_id || x.id ? <div style={{ fontFamily: FB, fontSize: 14, fontWeight: 600, color: T.text, padding: '0 4px', overflowWrap: 'anywhere' }}>{x.nombre}</div>
+                    : <BuscarInsumo businessId={businessId} valor={null} onElegir={(v) => { if (!v) return; set(i, 'nombre', v.nombre); set(i, 'insumo_id', v.id); if (v.unidad) set(i, 'unidad', v.unidad); }} />}
+                </div>
+                <Boton peligro title="Quitar" style={{ minHeight: 44, minWidth: 44, padding: 0, flexShrink: 0 }} onClick={() => { setLista((l) => l.filter((_, j) => j !== i)); setSucio(true); }}>✕</Boton>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 116px', gap: 8 }}>
+                <Entrada inputMode="decimal" placeholder="Cantidad" value={String(x.cantidad ?? '').replace('.', ',')} onChange={(e) => set(i, 'cantidad', e.target.value)} aria-label="Cantidad" style={{ minHeight: 44 }} />
+                <Selector value={x.unidad || ''} onChange={(v) => set(i, 'unidad', v)} opciones={UNIDADES} vacio="Unidad" style={{ minHeight: 44 }} />
+              </div>
+            </div>
+          ) : (
+            <div key={x.id ?? `n${i}`} style={{ display: 'grid', gridTemplateColumns: '1fr 110px 100px 36px', gap: 6, alignItems: 'center' }}>
+              {x.insumo_id || x.id ? <div style={{ fontFamily: FB, fontSize: 14, color: T.text, padding: '0 4px' }}>{x.nombre}</div>
+                : <BuscarInsumo businessId={businessId} valor={null} onElegir={(v) => { if (!v) return; set(i, 'nombre', v.nombre); set(i, 'insumo_id', v.id); if (v.unidad) set(i, 'unidad', v.unidad); }} />}
+              <Entrada inputMode="decimal" value={String(x.cantidad ?? '').replace('.', ',')} onChange={(e) => set(i, 'cantidad', e.target.value)} aria-label="Cantidad" />
+              <Selector value={x.unidad || ''} onChange={(v) => set(i, 'unidad', v)} opciones={UNIDADES} vacio="—" />
+              <Boton chico peligro title="Quitar" onClick={() => { setLista((l) => l.filter((_, j) => j !== i)); setSucio(true); }}>✕</Boton>
+            </div>
+          )
         ))}
         {!lista.length && <Texto sutil>Esta plaza todavía no tiene mise en place.</Texto>}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-          <Boton chico onClick={() => { setLista((l) => [...l, { nombre: '', cantidad: '', unidad: '' }]); setSucio(true); }}>+ Insumo</Boton>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+          <Boton chico={!cel} style={altoCel} onClick={() => { setLista((l) => [...l, { nombre: '', cantidad: '', unidad: '' }]); setSucio(true); }}>+ Insumo</Boton>
           <span style={{ flex: 1 }} />
           {msg && <span style={{ fontFamily: FB, fontSize: 12.5, color: msg.endsWith('✓') ? T.ok : T.bad }}>{msg}</span>}
-          <Boton primario deshabilitado={!sucio} onClick={guardar}>Guardar</Boton>
+          <Boton primario deshabilitado={!sucio} style={altoCel} onClick={guardar}>Guardar</Boton>
         </div>
       </div>
     </div>
@@ -92,16 +109,17 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
     if (!window.confirm('¿Borrar este registro?')) return;
     try { await ProduccionAPI.borrarRegistro(businessId, tipo, id); cargar(); } catch (e) { setError(textoError(e)); }
   };
+  const altoBtnBorrar = cel ? { minHeight: 44, minWidth: 44, padding: 0, flexShrink: 0 } : undefined;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'minmax(300px, 380px) 1fr', gap: 16, alignItems: 'start' }}>
-      <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'minmax(300px, 380px) 1fr', gap: 16, alignItems: 'start', minWidth: 0 }}>
+      <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 14, padding: cel ? 12 : 14, minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-          <Boton activo={solapa === 'desperdicio'} onClick={() => setSolapa('desperdicio')}>🗑 Desperdicio</Boton>
-          <Boton activo={solapa === 'merma'} onClick={() => setSolapa('merma')}>⚖ Merma</Boton>
+          <Boton activo={solapa === 'desperdicio'} onClick={() => setSolapa('desperdicio')} style={cel ? { flex: 1, minHeight: 44 } : undefined}>🗑 Desperdicio</Boton>
+          <Boton activo={solapa === 'merma'} onClick={() => setSolapa('merma')} style={cel ? { flex: 1, minHeight: 44 } : undefined}>⚖ Merma</Boton>
         </div>
         {solapa === 'desperdicio'
-          ? <FormDesperdicio businessId={businessId} ctx={ctx} motivos={motivos} onListo={(r) => { setDesp(r.items || []); }} desde={desde} hasta={hasta} />
-          : <FormMerma businessId={businessId} onListo={(r) => { setMermas(r.items || []); }} desde={desde} hasta={hasta} />}
+          ? <FormDesperdicio businessId={businessId} ctx={ctx} motivos={motivos} onListo={(r) => { setDesp(r.items || []); }} desde={desde} hasta={hasta} cel={cel} />
+          : <FormMerma businessId={businessId} onListo={(r) => { setMermas(r.items || []); }} desde={desde} hasta={hasta} cel={cel} />}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
         {error && <div style={{ color: T.bad, fontFamily: FB, fontSize: 13 }}>{error}</div>}
@@ -109,12 +127,12 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 6 }}>Desperdicios de la semana</div>
           {!desp.length ? <Texto sutil>No se cargaron desperdicios.</Texto> : desp.map((x) => (
             <div key={x.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: `1px solid ${T.border}`, fontFamily: FB, flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere' }}>
                 <span style={{ fontWeight: 600, color: T.text }}>{x.nombre}</span> <span style={{ color: T.ink, fontWeight: 700 }}>{fmtCant(x.cantidad, x.unidad)}</span>
                 <div style={{ fontSize: 12, color: T.text3 }}>{x.motivo}{x.comentario ? ` · ${x.comentario}` : ''}{x.plaza ? ` · ${x.plaza}` : ''}</div>
               </div>
               <span style={{ fontSize: 12, color: T.text3 }}>{x.usuario} · {fechaHora(x.created_at)}</span>
-              {(x.propia || ctx?.planifica) && <Boton chico peligro onClick={() => borrar('desperdicios', x.id)}>✕</Boton>}
+              {(x.propia || ctx?.planifica) && <Boton chico={!cel} peligro style={altoBtnBorrar} onClick={() => borrar('desperdicios', x.id)}>✕</Boton>}
             </div>
           ))}
         </div>
@@ -124,7 +142,7 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
             const peor = x.pct_config != null && x.pct != null && x.pct > x.pct_config + 3;
             return (
               <div key={x.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: `1px solid ${T.border}`, fontFamily: FB, flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere' }}>
                   <span style={{ fontWeight: 600, color: T.text }}>{x.nombre}</span>{' '}
                   <span style={{ color: T.text2 }}>{fmtCant(x.bruto, x.unidad)} → {fmtCant(x.neto, x.unidad)}</span>
                   <div style={{ fontSize: 12, color: T.text3 }}>{x.nota || ''}</div>
@@ -134,7 +152,7 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
                   merma {x.pct}%{x.pct_config != null ? ` · config. ${x.pct_config}%` : ''}
                 </Pastilla>
                 <span style={{ fontSize: 12, color: T.text3 }}>{x.usuario} · {fechaHora(x.created_at)}</span>
-                {(x.propia || ctx?.planifica) && <Boton chico peligro onClick={() => borrar('mermas', x.id)}>✕</Boton>}
+                {(x.propia || ctx?.planifica) && <Boton chico={!cel} peligro style={altoBtnBorrar} onClick={() => borrar('mermas', x.id)}>✕</Boton>}
               </div>
             );
           })}
@@ -144,7 +162,7 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
   );
 }
 
-function FormDesperdicio({ businessId, ctx, motivos, onListo, desde, hasta }) {
+function FormDesperdicio({ businessId, ctx, motivos, onListo, desde, hasta, cel }) {
   const [insumo, setInsumo] = useState(null);
   const [cant, setCant] = useState('');
   const [unidad, setUnidad] = useState('');
@@ -153,6 +171,7 @@ function FormDesperdicio({ businessId, ctx, motivos, onListo, desde, hasta }) {
   const [plaza, setPlaza] = useState('');
   const [msg, setMsg] = useState('');
   const [k, setK] = useState(0);
+  const altoCel = cel ? { minHeight: 44 } : undefined;
   const guardar = async () => {
     setMsg('');
     try {
@@ -163,32 +182,34 @@ function FormDesperdicio({ businessId, ctx, motivos, onListo, desde, hasta }) {
     } catch (e) { setMsg(textoError(e)); }
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
       <Campo label="Qué se tiró" ayuda="Elegí el insumo o elaborado, o escribí el nombre.">
         <BuscarInsumo key={k} businessId={businessId} valor={insumo?.id ? insumo : null} onElegir={(v) => { setInsumo(v); if (v?.unidad) setUnidad(v.unidad); }} />
       </Campo>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Campo label="Cantidad" style={{ flex: 1 }}><Entrada inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value)} /></Campo>
-        <Campo label="Unidad" style={{ width: 100 }}><Selector value={unidad} onChange={setUnidad} opciones={UNIDADES} vacio="—" /></Campo>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 104px', gap: 8 }}>
+        <Campo label="Cantidad" style={{ minWidth: 0 }}><Entrada inputMode="decimal" value={cant} onChange={(e) => setCant(e.target.value)} style={altoCel} /></Campo>
+        <Campo label="Unidad" style={{ minWidth: 0 }}><Selector value={unidad} onChange={setUnidad} opciones={UNIDADES} vacio="—" style={altoCel} /></Campo>
       </div>
       <Campo label="Motivo">
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {(motivos.length ? motivos : ['Vencido', 'Se pasó de cocción', 'Dañado', 'Se cayó', 'Otro']).map((m) => <Boton key={m} chico activo={motivo === m} onClick={() => setMotivo(m)}>{m}</Boton>)}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {(motivos.length ? motivos : ['Vencido', 'Se pasó de cocción', 'Dañado', 'Se cayó', 'Otro']).map((m) => (
+            <Boton key={m} chico={!cel} activo={motivo === m} style={altoCel} onClick={() => setMotivo(m)}>{m}</Boton>
+          ))}
         </div>
       </Campo>
       {(ctx?.plazas || []).length > 0 && (
-        <Campo label="Plaza (opcional)"><Selector value={plaza} onChange={setPlaza} vacio="—" opciones={ctx.plazas.map((p) => ({ value: String(p.id), label: p.nombre }))} /></Campo>
+        <Campo label="Plaza (opcional)"><Selector value={plaza} onChange={setPlaza} vacio="—" opciones={ctx.plazas.map((p) => ({ value: String(p.id), label: p.nombre }))} style={altoCel} /></Campo>
       )}
-      <Campo label="Comentario (opcional)"><Entrada value={comentario} maxLength={300} onChange={(e) => setComentario(e.target.value)} placeholder="Ej.: se cortó la cadena de frío" /></Campo>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Campo label="Comentario (opcional)"><Entrada value={comentario} maxLength={300} onChange={(e) => setComentario(e.target.value)} placeholder="Ej.: se cortó la cadena de frío" style={altoCel} /></Campo>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {msg && <span style={{ fontFamily: FB, fontSize: 12.5, color: msg.endsWith('✓') ? T.ok : T.bad, flex: 1 }}>{msg}</span>}
-        <Boton primario style={{ marginLeft: 'auto' }} deshabilitado={!insumo?.nombre || !cant || !motivo} onClick={guardar}>Cargar desperdicio</Boton>
+        <Boton primario style={{ marginLeft: 'auto', ...(cel ? { minHeight: 44, width: '100%' } : {}) }} deshabilitado={!insumo?.nombre || !cant || !motivo} onClick={guardar}>Cargar desperdicio</Boton>
       </div>
     </div>
   );
 }
 
-function FormMerma({ businessId, onListo, desde, hasta }) {
+function FormMerma({ businessId, onListo, desde, hasta, cel }) {
   const [insumo, setInsumo] = useState(null);
   const [bruto, setBruto] = useState('');
   const [neto, setNeto] = useState('');
@@ -197,6 +218,7 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
   const [msg, setMsg] = useState('');
   const [k, setK] = useState(0);
   const [info, setInfo] = useState(null);
+  const altoCel = cel ? { minHeight: 44 } : undefined;
   useEffect(() => {
     setInfo(null);
     if (!insumo?.id) return undefined;
@@ -217,11 +239,11 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
     } catch (e) { setMsg(textoError(e)); }
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
       <Texto sutil style={{ fontSize: 12 }}>Pesá antes y después de limpiar (carne, verdura, pescado…). Se compara con la merma que tiene cargada el insumo.</Texto>
       <Campo label="Insumo"><BuscarInsumo key={k} businessId={businessId} valor={insumo?.id ? insumo : null} obligatorio onElegir={setInsumo} /></Campo>
       {info && (
-        <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 10px', fontFamily: FB, fontSize: 12.5, color: T.text2 }}>
+        <div style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, padding: '8px 10px', fontFamily: FB, fontSize: 12.5, color: T.text2, overflowWrap: 'anywhere' }}>
           {info.configuradas.length ? info.configuradas.map((m, i) => (
             <div key={i}>Merma cargada{m.nombre ? ` «${m.nombre}»` : ''}: <b style={{ color: T.ink }}>{m.pct}%</b> (de {fmtCant(m.peso_inicial, unidad)} quedan {fmtCant(m.peso_final, unidad)})</div>
           )) : info.desperdicio != null
@@ -234,18 +256,18 @@ function FormMerma({ businessId, onListo, desde, hasta }) {
           )}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Campo label="Peso bruto" style={{ flex: 1 }}><Entrada inputMode="decimal" value={bruto} onChange={(e) => setBruto(e.target.value)} /></Campo>
-        <Campo label="Peso limpio" style={{ flex: 1 }}><Entrada inputMode="decimal" value={neto} onChange={(e) => setNeto(e.target.value)} /></Campo>
-        <Campo label="Unidad" style={{ width: 90 }}><Selector value={unidad} onChange={setUnidad} opciones={UNIDADES.filter((u) => ['gr', 'kg', 'ml', 'lt'].includes(u.value))} /></Campo>
+      <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr 1fr' : '1fr 1fr 90px', gap: 8 }}>
+        <Campo label="Peso bruto" style={{ minWidth: 0 }}><Entrada inputMode="decimal" value={bruto} onChange={(e) => setBruto(e.target.value)} style={altoCel} /></Campo>
+        <Campo label="Peso limpio" style={{ minWidth: 0 }}><Entrada inputMode="decimal" value={neto} onChange={(e) => setNeto(e.target.value)} style={altoCel} /></Campo>
+        <Campo label="Unidad" style={cel ? { gridColumn: '1 / -1', minWidth: 0 } : { minWidth: 0 }}><Selector value={unidad} onChange={setUnidad} opciones={UNIDADES.filter((u) => ['gr', 'kg', 'ml', 'lt'].includes(u.value))} style={altoCel} /></Campo>
       </div>
       {esperado != null && !neto && <Texto sutil>Con la merma cargada te tendrían que quedar {fmtCant(esperado, unidad)} limpios.</Texto>}
       {pct != null && <Texto>Merma: <b style={{ color: conf?.pct != null && pct > conf.pct + 3 ? T.warn : T.ink }}>{pct}%</b> ({fmtCant(b - n, unidad)} afuera)
         {conf?.pct != null && <> · cargada {conf.pct}%</>}</Texto>}
-      <Campo label="Nota (opcional)"><Entrada value={nota} maxLength={300} onChange={(e) => setNota(e.target.value)} /></Campo>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Campo label="Nota (opcional)"><Entrada value={nota} maxLength={300} onChange={(e) => setNota(e.target.value)} style={altoCel} /></Campo>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {msg && <span style={{ fontFamily: FB, fontSize: 12.5, color: msg.endsWith('✓') ? T.ok : T.bad, flex: 1 }}>{msg}</span>}
-        <Boton primario style={{ marginLeft: 'auto' }} deshabilitado={!insumo?.id || pct == null} onClick={guardar}>Cargar merma</Boton>
+        <Boton primario style={{ marginLeft: 'auto', ...(cel ? { minHeight: 44, width: '100%' } : {}) }} deshabilitado={!insumo?.id || pct == null} onClick={guardar}>Cargar merma</Boton>
       </div>
     </div>
   );
