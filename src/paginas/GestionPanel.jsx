@@ -70,7 +70,7 @@ const TABS = [
 // usuario: si localStorage no está disponible, se usan los valores por defecto.
 const claveEstado = (bizId) => `gestion:panel:${bizId || 'default'}`;
 const ESTADO_INICIAL = {
-  year: ANIO_ACTUAL, meses: [], tab: 'compras', agrupacion: 'concepto', modoCelda: 'importe',
+  year: ANIO_ACTUAL, meses: [], dias: null, tab: 'compras', agrupacion: 'concepto', modoCelda: 'importe',
   modo: 'economica', sort: { col: 1, dir: 'desc' }, mostrarTarjetas: true,
 };
 
@@ -155,6 +155,8 @@ function GestionPanelContenido() {
   useEffect(() => { guardarEstado(activeBusinessId, estado); }, [activeBusinessId, estado]);
 
   const cambiar = (parcial) => setEstado((e) => ({ ...e, ...parcial }));
+  // Días dentro del mes (25/11/2026): valen solo con un único mes elegido.
+  const diasActivos = estado.meses.length === 1 ? (estado.dias || null) : null;
 
   // Zoom propio del Panel (tablero #110, Diego 17/11/2026: Martín no ve bien y el zoom del navegador le
   // rompe la navegación). Agranda las tarjetas y el contenido de la tabla, no el header ni las barras.
@@ -206,12 +208,12 @@ function GestionPanelContenido() {
         importeQuery: param === 'importeQuery' ? valor : undefined,
         activeMonths: estado.meses.length ? estado.meses : undefined,
       },
-      extra,
+      { ...(diasActivos ? { dias: diasActivos } : {}), ...extra },
     ));
-  }, [estado.year, estado.meses, sucursal, busquedaActiva]);
+  }, [estado.year, estado.meses, diasActivos, sucursal, busquedaActiva]);
   const abrirVentas = useCallback((extra) => {
-    setVentasFilter({ year: estado.year, sucursal, ...extra });
-  }, [estado.year, sucursal]);
+    setVentasFilter({ year: estado.year, sucursal, ...(diasActivos ? { dias: diasActivos } : {}), ...extra });
+  }, [estado.year, sucursal, diasActivos]);
   const nombreLugar = activeBranchFilter?.mode === 'all' || !activeBranchFilter
     ? (active?.name || 'Negocio')
     : `${active?.name || 'Negocio'} · ${activeBranch?.name || 'Principal'}`;
@@ -284,11 +286,12 @@ function GestionPanelContenido() {
     year: estado.year,
     sucursal,
     months: estado.meses,
+    dias: diasActivos || undefined,
     agrupacion: estado.agrupacion,
     modo: estado.modo === 'financiera' ? 'financiera' : undefined,
     ...(busquedaActiva ? { [busquedaActiva.param]: busquedaActiva.value } : {}),
-  }), [estado.year, sucursal, estado.meses, estado.agrupacion, estado.modo, busquedaActiva]);
-  const paramsVentas = useMemo(() => ({ year: estado.year, sucursal, months: estado.meses }), [estado.year, sucursal, estado.meses]);
+  }), [estado.year, sucursal, estado.meses, diasActivos, estado.agrupacion, estado.modo, busquedaActiva]);
+  const paramsVentas = useMemo(() => ({ year: estado.year, sucursal, months: estado.meses, dias: diasActivos || undefined }), [estado.year, sucursal, estado.meses, diasActivos]);
 
   // Compras y, en Resultados, la fila Egresos del bloque Operación (vista por concepto).
   const paramsOperacion = useMemo(() => ({ ...paramsCompras, agrupacion: 'concepto' }), [paramsCompras]);
@@ -432,9 +435,11 @@ function GestionPanelContenido() {
           meses={estado.meses}
           minYear={rango.data?.minYear ?? undefined}
           maxYear={rango.data?.maxYear ?? ANIO_ACTUAL}
-          onYear={(year) => cambiar({ year })}
-          onMeses={(meses) => cambiar({ meses })}
-          onTodoElAnio={() => cambiar({ meses: [] })}
+          onYear={(year) => cambiar({ year, dias: null })}
+          onMeses={(meses) => cambiar({ meses, dias: null })}
+          onTodoElAnio={() => cambiar({ meses: [], dias: null })}
+          dias={diasActivos}
+          onDias={(dias) => cambiar({ dias })}
         />
         </Box>}
         <Stack direction="row" alignItems="center" gap={1} sx={{ ml: 'auto' }}>
