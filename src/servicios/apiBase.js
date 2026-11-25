@@ -96,7 +96,8 @@ export async function api(
   if (res.status === 401 && redirectOn401) {
     try { await res.clone().json(); } catch {}
     clearSession();
-    window.location.href = `${APP_BASENAME || ''}/login`;
+    // Ya en /login no se recarga (evita el ciclo 401 → recarga → 401, 25/11/2026).
+    if (!/\/login\/?$/.test(window.location.pathname)) window.location.href = `${APP_BASENAME || ''}/login`;
     throw new Error('invalid_token');
   }
 

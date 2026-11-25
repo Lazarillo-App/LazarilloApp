@@ -182,7 +182,8 @@ export async function http(
         console.warn('Auth 401', await res.clone().json());
       } catch { }
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Ya en /login no se recarga: un pedido que siga saliendo ahí daría 401 → recarga → 401… (25/11/2026)
+      if (!/\/login\/?$/.test(window.location.pathname)) window.location.href = '/login';
       throw new Error('invalid_token');
     }
 
