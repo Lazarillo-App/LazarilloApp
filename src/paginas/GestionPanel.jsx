@@ -212,8 +212,10 @@ function GestionPanelContenido() {
     ));
   }, [estado.year, estado.meses, diasActivos, sucursal, busquedaActiva]);
   const abrirVentas = useCallback((extra) => {
-    setVentasFilter({ year: estado.year, sucursal, ...(diasActivos ? { dias: diasActivos } : {}), ...extra });
-  }, [estado.year, sucursal, diasActivos]);
+    // El detalle respeta el período del calendario (meses y días) aunque se abra desde Total (25/11/2026).
+    setVentasFilter({ year: estado.year, sucursal, ...(estado.meses.length ? { months: estado.meses.join(',') } : {}),
+      ...(diasActivos ? { dias: diasActivos } : {}), ...extra });
+  }, [estado.year, estado.meses, sucursal, diasActivos]);
   const nombreLugar = activeBranchFilter?.mode === 'all' || !activeBranchFilter
     ? (active?.name || 'Negocio')
     : `${active?.name || 'Negocio'} · ${activeBranch?.name || 'Principal'}`;

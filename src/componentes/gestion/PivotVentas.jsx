@@ -85,8 +85,12 @@ export default function PivotVentas({ data, isLoading, error, year, months, sort
         <TableFooter>
           <TableRow sx={{ '& td': { bgcolor: MUTED, fontWeight: 600, fontSize: 15, color: 'text.primary', borderTop: 2, borderTopColor: 'divider', py: 1.5 } }}>
             <TableCell sx={{ ...sxStickyNombre(MUTED), px: 2 }}>Total {year}</TableCell>
-            {months.map((mes) => <TableCell key={mes} sx={{ ...sxNum, px: 1.5 }}>{fmtARS(data.columnTotals[mes])}</TableCell>)}
-            <TableCell sx={{ ...sxNum, px: 2, color: 'primary.main !important' }}>{fmtARS(data.grandTotal)}</TableCell>
+            {/* La fila Total abre todas las ventas del período (todos los tipos y formas de cobro), 25/11/2026. */}
+            {months.map((mes) => (
+              <TableCell key={mes} {...(hasValue(data.columnTotals[mes]) ? { onClick: () => abrirVentas({ mes }) } : {})}
+                sx={{ ...sxNum, px: 1.5, ...(hasValue(data.columnTotals[mes]) ? sxClic : {}) }}>{fmtARS(data.columnTotals[mes])}</TableCell>
+            ))}
+            <TableCell onClick={() => abrirVentas({})} sx={{ ...sxNum, px: 2, color: 'primary.main !important', ...sxClic }}>{fmtARS(data.grandTotal)}</TableCell>
           </TableRow>
         </TableFooter>
       </Table>
