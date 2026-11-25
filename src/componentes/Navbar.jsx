@@ -98,7 +98,7 @@ export default function Navbar() {
   const isAppAdmin = role === 'app_admin';
 
   // Rol efectivo en el negocio activo (owner = puede crear/editar/borrar negocios)
-  const { isOwner, isStaff, puedeVer = () => true, rolReal, staffPuede = () => false } = useAccess() || {};
+  const { isOwner, isStaff, esCocina = true, puedeVer = () => true, rolReal, staffPuede = () => false } = useAccess() || {};
   // Mis pendientes (Diego 12/11/2026): tareas del cajón de Notas; globito en el avatar e ítem en el menú.
   // La API de tareas es del Panel (owner/admin): staff no la pide.
   const conPendientes = logged && !isAppAdmin && !isStaff && (rolReal === 'owner' || rolReal === 'admin');
@@ -449,13 +449,13 @@ export default function Navbar() {
                               <Button color="inherit" component={NavLink} to="/tableros" sx={{ color: 'inherit', position: 'relative' }}>
                                 Tableros
                               </Button>
-                              {/* Producción: sus tareas del día (usuaria 21/11/2026). */}
-                              {!produccionOculta && (
+                              {/* Producción y Mantenimiento: solo para los subroles de cocina (usuaria 25/11/2026). */}
+                              {esCocina && !produccionOculta && (
                                 <Button color="inherit" component={NavLink} to="/produccion" sx={{ color: 'inherit', position: 'relative' }}>
                                   Producción
                                 </Button>
                               )}
-                              {!mantenimientoOculto && (
+                              {esCocina && !mantenimientoOculto && (
                                 <Button color="inherit" component={NavLink} to="/mantenimiento" sx={{ color: 'inherit', position: 'relative' }}>
                                   Mantenimiento
                                 </Button>

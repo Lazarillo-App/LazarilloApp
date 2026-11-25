@@ -372,7 +372,9 @@ export default function InvitarMiembroModal({ open, onClose, scopeType, scopeId,
             <TextField label="Subrol" select value={subrol} onChange={(e) => setSubrol(e.target.value)} fullWidth size="small"
               helperText={subrolElegido?.permisos?.aprobar_equipo
                 ? 'Ve todos los artículos e insumos, programa la producción y da el OK a su equipo. Los sectores que marques abajo son los que conduce.'
-                : subrol ? 'Subrol a medida: ve lo que tenga habilitado en Roles.' : 'Cocinero, bachero, mozo…: ve las áreas que le marques abajo.'}>
+                : subrolElegido?.permisos?.es_cocina
+                ? 'Entra a Producción, Mantenimiento y Novedades de cocina, además de las áreas que le marques abajo.'
+                : subrol ? 'Subrol a medida: ve lo que tenga habilitado en Roles.' : 'Mozo, cajero, salón…: ve las áreas que le marques abajo (sin Producción ni Mantenimiento).'}>
               <MenuItem value="">Staff común</MenuItem>
               {subroles.map((x) => <MenuItem key={x.id} value={String(x.id)}>{x.nombre}</MenuItem>)}
             </TextField>

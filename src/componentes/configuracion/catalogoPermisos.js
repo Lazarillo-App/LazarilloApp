@@ -44,6 +44,7 @@ export const PERMISOS_STAFF = [
     ['ver_menu', 'Ver el Menú (vista diseño de la carta)'],
   ] },
   { grupo: 'Equipo', items: [
+    ['es_cocina', 'Es de cocina (entra a Producción, Mantenimiento y Novedades)'],
     ['aprobar_equipo', 'Dar el OK a los cambios de su equipo (es el jefe de sus sectores)'],
   ] },
 ];

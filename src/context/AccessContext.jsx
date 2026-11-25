@@ -174,6 +174,8 @@ export function AccessProvider({ children }) {
   const staffPuede = useCallback((clave) => !isStaff || !!staffPermisos[clave], [isStaff, staffPermisos]);
   // Jefe: el subrol que da el OK a los cambios de su equipo (ej. Jefe de cocina).
   const isJefe = isStaff && !!staffPermisos.aprobar_equipo;
+  // Es de cocina: dueño/admin siempre; el staff con «Es de cocina» o que sea jefe (Cocinero, Jefe de cocina…).
+  const esCocina = !isStaff || !!staffPermisos.es_cocina || isJefe;
   // Montos en plata (costos, precios, totales): dueño y admin siempre; el staff solo con
   // «Ver el precio de venta» (ej. jefe de cocina). Usuaria 10/11: el staff común no ve plata.
   const veMontos = !isStaff || !!staffPermisos.ver_precio;
@@ -207,6 +209,7 @@ export function AccessProvider({ children }) {
     isAdmin,
     isStaff,
     isJefe,
+    esCocina,
     veMontos,
     staffPuede,
     subrolNombre,
@@ -220,7 +223,7 @@ export function AccessProvider({ children }) {
   }), [
     loading, error, refetch, data,
     businesses, currentBusiness, currentRole, highestRole, currentAlias,
-    canDo, isOwner, isAdmin, isStaff, isJefe, staffPuede, subrolNombre, switchToBusiness,
+    canDo, isOwner, isAdmin, isStaff, isJefe, esCocina, staffPuede, subrolNombre, switchToBusiness,
     permisos, puedeVer, oculto, rolReal, verComoActivo, setVerComo,
   ]);
 

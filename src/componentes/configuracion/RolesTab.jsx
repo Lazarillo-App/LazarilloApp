@@ -57,8 +57,9 @@ const NUEVO = { id: 'nuevo', nombre: '', secciones: { resultados: 'ver' }, ocult
 function resumen(rol) {
   if (rol.fijo) return rol.nota;
   if (rol.staff) {
-    const n = Object.entries(rol.permisos || {}).filter(([k, v]) => v && k !== 'aprobar_equipo').length;
-    return `${rol.permisos?.aprobar_equipo ? 'Jefe · ' : ''}${n ? `${n} habilitado${n !== 1 ? 's' : ''}` : 'lo básico'}`;
+    const n = Object.entries(rol.permisos || {}).filter(([k, v]) => v && k !== 'aprobar_equipo' && k !== 'es_cocina').length;
+    const pref = [rol.permisos?.aprobar_equipo ? 'Jefe' : null, rol.permisos?.es_cocina ? 'Cocina' : null].filter(Boolean).join(' · ');
+    return `${pref ? `${pref} · ` : ''}${n ? `${n} habilitado${n !== 1 ? 's' : ''}` : 'lo básico'}`;
   }
   if (rol.base && !rol.ajustada && !rol.porDefecto) return 'Ve y edita todo';
   const vis = SECCIONES.filter((s) => rol.secciones[s.id]).map((s) => s.nombre);
