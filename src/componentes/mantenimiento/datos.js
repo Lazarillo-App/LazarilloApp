@@ -12,9 +12,9 @@ export const ESTADO_EQUIPO = {
 };
 // Lo que se registra en el día a día según el tipo de equipo (como las hojas freidoras / heladeras).
 export const TIPOS_POR_RUBRO = {
-  freidora: [['aceite_filtrado', 'Filtré'], ['aceite_cambio', 'Cambié aceite'], ['aceite_carga', 'Cargué aceite'], ['limpieza', 'Limpié']],
-  heladera: [['temperatura', 'Temperatura'], ['limpieza', 'Limpié'], ['otro', 'Otro']],
-  horno: [['limpieza', 'Limpié'], ['otro', 'Otro']],
-  maquina: [['limpieza', 'Limpié'], ['otro', 'Otro']],
-  otro: [['limpieza', 'Limpié'], ['otro', 'Otro']],
+  freidora: [['aceite_filtrado', 'Filtré'], ['aceite_cambio', 'Cambié aceite'], ['aceite_carga', 'Cargué aceite'], ['limpieza', 'Limpié'], ['estado', 'Estado / observación']],
+  heladera: [['temperatura', 'Temperatura'], ['limpieza', 'Limpié'], ['estado', 'Estado / observación'], ['otro', 'Otro']],
+  horno: [['limpieza', 'Limpié'], ['estado', 'Estado / observación'], ['otro', 'Otro']],
+  maquina: [['limpieza', 'Limpié'], ['estado', 'Estado / observación'], ['otro', 'Otro']],
+  otro: [['limpieza', 'Limpié'], ['estado', 'Estado / observación'], ['otro', 'Otro']],
 };

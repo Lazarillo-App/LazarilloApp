@@ -26,4 +26,11 @@ export const MantenimientoAPI = {
   registros: (bid) => http(`${base(bid)}/registros`, sin),
   crearRegistro: (bid, body) => http(`${base(bid)}/registros`, { method: 'POST', body }),
   borrarRegistro: (bid, id) => http(`${base(bid)}/registros/${id}`, { method: 'DELETE' }),
+  // Mantenimiento hecho antes de usar Lazarillo (fecha pasada, foto o certificado). Devuelve la ficha del equipo.
+  cargarHistorico: (bid, body) => http(`${base(bid)}/historico`, { method: 'POST', body }),
+  subirFoto: (bid, file) => {
+    const fd = new FormData();
+    fd.append('file', file, file?.name || 'mantenimiento.jpg');
+    return http(`${base(bid)}/foto`, { method: 'POST', body: fd });
+  },
 };

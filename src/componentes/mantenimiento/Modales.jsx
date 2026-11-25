@@ -16,6 +16,58 @@ const sxFecha = {
 const pesos = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString('es-AR')}`;
 const fechaHora = (s) => new Date(s).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+const esPdf = (url) => /\.pdf($|\?)/i.test(String(url || ''));
+
+/** Ver la foto o el certificado adjunto (abre en otra pestaña). */
+function VerAdjunto({ url, chico }) {
+  if (!url) return null;
+  const tam = chico ? 40 : 64;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title={esPdf(url) ? 'Ver certificado (PDF)' : 'Ver foto'}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: tam, height: tam, borderRadius: 8, border: `1px solid ${T.border}`,
+        background: '#fff', overflow: 'hidden', flexShrink: 0, textDecoration: 'none', fontSize: chico ? 18 : 24 }}>
+      {esPdf(url) ? '📄' : <img src={url} alt="Adjunto" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+    </a>
+  );
+}
+
+/** Sacar foto / elegir imagen (y PDF si se pide). valor = { url, public_id } | null. */
+function Adjuntar({ businessId, valor, onCambio, pdf = false, onError }) {
+  const [subiendo, setSubiendo] = useState(false);
+  const subir = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSubiendo(true); onError?.('');
+    try { const r = await MantenimientoAPI.subirFoto(businessId, file); onCambio({ url: r.url, public_id: r.public_id }); }
+    catch (err) { onError?.(textoError(err)); }
+    finally { setSubiendo(false); }
+  };
+  const btn = { fontFamily: FB, fontSize: 12.5, fontWeight: 600, color: T.ink, background: '#fff', border: `1px solid ${T.border2}`, borderRadius: 9, padding: '6px 10px' };
+  if (valor?.url) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, padding: 6 }}>
+        <VerAdjunto url={valor.url} chico />
+        <span style={{ flex: 1, fontSize: 12, color: T.ok, fontWeight: 600 }}>{esPdf(valor.url) ? 'Certificado cargado ✓' : 'Foto cargada ✓'}</span>
+        <Boton chico peligro onClick={() => onCambio(null)}>✕</Boton>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+        <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={subir} style={{ display: 'none' }} />
+        <span style={btn}>📷 Sacar foto</span>
+      </label>
+      <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+        <input type="file" accept={pdf ? 'image/jpeg,image/png,image/webp,application/pdf' : 'image/jpeg,image/png,image/webp'} onChange={subir} style={{ display: 'none' }} />
+        <span style={btn}>{pdf ? '📎 Elegir foto o PDF' : '🖼 Elegir imagen'}</span>
+      </label>
+      {subiendo && <Texto sutil>Subiendo…</Texto>}
+    </div>
+  );
+}
+
 /** Tarjeta de una orden (agenda y equipo). */
 export function TarjetaOrden({ o, onAbrir, hoy }) {
   const vencida = o.estado === 'pendiente' && o.fecha < hoy;
@@ -30,6 +82,7 @@ export function TarjetaOrden({ o, onAbrir, hoy }) {
           <div style={{ fontSize: 12, color: T.text3 }}>{o.equipo}{o.ubicacion ? ` · ${o.ubicacion}` : ''}</div>
         </div>
         {o.urgente && o.estado === 'pendiente' && <Pastilla color="#fff" fondo={T.bad}>Urgente</Pastilla>}
+        {o.foto_url && <VerAdjunto url={o.foto_url} chico />}
       </div>
       <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 11.5 }}>
         <Pastilla color={o.tipo === 'correctivo' ? T.bad : T.accentTxt} fondo={o.tipo === 'correctivo' ? '#FBE9E9' : '#E3F4FB'}>{o.tipo === 'correctivo' ? 'Falla' : o.frecuencia || 'Preventivo'}</Pastilla>
@@ -96,6 +149,8 @@ export function OrdenModal({ businessId, orden, abierto, onCerrar, onCambio, ctx
           <div style={{ background: '#E4F6EC', borderRadius: 12, padding: 12, fontSize: 13.5, color: T.text }}>
             ✓ Hecha {fechaHora(o.hecha_at)}{o.hizo ? ` por ${o.hizo}` : ''}.{o.nota ? <div style={{ marginTop: 4, color: T.text2 }}>{o.nota}</div> : null}
             {o.costo != null && <div style={{ marginTop: 4, color: T.text2 }}>Costo {pesos(o.costo)}{o.proveedor ? ` · ${o.proveedor}` : ''}</div>}
+            {o.costo == null && o.proveedor && <div style={{ marginTop: 4, color: T.text2 }}>{o.proveedor}</div>}
+            {o.foto_url && <div style={{ marginTop: 8 }}><VerAdjunto url={o.foto_url} /></div>}
           </div>
         )}
         {ctx?.planifica && (
@@ -125,11 +180,13 @@ export function FallaModal({ businessId, abierto, onCerrar, onListo, equipos, eq
   const [desc, setDesc] = useState('');
   const [noFunciona, setNoFunciona] = useState(false);
   const [urgente, setUrgente] = useState(false);
+  const [foto, setFoto] = useState(null);
   const [error, setError] = useState('');
-  useEffect(() => { if (abierto) { setEquipo(equipoInicial ? String(equipoInicial) : ''); setTitulo(''); setDesc(''); setNoFunciona(false); setUrgente(false); setError(''); } }, [abierto, equipoInicial]);
+  useEffect(() => { if (abierto) { setEquipo(equipoInicial ? String(equipoInicial) : ''); setTitulo(''); setDesc(''); setNoFunciona(false); setUrgente(false); setFoto(null); setError(''); } }, [abierto, equipoInicial]);
   const enviar = async () => {
     try {
-      await MantenimientoAPI.reportarFalla(businessId, { equipo_id: Number(equipo), titulo, descripcion: desc, no_funciona: noFunciona, urgente });
+      await MantenimientoAPI.reportarFalla(businessId, { equipo_id: Number(equipo), titulo, descripcion: desc, no_funciona: noFunciona, urgente,
+        foto_url: foto?.url || null, foto_public_id: foto?.public_id || null });
       onListo?.(); onCerrar();
     } catch (e) { setError(textoError(e)); }
   };
@@ -143,6 +200,7 @@ export function FallaModal({ businessId, abierto, onCerrar, onListo, equipos, eq
         </Campo>
         <Campo label="Qué le pasa"><Entrada autoFocus value={titulo} maxLength={140} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej.: no enfría, pierde agua, hace ruido" /></Campo>
         <Campo label="Detalle (opcional)"><Entrada value={desc} maxLength={1000} onChange={(e) => setDesc(e.target.value)} /></Campo>
+        <Campo label="Foto (opcional)"><Adjuntar businessId={businessId} valor={foto} onCambio={setFoto} onError={setError} /></Campo>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Boton activo={noFunciona} onClick={() => setNoFunciona((v) => !v)}>{noFunciona ? '✓ ' : ''}No funciona</Boton>
           <Boton activo={urgente} onClick={() => setUrgente((v) => !v)}>{urgente ? '✓ ' : ''}Es urgente</Boton>
@@ -301,20 +359,133 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
       )}
 
       {solapa === 'hist' && d && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {[...d.ordenes.filter((o) => o.estado !== 'pendiente').map((o) => ({ k: `o${o.id}`, t: o.hecha_at || o.fecha, o })),
-            ...d.registros.map((r) => ({ k: `r${r.id}`, t: r.created_at, r }))]
-            .sort((a, b) => String(b.t).localeCompare(String(a.t)))
-            .map((x) => (x.o ? <TarjetaOrden key={x.k} o={x.o} hoy={isoHoy()} onAbrir={() => onOrden(e.id, x.o)} /> : (
-              <div key={x.k} style={{ display: 'flex', gap: 10, padding: '8px 10px', borderBottom: `1px solid ${T.border}`, fontFamily: FB, fontSize: 13 }}>
-                <span style={{ flex: 1, color: T.text }}><b>{x.r.tipo_label}</b>{x.r.valor != null ? ` · ${x.r.valor} ${x.r.unidad || ''}` : ''}{x.r.nota ? ` · ${x.r.nota}` : ''}</span>
-                <span style={{ color: T.text3, fontSize: 12 }}>{x.r.usuario} · {fechaHora(x.r.created_at)}</span>
-              </div>
-            )))}
-          {!d.ordenes.some((o) => o.estado !== 'pendiente') && !d.registros.length && <Texto sutil>Sin historial todavía.</Texto>}
-        </div>
+        <Historial d={d} ctx={ctx} cel={cel} puede={puede} businessId={businessId}
+          onCargado={(r) => { setD(r); onCambio?.(); }} onAbrirOrden={(o) => onOrden(e.id, o)} />
       )}
     </Modal>
+  );
+}
+
+/** Qué dice cada evento del historial del equipo (lo registra el servidor: altas, cambios, estados, planes). */
+function textoEvento(ev) {
+  const d = ev.detalle || {};
+  switch (ev.tipo) {
+    case 'equipo_alta': return 'Se dio de alta el equipo';
+    case 'equipo_baja': return 'Se borró el equipo';
+    case 'equipo_estado': return `Estado: ${d.antes || '—'} → ${d.despues || '—'}${d.motivo ? ` (${d.motivo})` : ''}`;
+    case 'equipo_edit': return `Cambió ${(d.cambios || []).map((c) => `${c.label.toLowerCase()}: ${c.antes || '—'} → ${c.despues || '—'}`).join(' · ')}`;
+    case 'plan_alta': return `Nuevo mantenimiento que se repite: «${d.nombre}»${d.frecuencia ? ` (${d.frecuencia})` : ''}`;
+    case 'plan_edit': return `Se editó «${d.nombre}»${d.frecuencia ? ` (${d.frecuencia})` : ''}`;
+    case 'plan_baja': return `Se borró el plan «${d.nombre}»`;
+    case 'orden_reprogramada': return `«${d.titulo}» pasó del ${diaLargo(d.antes)} al ${diaLargo(d.despues)}`;
+    case 'orden_cancelada': return `«${d.titulo}» ${d.salteada ? 'salteada' : 'cancelada'}${d.nota ? ` · ${d.nota}` : ''}`;
+    case 'orden_reabierta': return `Se reabrió «${d.titulo}»`;
+    case 'historico_alta': return `Se cargó un mantenimiento pasado: «${d.titulo}» (${diaLargo(d.fecha)})`;
+    default: return ev.tipo;
+  }
+}
+
+/** Cargar un mantenimiento hecho antes (fecha pasada, foto o certificado). Jefe de cocina, dueño y admin. */
+function FormHistorico({ businessId, d, ctx, onListo, onCancelar }) {
+  const [v, setV] = useState({ fecha: '', tipo: 'preventivo', titulo: '', plan_id: '', proveedor: '', nota: '', costo: '' });
+  const [adjunto, setAdjunto] = useState(null);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const set = (k) => (x) => setV((o) => ({ ...o, [k]: x }));
+  const hoy = isoHoy();
+  const listo = v.fecha && v.fecha <= hoy && v.titulo.trim();
+  const guardar = async () => {
+    setGuardando(true); setError('');
+    try {
+      const r = await MantenimientoAPI.cargarHistorico(businessId, {
+        equipo_id: d.equipo.id, fecha: v.fecha, tipo: v.tipo, titulo: v.titulo.trim(), plan_id: Number(v.plan_id) || null,
+        proveedor: v.proveedor, nota: v.nota, costo: v.costo === '' ? null : v.costo,
+        foto_url: adjunto?.url || null, foto_public_id: adjunto?.public_id || null,
+      });
+      onListo(r);
+    } catch (e) { setError(textoError(e)); } finally { setGuardando(false); }
+  };
+  return (
+    <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text }}>Cargar un mantenimiento que ya se hizo</div>
+      <Texto sutil style={{ fontSize: 12 }}>Para armar el historial del equipo: por ejemplo, el service que le hicieron el mes pasado, con su foto o certificado.</Texto>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Campo label="Cuándo se hizo" style={{ width: 170 }}><CampoFecha sx={sxFecha} value={v.fecha} onChange={set('fecha')} /></Campo>
+        <Campo label="Tipo" style={{ flex: 1, minWidth: 160 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Boton chico activo={v.tipo === 'preventivo'} onClick={() => set('tipo')('preventivo')}>Mantenimiento</Boton>
+            <Boton chico activo={v.tipo === 'correctivo'} onClick={() => set('tipo')('correctivo')}>Arreglo de una falla</Boton>
+          </div>
+        </Campo>
+      </div>
+      {v.fecha > hoy && <div style={{ color: T.warn, fontSize: 12.5 }}>La fecha es futura: para lo que viene, usá «+ Orden suelta».</div>}
+      <Campo label="Qué se hizo"><Entrada value={v.titulo} maxLength={140} onChange={(x) => set('titulo')(x.target.value)} placeholder="Ej.: service completo, cambio de compresor, limpieza de serpentina" /></Campo>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {d.planes.length > 0 && (
+          <Campo label="Es parte de (opcional)" style={{ flex: 1, minWidth: 180 }}>
+            <Selector value={v.plan_id} onChange={set('plan_id')} vacio="— Ninguno —" opciones={d.planes.map((p) => ({ value: String(p.id), label: `${p.nombre}${p.frecuencia ? ` · ${p.frecuencia}` : ''}` }))} />
+          </Campo>
+        )}
+        <Campo label="Lo hizo (técnico / service)" style={{ flex: 1, minWidth: 180 }}><Entrada value={v.proveedor} maxLength={80} onChange={(x) => set('proveedor')(x.target.value)} /></Campo>
+        {ctx?.gestor && <Campo label="Costo (opcional)" style={{ width: 150 }}><CampoImporte size="small" sx={sxFecha} placeholder="0" value={v.costo} onChange={set('costo')} /></Campo>}
+      </div>
+      <Campo label="Nota (opcional)"><Entrada value={v.nota} maxLength={1000} onChange={(x) => set('nota')(x.target.value)} /></Campo>
+      <Campo label="Foto o certificado (opcional)"><Adjuntar businessId={businessId} valor={adjunto} onCambio={setAdjunto} pdf onError={setError} /></Campo>
+      {v.plan_id && <Texto sutil style={{ fontSize: 12 }}>Si es más nuevo que la última vez del plan, el plan sigue a partir de esta fecha.</Texto>}
+      {error && <div style={{ color: T.bad, fontSize: 13 }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Boton onClick={onCancelar}>Cancelar</Boton>
+        <Boton primario deshabilitado={!listo || guardando} onClick={guardar}>{guardando ? 'Guardando…' : 'Guardar en el historial'}</Boton>
+      </div>
+    </div>
+  );
+}
+
+/** Historial del equipo: mantenimientos hechos, registros y cambios, del más nuevo al más viejo. */
+function Historial({ d, ctx, cel, puede, businessId, onCargado, onAbrirOrden }) {
+  const [cargando, setCargando] = useState(false);
+  const g = d.resumen_gasto;
+  const items = [
+    ...d.ordenes.filter((o) => o.estado !== 'pendiente').map((o) => ({ k: `o${o.id}`, t: o.hecha_at || o.fecha, o })),
+    ...d.registros.map((r) => ({ k: `r${r.id}`, t: r.created_at, r })),
+    ...(d.eventos || []).filter((ev) => ev.tipo !== 'historico_alta').map((ev) => ({ k: `e${ev.id}`, t: ev.created_at, ev })),
+  ].sort((a, b) => String(b.t).localeCompare(String(a.t)));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {g && (
+        <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 8 }}>
+          {[['Compra', g.precio_compra], ['Arreglos y services', g.arreglos_total], ['Total gastado', g.total_gastado], ['Últimos 12 meses', g.ultimos_12_meses]].map(([l, n]) => (
+            <div key={l} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 12, padding: '8px 10px', fontFamily: FB }}>
+              <div style={{ fontSize: 11.5, color: T.text3 }}>{l}</div>
+              <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.ink }}>{pesos(n)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {puede && (cargando
+        ? <FormHistorico businessId={businessId} d={d} ctx={ctx} onCancelar={() => setCargando(false)} onListo={(r) => { setCargando(false); onCargado(r); }} />
+        : <div><Boton chico onClick={() => setCargando(true)}>+ Cargar un mantenimiento que ya se hizo</Boton></div>)}
+      {items.map((x) => {
+        if (x.o) return <TarjetaOrden key={x.k} o={x.o} hoy={isoHoy()} onAbrir={() => onAbrirOrden(x.o)} />;
+        if (x.r) {
+          return (
+            <div key={x.k} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 10px', borderBottom: `1px solid ${T.border}`, fontFamily: FB, fontSize: 13 }}>
+              <span style={{ flex: 1, color: T.text }}><b>{x.r.tipo_label}</b>{x.r.valor != null ? ` · ${x.r.valor} ${x.r.unidad || ''}` : ''}{x.r.nota ? ` · ${x.r.nota}` : ''}</span>
+              {x.r.foto_url && <VerAdjunto url={x.r.foto_url} chico />}
+              <span style={{ color: T.text3, fontSize: 12 }}>{x.r.usuario} · {fechaHora(x.r.created_at)}</span>
+            </div>
+          );
+        }
+        return (
+          <div key={x.k} style={{ display: 'flex', gap: 10, padding: '6px 10px', fontFamily: FB, fontSize: 12.5, color: T.text2 }}>
+            <span style={{ color: T.text3 }}>•</span>
+            <span style={{ flex: 1 }}>{textoEvento(x.ev)}</span>
+            <span style={{ color: T.text3, fontSize: 12, whiteSpace: 'nowrap' }}>{x.ev.usuario} · {fechaHora(x.ev.created_at)}</span>
+          </div>
+        );
+      })}
+      {!items.length && <Texto sutil>Sin historial todavía.{puede ? ' Si ya le hicieron mantenimientos, cargalos con el botón de arriba.' : ''}</Texto>}
+    </div>
   );
 }
 

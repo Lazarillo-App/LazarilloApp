@@ -224,8 +224,9 @@ export default function Mantenimiento() {
                 <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
                   {equiposVisibles.map((e) => {
                     const est = ESTADO_EQUIPO[e.estado] || ESTADO_EQUIPO.activo;
+                    const abreFicha = !!ctx.planifica;
                     return (
-                      <div key={e.id} onClick={() => setEquipo({ id: e.id })} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, cursor: 'pointer',
+                      <div key={e.id} onClick={abreFicha ? () => setEquipo({ id: e.id }) : undefined} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, cursor: abreFicha ? 'pointer' : 'default',
                         boxShadow: T.sombraSuave, opacity: e.estado === 'baja' ? 0.55 : 1 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                           <span style={{ fontSize: 24 }}>{RUBRO[e.rubro]?.emoji || '🔧'}</span>
@@ -240,9 +241,9 @@ export default function Mantenimiento() {
                           <span>{e.planes ? `${e.planes} mantenimiento${e.planes > 1 ? 's' : ''}` : 'Sin mantenimientos'}</span>
                           {e.proxima && <span>· próximo {diaLargo(e.proxima)}</span>}
                         </div>
-                        {(e.rubro === 'freidora' || e.rubro === 'heladera') && e.estado !== 'baja' && (
+                        {e.estado !== 'baja' && (
                           <div style={{ marginTop: 8 }} onClick={(x) => x.stopPropagation()}>
-                            <RegistroRapido businessId={bid} equipo={e} onListo={cargarTodo} />
+                            <RegistroRapido businessId={bid} equipo={e} onListo={cargarTodo} onFalla={() => setFalla({ equipoId: e.id })} />
                           </div>
                         )}
                       </div>
@@ -334,30 +335,72 @@ function MantenimientoEjemplo({ vista, cel, planifica, hoy, onNuevoEquipo }) {
   );
 }
 
-/** Un toque desde la tarjeta del equipo: «Filtré», «Limpié», «4 °C». */
-function RegistroRapido({ businessId, equipo, onListo }) {
+/** Un toque desde la tarjeta del equipo: «Filtré», «Limpié», «4 °C», «Estado / observación» (con foto opcional). */
+function RegistroRapido({ businessId, equipo, onListo, onFalla }) {
   const [tipo, setTipo] = useState(null);
   const [valor, setValor] = useState('');
+  const [nota, setNota] = useState('');
+  const [foto, setFoto] = useState(null);
+  const [subiendo, setSubiendo] = useState(false);
   const [msg, setMsg] = useState('');
-  const tipos = TIPOS_POR_RUBRO[equipo.rubro] || TIPOS_POR_RUBRO.otro;
+  const tipos = (TIPOS_POR_RUBRO[equipo.rubro] || TIPOS_POR_RUBRO.otro).filter(([k]) => k !== 'otro');
   const conValor = tipo === 'temperatura' || String(tipo || '').startsWith('aceite_');
-  const guardar = async (t, v) => {
+  const esEstado = tipo === 'estado';
+  const subirFoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setMsg(''); setSubiendo(true);
+    try { const r = await MantenimientoAPI.subirFoto(businessId, file); setFoto({ url: r.url, public_id: r.public_id }); }
+    catch (err) { setMsg(textoError(err)); }
+    finally { setSubiendo(false); }
+  };
+  const guardar = async (t, v, n = null, f = null) => {
     setMsg('');
-    try { await MantenimientoAPI.crearRegistro(businessId, { equipo_id: equipo.id, tipo: t, valor: v }); setTipo(null); setValor(''); setMsg('✓'); onListo?.(); setTimeout(() => setMsg(''), 2000); }
-    catch (e) { setMsg(textoError(e)); }
+    try {
+      await MantenimientoAPI.crearRegistro(businessId, {
+        equipo_id: equipo.id, tipo: t, valor: v, nota: n,
+        foto_url: f?.url || null, foto_public_id: f?.public_id || null,
+      });
+      setTipo(null); setValor(''); setNota(''); setFoto(null); setMsg('✓'); onListo?.(); setTimeout(() => setMsg(''), 2000);
+    } catch (e) { setMsg(textoError(e)); }
   };
   if (tipo && conValor) {
     return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        <Entrada autoFocus inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder={tipo === 'temperatura' ? '°C' : 'Litros'} style={{ width: 90, minHeight: 30, padding: '5px 8px' }} />
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Entrada autoFocus inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder={tipo === 'temperatura' ? '°C' : 'Litros'} style={{ width: 90, minHeight: 34, padding: '5px 8px' }} />
         <Boton chico primario deshabilitado={valor === ''} onClick={() => guardar(tipo, Number(valor.replace(',', '.')))}>OK</Boton>
         <Boton chico onClick={() => setTipo(null)}>✕</Boton>
       </div>
     );
   }
+  if (esEstado) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: T.head, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8 }}>
+        <Entrada autoFocus value={nota} maxLength={500} onChange={(e) => setNota(e.target.value)} placeholder="Ej.: no enfría bien, hace ruido, quedó limpia y apagada…" style={{ minHeight: 36 }} />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+            <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={subirFoto} style={{ display: 'none' }} />
+            <span style={{ fontFamily: FB, fontSize: 12, fontWeight: 600, color: T.ink, background: '#fff', border: `1px solid ${T.border2}`, borderRadius: 8, padding: '5px 9px' }}>
+              {subiendo ? 'Subiendo…' : foto ? '📷 Foto ✓' : '📷 Foto'}
+            </span>
+          </label>
+          {foto && <Boton chico peligro onClick={() => setFoto(null)}>✕</Boton>}
+          <span style={{ flex: 1 }} />
+          <Boton chico onClick={() => { setTipo(null); setNota(''); setFoto(null); }}>Cancelar</Boton>
+          <Boton chico primario deshabilitado={subiendo || (!nota.trim() && !foto)} onClick={() => guardar('estado', null, nota.trim(), foto)}>Guardar</Boton>
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
-      {tipos.map(([k, l]) => <Boton key={k} chico onClick={() => (k === 'temperatura' || k.startsWith('aceite_') ? setTipo(k) : guardar(k, null))}>{l}</Boton>)}
+      {tipos.map(([k, l]) => (
+        <Boton key={k} chico onClick={() => (k === 'temperatura' || k.startsWith('aceite_') || k === 'estado' ? setTipo(k) : guardar(k, null))}>
+          {k === 'estado' ? '📌 Estado' : l}
+        </Boton>
+      ))}
+      {onFalla && <Boton chico peligro onClick={onFalla}>⚠ Falla</Boton>}
       {msg && <span style={{ fontSize: 12, color: msg === '✓' ? T.ok : T.bad }}>{msg}</span>}
     </div>
   );
@@ -368,15 +411,31 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
   const [tipo, setTipo] = useState('');
   const [valor, setValor] = useState('');
   const [nota, setNota] = useState('');
+  const [foto, setFoto] = useState(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [error, setError] = useState('');
   const eq = equipos.find((e) => String(e.id) === equipoId);
   const tipos = TIPOS_POR_RUBRO[eq?.rubro] || TIPOS_POR_RUBRO.otro;
   const conValor = tipo === 'temperatura' || tipo.startsWith('aceite_');
+  const esEstado = tipo === 'estado';
+  const subirFoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(''); setSubiendoFoto(true);
+    try { const r = await MantenimientoAPI.subirFoto(businessId, file); setFoto({ url: r.url, public_id: r.public_id }); }
+    catch (err) { setError(textoError(err)); }
+    finally { setSubiendoFoto(false); }
+  };
   const guardar = async () => {
     setError('');
     try {
-      const r = await MantenimientoAPI.crearRegistro(businessId, { equipo_id: Number(equipoId), tipo, valor: valor === '' ? null : Number(valor.replace(',', '.')), nota });
-      setRegistros(r.registros || []); setValor(''); setNota('');
+      const r = await MantenimientoAPI.crearRegistro(businessId, {
+        equipo_id: Number(equipoId), tipo,
+        valor: valor === '' ? null : Number(valor.replace(',', '.')),
+        nota, foto_url: foto?.url || null, foto_public_id: foto?.public_id || null,
+      });
+      setRegistros(r.registros || []); setValor(''); setNota(''); setFoto(null);
     } catch (e) { setError(textoError(e)); }
   };
   const borrar = async (id) => {
@@ -416,22 +475,59 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
           </Campo>
         )}
         {conValor && <Campo label={tipo === 'temperatura' ? 'Temperatura (°C)' : 'Litros'}><Entrada inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} /></Campo>}
-        {tipo && <Campo label="Nota (opcional)"><Entrada value={nota} maxLength={300} onChange={(e) => setNota(e.target.value)} /></Campo>}
+        {tipo && (
+          <Campo label={esEstado ? 'Estado / observación' : 'Nota (opcional)'}>
+            <Entrada value={nota} maxLength={500} onChange={(e) => setNota(e.target.value)} placeholder={esEstado ? 'Ej.: no enfría bien, hace ruido, quedó limpia y apagada…' : ''} />
+          </Campo>
+        )}
+        {tipo && (
+          <Campo label="Foto (opcional)" ayuda="JPG, PNG o WEBP · hasta 8 MB">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={subirFoto} style={{ display: 'none' }} />
+                <span style={{ fontFamily: FB, fontSize: 12.5, fontWeight: 600, color: T.ink, background: '#fff', border: `1px solid ${T.border2}`, borderRadius: 9, padding: '6px 10px' }}>
+                  📷 Sacar foto
+                </span>
+              </label>
+              <label style={{ cursor: 'pointer', display: 'inline-flex' }}>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={subirFoto} style={{ display: 'none' }} />
+                <span style={{ fontFamily: FB, fontSize: 12.5, fontWeight: 600, color: T.ink, background: '#fff', border: `1px solid ${T.border2}`, borderRadius: 9, padding: '6px 10px' }}>
+                  🖼 Elegir imagen
+                </span>
+              </label>
+              {subiendoFoto && <Texto sutil>Subiendo…</Texto>}
+            </div>
+            {foto?.url && (
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${T.border}`, borderRadius: 10, padding: 6 }}>
+                <img src={foto.url} alt="Vista previa" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8 }} />
+                <span style={{ flex: 1, fontSize: 12, color: T.ok, fontWeight: 600 }}>Foto cargada ✓</span>
+                <Boton chico peligro onClick={() => setFoto(null)}>✕</Boton>
+              </div>
+            )}
+          </Campo>
+        )}
         {error && <div style={{ color: T.bad, fontSize: 13 }}>{error}</div>}
-        <Boton primario deshabilitado={!equipoId || !tipo || (conValor && valor === '')} onClick={guardar}>Registrar</Boton>
+        <Boton primario deshabilitado={!equipoId || !tipo || subiendoFoto || (conValor && valor === '') || (esEstado && !nota.trim() && !foto)} onClick={guardar}>Registrar</Boton>
       </div>
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>Últimos 30 días</div>
-          <Boton chico deshabilitado={!registros.length} title="Bajar a Excel los registros que se ven en pantalla" onClick={exportarExcel}>
-            Exportar a Excel ({registros.length.toLocaleString('es-AR')})
-          </Boton>
+          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>{ctx.planifica ? 'Últimos 30 días' : 'Cargados por vos hoy'}</div>
+          {ctx.planifica && (
+            <Boton chico deshabilitado={!registros.length} title="Bajar a Excel los registros que se ven en pantalla" onClick={exportarExcel}>
+              Exportar a Excel ({registros.length.toLocaleString('es-AR')})
+            </Boton>
+          )}
         </div>
-        {!registros.length ? <Texto sutil>No hay registros todavía.</Texto> : registros.map((r) => (
+        {!registros.length ? <Texto sutil>{ctx.planifica ? 'No hay registros todavía.' : 'Hoy todavía no cargaste registros.'}</Texto> : registros.map((r) => (
           <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: `1px solid ${T.border}`, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 180, fontSize: 13.5 }}>
               <b style={{ color: T.text }}>{r.equipo}</b> · {r.tipo_label}{r.valor != null ? <b style={{ color: T.ink }}> {r.valor} {r.unidad}</b> : ''}
               {r.nota && <div style={{ fontSize: 12, color: T.text3 }}>{r.nota}</div>}
+              {r.foto_url && (
+                <a href={r.foto_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 4 }}>
+                  <img src={r.foto_url} alt={r.tipo_label} style={{ maxHeight: 72, borderRadius: 8, border: `1px solid ${T.border}`, display: 'block' }} />
+                </a>
+              )}
             </div>
             <span style={{ fontSize: 12, color: T.text3 }}>{r.usuario} · {fechaHora(r.created_at)}</span>
             {(ctx.planifica || r.user_id === ctx.uid) && <Boton chico peligro onClick={() => borrar(r.id)}>✕</Boton>}
