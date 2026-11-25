@@ -35,11 +35,17 @@ export default function WonaConexion({ businessId, themeColor = '#2492C8', enAlt
   const [sede, setSede] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const espera = useRef(null);
+  const sincronizandoAntes = useRef(false);
 
   const cargar = useCallback(async () => {
     if (!businessId) return;
     try {
       const r = await WonaAPI.estado(businessId);
+      // Terminó de traer datos: las tablas abiertas se recargan solas.
+      if (sincronizandoAntes.current && !r?.sincronizando) {
+        try { window.dispatchEvent(new Event('business:synced')); window.dispatchEvent(new Event('ventas:updated')); } catch { /* nada */ }
+      }
+      sincronizandoAntes.current = !!r?.sincronizando;
       setEst(r);
       onEstado?.(r);
       setError('');

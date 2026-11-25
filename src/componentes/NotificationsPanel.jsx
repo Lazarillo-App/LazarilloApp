@@ -234,6 +234,19 @@ export default function NotificationsPanel({ businessId: businessIdProp }) {
     unreadPrevio.current = unreadCount;
   }, [unreadCount, refresh]);
 
+  // Cuando llega un aviso de que entraron datos de un POS (Wona, Fudo), las tablas abiertas se
+  // recargan solas (usuaria 25/11/2026: «llegaron los datos pero la tabla no los mostró»).
+  const syncVistos = React.useRef(null);
+  useEffect(() => {
+    const deSync = (notifications || []).filter((n) => !n.read && /^(wona_sincronizado|fudo_maestros|fudo_conectado|wona_conectado)$/.test(n.type || n.metadata?.kind || ''));
+    if (syncVistos.current === null) { syncVistos.current = new Set(deSync.map((n) => n.id)); return; }
+    const nuevos = deSync.filter((n) => !syncVistos.current.has(n.id));
+    nuevos.forEach((n) => syncVistos.current.add(n.id));
+    if (nuevos.length) {
+      try { window.dispatchEvent(new Event('business:synced')); window.dispatchEvent(new Event('ventas:updated')); } catch { /* nada */ }
+    }
+  }, [notifications]);
+
   const [rowBusy, setRowBusy] = useState({});
   const [uiNotifs, setUiNotifs] = useState([]);
 

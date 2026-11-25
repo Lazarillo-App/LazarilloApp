@@ -11,7 +11,8 @@ export const tieneActualizador = (pos) =>
 
 // POS que se conectan solos por su API, sin instalar nada: el cliente pega sus claves (17/11/2026).
 export const POS_CON_API = ["Fudo", "Wona Sports"];
-export const conectaPorApi = (pos) =>
-  POS_CON_API.some((p) => p.toLowerCase() === String(pos || "").trim().toLowerCase());
-// Wona Sports (25/11/2026): canchas y buffet; se conecta con el usuario y la clave de Wona.
+// Wona Sports (25/11/2026): canchas y buffet; se conecta con el usuario y la clave de Wona. También
+// si lo escribieron a mano con «Otro» («Wona», «wona sport»…).
 export const esWona = (pos) => /^wona/i.test(String(pos || "").trim());
+export const conectaPorApi = (pos) =>
+  esWona(pos) || POS_CON_API.some((p) => p.toLowerCase() === String(pos || "").trim().toLowerCase());
