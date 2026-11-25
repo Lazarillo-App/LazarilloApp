@@ -13,6 +13,7 @@ import HistoryIcon      from '@mui/icons-material/History';
 import { format, subDays, parseISO, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { purchasesSync, purchasesFirstDate } from '@/servicios/apiPurchases';
+import CampoFecha from './CampoFecha';
 
 /* ── helpers de fecha ── */
 const ymd  = (d) => format(d, 'yyyy-MM-dd');
@@ -101,15 +102,14 @@ export default function SyncComprasModal({ open, onClose, bizId, onSuccess }) {
     setResult(null);
   }, []);
 
-  const handleFromChange = (e) => {
-    setFrom(e.target.value);
+  const handleFromChange = (val) => {
+    setFrom(val);
     setSelectedPreset(null);
     setResult(null);
   };
 
-  const handleToChange = (e) => {
-    const val = e.target.value;
-    setTo(val > maxDate ? maxDate : val);
+  const handleToChange = (val) => {
+    setTo(val && val > maxDate ? maxDate : val);
     setSelectedPreset(null);
     setResult(null);
   };
@@ -206,29 +206,18 @@ export default function SyncComprasModal({ open, onClose, bizId, onSuccess }) {
         <Stack direction="row" gap={2} alignItems="center" sx={{ mb: 1 }}>
           <Box sx={{ flex: 1 }}>
             <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Desde</Typography>
-            <input
-              type="date"
+            <CampoFecha
               value={from}
-              max={to || maxDate}
               onChange={handleFromChange}
-              style={{
-                width: '100%', padding: '8px 10px', border: '1px solid #d1d5db',
-                borderRadius: 6, fontSize: '0.9rem', outline: 'none',
-              }}
+              fullWidth
             />
           </Box>
           <Box sx={{ flex: 1 }}>
             <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>Hasta</Typography>
-            <input
-              type="date"
+            <CampoFecha
               value={to}
-              min={from}
-              max={maxDate}
               onChange={handleToChange}
-              style={{
-                width: '100%', padding: '8px 10px', border: '1px solid #d1d5db',
-                borderRadius: 6, fontSize: '0.9rem', outline: 'none',
-              }}
+              fullWidth
             />
           </Box>
         </Stack>
