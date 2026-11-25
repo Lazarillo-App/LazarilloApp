@@ -6,6 +6,7 @@
 // Cualquiera del equipo reporta una falla; jefe / dueño / admin arman equipos y planes.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { useBusiness } from '@/context/BusinessContext';
 import { useBranch } from '@/hooks/useBranch';
 import { setSucursalOperacion } from '@/servicios/apiProduccion';
@@ -382,6 +383,28 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
     if (!window.confirm('¿Borrar este registro?')) return;
     try { const r = await MantenimientoAPI.borrarRegistro(businessId, id); setRegistros(r.registros || []); } catch (e) { setError(textoError(e)); }
   };
+  const exportarExcel = () => {
+    if (!registros.length) return;
+    try {
+      const filas = registros.map((r) => ({
+        'Fecha y hora': fechaHora(r.created_at),
+        Equipo: r.equipo || '',
+        Tipo: r.tipo_label || r.tipo || '',
+        Valor: r.valor != null ? `${r.valor}${r.unidad ? ` ${r.unidad}` : ''}` : '',
+        Persona: r.usuario || '',
+        Nota: r.nota || '',
+      }));
+      const hoja = XLSX.utils.json_to_sheet(filas);
+      hoja['!cols'] = Object.keys(filas[0]).map((k) => ({
+        wch: Math.max(12, k.length + 2, ...filas.slice(0, 200).map((x) => String(x[k] ?? '').length + 1)),
+      }));
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, 'Registros');
+      XLSX.writeFile(libro, `mantenimiento-registros-${isoHoy()}.xlsx`);
+    } catch {
+      setError('No pude armar el Excel. Probá de nuevo.');
+    }
+  };
   return (
     <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'minmax(280px, 360px) 1fr', gap: 16, alignItems: 'start' }}>
       <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -398,7 +421,12 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
         <Boton primario deshabilitado={!equipoId || !tipo || (conValor && valor === '')} onClick={guardar}>Registrar</Boton>
       </div>
       <div>
-        <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 6 }}>Últimos 30 días</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+          <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>Últimos 30 días</div>
+          <Boton chico deshabilitado={!registros.length} title="Bajar a Excel los registros que se ven en pantalla" onClick={exportarExcel}>
+            Exportar a Excel ({registros.length.toLocaleString('es-AR')})
+          </Boton>
+        </div>
         {!registros.length ? <Texto sutil>No hay registros todavía.</Texto> : registros.map((r) => (
           <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: `1px solid ${T.border}`, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 180, fontSize: 13.5 }}>
