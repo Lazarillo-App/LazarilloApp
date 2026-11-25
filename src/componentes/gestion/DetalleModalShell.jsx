@@ -27,6 +27,8 @@ const norm = (s) => (s ? String(s).toLowerCase().normalize('NFD').replace(/\p{M}
 
 export default function DetalleModalShell({
   open, onClose, title, subtitle, cols, queryKey, queryFn, searchFields, sortFn, renderRow, saveError, footerNote,
+  // Resumen en el pie a partir de lo que se ve (respeta el buscador), p. ej. los cubiertos del detalle de ventas.
+  resumen,
   headerControls, periodoLabel, onServerQuery, resetKey, seleccion, anchoAcciones = 68,
   // Sección debajo de la tabla (gestion: `extra`), p. ej. la cuenta corriente de un registro puntual.
   extra,
@@ -206,6 +208,7 @@ export default function DetalleModalShell({
           <Box component="span" sx={{ color: 'text.secondary' }}>
             {query.trim() ? `${filtered.length} de ${count} registro${count !== 1 ? 's' : ''}` : `${count} registro${count !== 1 ? 's' : ''}`}
             {periodoLabel ? ` — ${periodoLabel}` : ''}
+            {resumen && filtered.length > 0 && <>{' · '}{resumen(filtered)}</>}
             {seleccion && seleccion.ids.size > 0 && (
               <>
                 {' · '}<Box component="span" sx={{ color: 'text.primary', fontWeight: 500 }}>{seleccion.ids.size} tildado{seleccion.ids.size !== 1 ? 's' : ''}</Box>{' · '}
