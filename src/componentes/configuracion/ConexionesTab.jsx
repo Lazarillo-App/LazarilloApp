@@ -21,10 +21,11 @@ import { showConfirm } from '@/servicios/appConfirm';
 import { BusinessesAPI } from '@/servicios/apiBusinesses';
 import { useBusiness } from '@/context/BusinessContext';
 import { abrirChatAnthony } from '@/componentes/asistente/chatEvento';
-import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador, conectaPorApi } from '@/componentes/asistente/posLista';
+import { POS_BASE, POS_OTRO, POS_NINGUNO, tieneActualizador, conectaPorApi, esWona } from '@/componentes/asistente/posLista';
 import MercadoPagoCaja from './MercadoPagoCaja';
 import MercadoLibreCaja from './MercadoLibreCaja';
 import FudoConexion from './FudoConexion';
+import WonaConexion from './WonaConexion';
 import ArcaCaja from './ArcaCaja';
 import { downwardMenuProps } from '@/utils/menuProps';
 
@@ -179,7 +180,7 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
         <Caja titulo="Tu sistema de cobro">
           <Stack spacing={1.5} sx={{ px: 2, py: 1.5 }}>
             <Typography variant="body2" color="text.secondary">
-              Hoy se conectan solos <b>MaxiRest</b> (con un actualizador que se instala en su PC) y <b>Fudo</b> (con dos claves, sin instalar nada). Los demás sistemas se van a ir sumando.
+              Hoy se conectan solos <b>MaxiRest</b> (con un actualizador que se instala en su PC), <b>Fudo</b> (con dos claves, sin instalar nada) y <b>Wona Sports</b> (con tu usuario de Wona). Los demás sistemas se van a ir sumando.
             </Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'center' }}>
               <TextField select size="small" label="¿Con qué sistema cobrás?" value={sel} sx={{ minWidth: 280 }}
@@ -207,7 +208,9 @@ export default function ConexionesTab({ businessId, themeColor = '#2492C8' }) {
         </Caja>
       )}
 
-      {modo === 'api' && <FudoConexion businessId={businessId} themeColor={themeColor} />}
+      {modo === 'api' && (esWona(elegido)
+        ? <WonaConexion businessId={businessId} themeColor={themeColor} />
+        : <FudoConexion businessId={businessId} themeColor={themeColor} />)}
 
       {modo === 'ninguno' && (
         <Alert severity="info">

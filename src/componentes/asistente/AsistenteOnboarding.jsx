@@ -12,8 +12,9 @@ import { showPrompt } from "../../servicios/appPrompt";
 import { PASOS_ALTA, guardarAlta } from "./altaEstado";
 import AltaManual from "./AltaManual";
 import { abrirChatAnthony } from "./chatEvento";
-import { POS_BASE, POS_OTRO, POS_NINGUNO, conectaPorApi } from "./posLista";
+import { POS_BASE, POS_OTRO, POS_NINGUNO, conectaPorApi, esWona } from "./posLista";
 import FudoConexion from "@/componentes/configuracion/FudoConexion";
+import WonaConexion from "@/componentes/configuracion/WonaConexion";
 import { useAjuste } from "@/hooks/useAjustes";
 
 // pdfjs-dist es pesado (~1MB+ con su worker) y solo lo usa este archivo cuando
@@ -3070,17 +3071,23 @@ function EnMarcha({ insumos, setInsumos, articulos, setArticulos, onBrand, busin
             // Fudo (17/11): se conecta por su API con dos claves; las ventas llegan solas y, si el cliente
             // lo deja tildado, también artículos, insumos, recetas y compras.
             <div>
-              <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta onEstado={setFudoEst}
-                onConectado={() => entrarConPos(pos)} />
+              {esWona(pos) ? (
+                // Wona Sports (25/11): usuario y clave de Wona y la sede de este negocio.
+                <WonaConexion businessId={businessId} themeColor={marca.primary} enAlta onEstado={setFudoEst}
+                  onConectado={() => entrarConPos(pos)} />
+              ) : (
+                <FudoConexion businessId={businessId} themeColor={marca.primary} enAlta onEstado={setFudoEst}
+                  onConectado={() => entrarConPos(pos)} />
+              )}
               {fudoEst?.conectado ? (
                 // Conectado: el efecto de arriba ya lleva a la tabla; esto se ve un instante.
                 <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
-                  Listo, te llevo a tus artículos… lo que falte de Fudo va apareciendo solo.
+                  Listo, te llevo a tus artículos… lo que falte de {esWona(pos) ? "Wona" : "Fudo"} va apareciendo solo.
                 </div>
               ) : (
                 <>
                   <div style={{ fontSize: 13, color: C.muted, margin: "12px 0", lineHeight: 1.5 }}>
-                    Si no tenés las claves a mano, seguí con tus artículos y conectalo después desde <b>Configuración › Conexiones › Fudo</b>.
+                    Si no tenés {esWona(pos) ? "el usuario" : "las claves"} a mano, seguí con tus artículos y conectalo después desde <b>Configuración › Conexiones</b>.
                   </div>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <Btn ghost small accent={marca.primary} onClick={async () => {
