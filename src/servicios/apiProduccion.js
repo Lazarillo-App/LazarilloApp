@@ -34,6 +34,9 @@ export const ProduccionAPI = {
   decidir: (bid, id, itemId, decision, nota) => http(`${base(bid)}/tareas/${id}/insumos/${itemId}/decision`, { method: 'POST', body: { decision, nota } }),
   escalar: (bid, id, body) => http(`${base(bid)}/tareas/${id}/escalar`, { method: 'POST', body }),
   mermaInsumo: (bid, insumoId) => http(`${base(bid)}/mermas/insumo/${insumoId}`, sin),
+  // «Usar esta merma» (25/11/2026): jefe, dueño o admin; deshacer solo dueño o admin.
+  usarMerma: (bid, body) => http(`${base(bid)}/mermas/usar`, { method: 'POST', body }),
+  deshacerUsoMerma: (bid, usoId) => http(`${base(bid)}/mermas/usos/${usoId}/deshacer`, { method: 'POST' }),
   nota: (bid, id, texto) => http(`${base(bid)}/tareas/${id}/notas`, { method: 'POST', body: { texto } }),
   cambios: (bid) => http(`${base(bid)}/cambios`, sin),
   mise: (bid) => http(`${base(bid)}/mise`, sin),

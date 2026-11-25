@@ -5,7 +5,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { T, FT, FB } from '@/componentes/ui/temaDiego';
 import { ProduccionAPI } from '@/servicios/apiProduccion';
-import { insumoMermaCreate } from '@/servicios/apiInsumos';
 import { Boton, Campo, Entrada, Selector, Texto, Vacio, Pastilla, FichaMovil } from './ui';
 import BuscarInsumo from './BuscarInsumo';
 import { fmtCant, textoError, unidadCorta, fmtTandas } from './util';
@@ -96,13 +95,14 @@ export function MiseEnPlace({ businessId, ctx, cel }) {
 export function Registros({ businessId, ctx, desde, hasta, cel }) {
   const [solapa, setSolapa] = useState('desperdicio');
   const [mermas, setMermas] = useState([]);
+  const [usos, setUsos] = useState([]); // mermas guardadas en insumos desde acá (con Deshacer)
   const [desp, setDesp] = useState([]);
   const [motivos, setMotivos] = useState([]);
   const [error, setError] = useState('');
   const cargar = useCallback(async () => {
     try {
       const [m, d] = await Promise.all([ProduccionAPI.mermas(businessId, desde, hasta), ProduccionAPI.desperdicios(businessId, desde, hasta)]);
-      setMermas(m.items || []); setDesp(d.items || []); setMotivos(d.motivos || []);
+      setMermas(m.items || []); setUsos(m.usos || []); setDesp(d.items || []); setMotivos(d.motivos || []);
     } catch (e) { setError(textoError(e)); }
   }, [businessId, desde, hasta]);
   useEffect(() => { cargar(); }, [cargar]);
@@ -112,30 +112,33 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
   };
   const [usandoId, setUsandoId] = useState(null);
   const [msgLista, setMsgLista] = useState('');
-  // POST /insumos/:id/mermas tiene blockStaffWrite: solo dueño/admin (ctx.decide) pueden guardar la merma del insumo.
-  const puedeUsarMerma = !!ctx?.decide;
+  // Jefe de cocina, dueño y admin (usuaria 25/11/2026): se aplica sin aprobación; dueño/admin pueden deshacer.
+  const puedeUsarMerma = !!ctx?.planifica;
   const usarMerma = async (x) => {
     if (!x.insumo_id || !(x.bruto > 0) || !(x.neto > 0)) return;
     setError(''); setMsgLista(''); setUsandoId(x.id);
     try {
-      const info = await ProduccionAPI.mermaInsumo(businessId, x.insumo_id).catch(() => null);
-      const def = info?.configuradas?.find((m) => m.es_default) || info?.configuradas?.[0];
-      const nombreMerma = def?.nombre?.trim() || 'Limpieza';
-      await insumoMermaCreate(x.insumo_id, {
-        nombre: nombreMerma,
-        peso_inicial: Number(x.bruto),
-        peso_final: Number(x.neto),
-        es_default: true,
-      }, businessId);
+      await ProduccionAPI.usarMerma(businessId, { insumo_id: x.insumo_id, bruto: Number(x.bruto), neto: Number(x.neto), registro_id: x.id });
       try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId: x.insumo_id } })); } catch { /* noop */ }
       try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId: x.insumo_id } })); } catch { /* noop */ }
       await cargar();
-      setMsgLista(`Merma de ${x.nombre} actualizada a ${x.pct}% ✓`);
+      setMsgLista(`Merma de ${x.nombre} actualizada a ${x.pct}% ✓${ctx?.decide ? '' : ' (dueño o admin lo pueden deshacer)'}`);
     } catch (e) {
       setError(textoError(e));
     } finally {
       setUsandoId(null);
     }
+  };
+  const deshacer = async (u) => {
+    if (!window.confirm(`¿Deshacer el cambio de merma de ${u.insumo}? Vuelve a ${u.antes?.pct != null ? `${u.antes.pct}%` : 'no tener merma'}.`)) return;
+    setError(''); setMsgLista('');
+    try {
+      await ProduccionAPI.deshacerUsoMerma(businessId, u.id);
+      try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId: u.insumo_id } })); } catch { /* noop */ }
+      try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId: u.insumo_id } })); } catch { /* noop */ }
+      await cargar();
+      setMsgLista(`Se deshizo el cambio de merma de ${u.insumo} ✓`);
+    } catch (e) { setError(textoError(e)); }
   };
   const altoBtnBorrar = cel ? { minHeight: 44, minWidth: 44, padding: 0, flexShrink: 0 } : undefined;
   return (
@@ -147,7 +150,7 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
         </div>
         {solapa === 'desperdicio'
           ? <FormDesperdicio businessId={businessId} ctx={ctx} motivos={motivos} onListo={(r) => { setDesp(r.items || []); }} desde={desde} hasta={hasta} cel={cel} />
-          : <FormMerma businessId={businessId} ctx={ctx} onListo={(r) => { setMermas(r.items || []); }} desde={desde} hasta={hasta} cel={cel} />}
+          : <FormMerma businessId={businessId} ctx={ctx} onListo={(r) => { setMermas(r.items || []); if (r.usos) setUsos(r.usos); }} desde={desde} hasta={hasta} cel={cel} />}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
         {error && <div style={{ color: T.bad, fontFamily: FB, fontSize: 13 }}>{error}</div>}
@@ -166,6 +169,23 @@ export function Registros({ businessId, ctx, desde, hasta, cel }) {
           ))}
         </div>
         <div>
+          {usos.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 6 }}>Mermas guardadas en insumos</div>
+              {usos.map((u) => (
+                <div key={u.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: `1px solid ${T.border}`, fontFamily: FB, flexWrap: 'wrap', opacity: u.deshecho_at ? 0.55 : 1 }}>
+                  <div style={{ flex: 1, minWidth: 160, overflowWrap: 'anywhere' }}>
+                    <span style={{ fontWeight: 600, color: T.text }}>{u.insumo}</span>{' '}
+                    <span style={{ color: T.text2 }}>{u.antes?.pct != null ? `${u.antes.pct}%` : 'sin merma'} → <b style={{ color: T.ink }}>{u.despues?.pct}%</b></span>
+                    <div style={{ fontSize: 12, color: T.text3 }}>
+                      {u.usuario} · {fechaHora(u.created_at)}{u.deshecho_at ? ` · deshecho por ${u.deshizo || 'admin'}` : ''}
+                    </div>
+                  </div>
+                  {u.puede_deshacer && <Boton chico={!cel} style={cel ? { minHeight: 44 } : undefined} onClick={() => deshacer(u)}>↺ Deshacer</Boton>}
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 6 }}>Mermas medidas</div>
           {!mermas.length ? <Texto sutil>No se midieron mermas.</Texto> : mermas.map((x) => {
             const peor = x.pct_config != null && x.pct != null && x.pct > x.pct_config + 3;
@@ -274,13 +294,7 @@ function FormMerma({ businessId, ctx, onListo, desde, hasta, cel }) {
     if (!insumo?.id || !(b > 0) || !(n > 0)) return;
     setMsg(''); setUsandoForm(true);
     try {
-      const def = info?.configuradas?.find((m) => m.es_default) || info?.configuradas?.[0];
-      await insumoMermaCreate(insumo.id, {
-        nombre: def?.nombre?.trim() || 'Limpieza',
-        peso_inicial: b,
-        peso_final: n,
-        es_default: true,
-      }, businessId);
+      await ProduccionAPI.usarMerma(businessId, { insumo_id: insumo.id, bruto: b, neto: n });
       try { window.dispatchEvent(new CustomEvent('insumo:mermas-changed', { detail: { insumoId: insumo.id } })); } catch { /* noop */ }
       try { window.dispatchEvent(new CustomEvent('receta-elaborado:costo-changed', { detail: { insumoId: insumo.id } })); } catch { /* noop */ }
       cargarInfo();
@@ -324,7 +338,7 @@ function FormMerma({ businessId, ctx, onListo, desde, hasta, cel }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <Texto style={{ flex: 1 }}>Merma: <b style={{ color: conf?.pct != null && pct > conf.pct + 3 ? T.warn : T.ink }}>{pct}%</b> ({fmtCant(b - n, unidad)} afuera)
             {conf?.pct != null && <> · cargada {conf.pct}%</>}</Texto>
-          {ctx?.decide && difiereForm && (
+          {ctx?.planifica && difiereForm && (
             <Boton chico={!cel} style={altoCel} deshabilitado={usandoForm} onClick={usarEnFicha}>
               {usandoForm ? 'Guardando…' : 'Usar esta merma'}
             </Boton>

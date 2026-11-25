@@ -99,6 +99,8 @@ const COCINA_KINDS = {
   produccion_cambio: { icono: '🔁', color: '#C77C12', abrir: aTarea },
   produccion_nota: { icono: '💬', color: '#2F6FB2', abrir: aTarea },
   produccion_desperdicio: { icono: '🗑️', color: '#C0392B', abrir: () => '/produccion?vista=registros' },
+  // «Usar esta merma» (25/11/2026): abre Mermas y desperdicios, donde dueño/admin la pueden deshacer.
+  produccion_merma_uso: { icono: '⚖️', color: '#C77C12', abrir: () => '/produccion?vista=registros' },
   produccion_decision: { icono: '✅', color: '#1F8A5B', abrir: aTarea },
   produccion_tarea: { icono: '📋', color: '#15213E', abrir: aTarea },
   produccion_novedad: { icono: '📌', color: '#2492C8', abrir: () => '/produccion?vista=novedades' },
