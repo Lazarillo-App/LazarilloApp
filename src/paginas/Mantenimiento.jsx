@@ -29,6 +29,9 @@ function useCel() {
   return cel;
 }
 const fechaHora = (s) => new Date(s).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+const DIACRITICOS = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, 'g');
+const normTxt = (s) => String(s || '').normalize('NFD').replace(DIACRITICOS, '').toLowerCase();
+const ESTADOS_FILTRO = [['activo', 'Activo'], ['en_reparacion', 'En reparación'], ['baja', 'De baja']];
 
 function Seccion({ titulo, color, children, cuenta }) {
   if (!cuenta) return null;
@@ -59,6 +62,9 @@ export default function Mantenimiento() {
   const [equipo, setEquipo] = useState(null);      // { id } o { nuevo: true }
   const [falla, setFalla] = useState(null);        // { equipoId }
   const [nuevaOrden, setNuevaOrden] = useState(null);
+  const [qEquipo, setQEquipo] = useState('');
+  const [rubroFiltro, setRubroFiltro] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
 
   useEffect(() => { cargarFuentes(); }, []);
   const cargarTodo = useCallback(async () => {
@@ -94,6 +100,21 @@ export default function Mantenimiento() {
       hechas: ordenes.filter((o) => o.estado === 'hecha'),
     };
   }, [ordenes, hoy]);
+
+  const conFiltroEquipos = equipos.length > 10;
+  const equiposVisibles = useMemo(() => {
+    if (!conFiltroEquipos) return equipos;
+    const palabras = normTxt(qEquipo).split(/\s+/).filter(Boolean);
+    return equipos.filter((e) => {
+      if (rubroFiltro && e.rubro !== rubroFiltro) return false;
+      if (estadoFiltro && (e.estado || 'activo') !== estadoFiltro) return false;
+      if (palabras.length) {
+        const base = normTxt([e.nombre, e.marca, e.modelo, e.ubicacion, e.sector].join(' '));
+        if (!palabras.every((w) => base.includes(w))) return false;
+      }
+      return true;
+    });
+  }, [equipos, conFiltroEquipos, qEquipo, rubroFiltro, estadoFiltro]);
 
   const pasosMant = usePasosPresentes([
     { k: 'mant-equipo', t: <>Con <b>+ Equipo</b> cargás cada heladera, freidora, horno o máquina del local y le armás los mantenimientos preventivos que se repiten.</> },
@@ -162,33 +183,72 @@ export default function Mantenimiento() {
           !equipos.length ? (
             <MantenimientoEjemplo vista="equipos" cel={cel} planifica={ctx.planifica} hoy={hoy} onNuevoEquipo={() => setEquipo({ nuevo: true })} />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
-              {equipos.map((e) => {
-                const est = ESTADO_EQUIPO[e.estado] || ESTADO_EQUIPO.activo;
-                return (
-                  <div key={e.id} onClick={() => setEquipo({ id: e.id })} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, cursor: 'pointer',
-                    boxShadow: T.sombraSuave, opacity: e.estado === 'baja' ? 0.55 : 1 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: 24 }}>{RUBRO[e.rubro]?.emoji || '🔧'}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text }}>{e.nombre}</div>
-                        <div style={{ fontSize: 12, color: T.text3 }}>{[e.marca, e.modelo].filter(Boolean).join(' ') || RUBRO[e.rubro]?.label}{e.ubicacion ? ` · ${e.ubicacion}` : ''}</div>
-                      </div>
-                      <Pastilla color={est.color} fondo={est.fondo}>{est.label}</Pastilla>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, fontSize: 12, color: T.text2 }}>
-                      {e.fallas > 0 && <Pastilla color={T.bad} fondo="#FBE9E9">{e.fallas} falla{e.fallas > 1 ? 's' : ''}</Pastilla>}
-                      <span>{e.planes ? `${e.planes} mantenimiento${e.planes > 1 ? 's' : ''}` : 'Sin mantenimientos'}</span>
-                      {e.proxima && <span>· próximo {diaLargo(e.proxima)}</span>}
-                    </div>
-                    {(e.rubro === 'freidora' || e.rubro === 'heladera') && e.estado !== 'baja' && (
-                      <div style={{ marginTop: 8 }} onClick={(x) => x.stopPropagation()}>
-                        <RegistroRapido businessId={bid} equipo={e} onListo={cargarTodo} />
-                      </div>
+            <div style={{ minWidth: 0 }}>
+              {conFiltroEquipos && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12, minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Entrada
+                      value={qEquipo}
+                      onChange={(e) => setQEquipo(e.target.value)}
+                      placeholder="Buscar por nombre, marca o ubicación…"
+                      style={{ maxWidth: cel ? '100%' : 320, flex: cel ? '1 1 100%' : '0 1 320px' }}
+                    />
+                    {(qEquipo || rubroFiltro || estadoFiltro) && (
+                      <Texto sutil style={{ fontSize: 12 }}>
+                        {equiposVisibles.length} de {equipos.length}
+                      </Texto>
                     )}
                   </div>
-                );
-              })}
+                  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%', paddingBottom: 4 }}>
+                    <Boton chico activo={!rubroFiltro} onClick={() => setRubroFiltro('')} style={{ flexShrink: 0 }}>Todos los rubros</Boton>
+                    {Object.entries(RUBRO).map(([k, r]) => (
+                      <Boton key={k} chico activo={rubroFiltro === k} onClick={() => setRubroFiltro((prev) => (prev === k ? '' : k))} style={{ flexShrink: 0 }}>
+                        {r.emoji} {r.label}
+                      </Boton>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%', paddingBottom: 4 }}>
+                    <Boton chico activo={!estadoFiltro} onClick={() => setEstadoFiltro('')} style={{ flexShrink: 0 }}>Todos los estados</Boton>
+                    {ESTADOS_FILTRO.map(([k, label]) => (
+                      <Boton key={k} chico activo={estadoFiltro === k} onClick={() => setEstadoFiltro((prev) => (prev === k ? '' : k))} style={{ flexShrink: 0 }}>
+                        {label}
+                      </Boton>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!equiposVisibles.length ? (
+                <Texto sutil style={{ padding: '18px 4px', textAlign: 'center' }}>Ningún equipo coincide con el filtro.</Texto>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+                  {equiposVisibles.map((e) => {
+                    const est = ESTADO_EQUIPO[e.estado] || ESTADO_EQUIPO.activo;
+                    return (
+                      <div key={e.id} onClick={() => setEquipo({ id: e.id })} style={{ background: '#fff', border: `1px solid ${T.border}`, borderRadius: 14, padding: 12, cursor: 'pointer',
+                        boxShadow: T.sombraSuave, opacity: e.estado === 'baja' ? 0.55 : 1 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <span style={{ fontSize: 24 }}>{RUBRO[e.rubro]?.emoji || '🔧'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text }}>{e.nombre}</div>
+                            <div style={{ fontSize: 12, color: T.text3 }}>{[e.marca, e.modelo].filter(Boolean).join(' ') || RUBRO[e.rubro]?.label}{e.ubicacion ? ` · ${e.ubicacion}` : ''}</div>
+                          </div>
+                          <Pastilla color={est.color} fondo={est.fondo}>{est.label}</Pastilla>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10, fontSize: 12, color: T.text2 }}>
+                          {e.fallas > 0 && <Pastilla color={T.bad} fondo="#FBE9E9">{e.fallas} falla{e.fallas > 1 ? 's' : ''}</Pastilla>}
+                          <span>{e.planes ? `${e.planes} mantenimiento${e.planes > 1 ? 's' : ''}` : 'Sin mantenimientos'}</span>
+                          {e.proxima && <span>· próximo {diaLargo(e.proxima)}</span>}
+                        </div>
+                        {(e.rubro === 'freidora' || e.rubro === 'heladera') && e.estado !== 'baja' && (
+                          <div style={{ marginTop: 8 }} onClick={(x) => x.stopPropagation()}>
+                            <RegistroRapido businessId={bid} equipo={e} onListo={cargarTodo} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )
         )}
