@@ -25,6 +25,7 @@ import { showConfirm } from '@/servicios/appConfirm';
 import { downwardMenuProps } from '@/utils/menuProps';
 import { esTodoGroup, esDiscontinuadosGroup, esElaboradosGroup, esTop20Group } from '@/utils/insumoGruposEspeciales';
 import { nombreAgrupacionVisible, estiloAgrupacion } from '@/utils/agrupacionNombre';
+import { useAccess } from '@/context/AccessContext';
 
 const safeId = (insumo) => {
   const raw = insumo?.id ?? insumo?.insumo_id ?? insumo?.codigo;
@@ -138,6 +139,8 @@ function InsumosSidebar({
   idsTop20Set,
   comprasMap,
 }) {
+  // Staff sin permiso «ver precio» no ve plata en el lateral (usuaria 23/11/2026; igual que InsumosTable).
+  const { veMontos = true } = useAccess() || {};
   const rubrosSafe = Array.isArray(rubros) ? rubros : [];
   const loading = groupsLoading;
 
@@ -677,7 +680,7 @@ function InsumosSidebar({
                         {esTodoGroup(g) && isMainDivision && idsSinAgrupCount > 0 && (
                           <span style={{ opacity: 0.6, fontSize: '0.85em' }}> ({idsSinAgrupCount})</span>
                         )}
-                        {monto > 0 && !esDiscontinuadosGroup(g) && (
+                        {veMontos && monto > 0 && !esDiscontinuadosGroup(g) && (
                           <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600, fontStyle: 'normal' }}>
                             {fmtCurrency(monto)}
                             {pct != null && (
@@ -860,7 +863,7 @@ function InsumosSidebar({
                           {rubro.nombre}
                         </span>
                       </span>
-                      {typeof monto === 'number' && monto > 0 && (
+                      {veMontos && typeof monto === 'number' && monto > 0 && (
                         <div style={{
                           display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
                           opacity: 0.75, flexShrink: 0,

@@ -414,6 +414,20 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
   const [foto, setFoto] = useState(null);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
   const [error, setError] = useState('');
+  // Buscador de la lista (usuaria 25/11/2026): por equipo y por tipo; el Excel baja lo que se ve.
+  const [qReg, setQReg] = useState('');
+  const [tipoReg, setTipoReg] = useState('');
+  const tiposEnLista = useMemo(() => {
+    const m = new Map();
+    for (const r of registros) if (r.tipo && !m.has(r.tipo)) m.set(r.tipo, r.tipo_label || r.tipo);
+    return [...m.entries()];
+  }, [registros]);
+  const visibles = useMemo(() => {
+    const q = qReg.trim().toLowerCase();
+    return registros.filter((r) => (!tipoReg || r.tipo === tipoReg)
+      && (!q || `${r.equipo || ''} ${r.nota || ''} ${r.usuario || ''}`.toLowerCase().includes(q)));
+  }, [registros, qReg, tipoReg]);
+  const conFiltroReg = registros.length > 5;
   const eq = equipos.find((e) => String(e.id) === equipoId);
   const tipos = TIPOS_POR_RUBRO[eq?.rubro] || TIPOS_POR_RUBRO.otro;
   const conValor = tipo === 'temperatura' || tipo.startsWith('aceite_');
@@ -443,9 +457,9 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
     try { const r = await MantenimientoAPI.borrarRegistro(businessId, id); setRegistros(r.registros || []); } catch (e) { setError(textoError(e)); }
   };
   const exportarExcel = () => {
-    if (!registros.length) return;
+    if (!visibles.length) return;
     try {
-      const filas = registros.map((r) => ({
+      const filas = visibles.map((r) => ({
         'Fecha y hora': fechaHora(r.created_at),
         Equipo: r.equipo || '',
         Tipo: r.tipo_label || r.tipo || '',
@@ -465,7 +479,7 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
     }
   };
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cel ? '1fr' : 'minmax(280px, 360px) 1fr', gap: 16, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cel ? 'minmax(0, 1fr)' : 'minmax(280px, 360px) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
       <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
         <Campo label="Equipo"><Selector value={equipoId} onChange={(v) => { setEquipoId(v); setTipo(''); }} vacio="Elegí el equipo"
           opciones={equipos.filter((e) => e.estado !== 'baja').map((e) => ({ value: String(e.id), label: `${RUBRO[e.rubro]?.emoji || ''} ${e.nombre}` }))} /></Campo>
@@ -509,16 +523,35 @@ function Registros({ businessId, equipos, registros, setRegistros, ctx, cel }) {
         {error && <div style={{ color: T.bad, fontSize: 13 }}>{error}</div>}
         <Boton primario deshabilitado={!equipoId || !tipo || subiendoFoto || (conValor && valor === '') || (esEstado && !nota.trim() && !foto)} onClick={guardar}>Registrar</Boton>
       </div>
-      <div>
+      <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
           <div style={{ fontFamily: FT, fontWeight: 700, fontSize: 15, color: T.text }}>{ctx.planifica ? 'Últimos 30 días' : 'Cargados por vos hoy'}</div>
           {ctx.planifica && (
-            <Boton chico deshabilitado={!registros.length} title="Bajar a Excel los registros que se ven en pantalla" onClick={exportarExcel}>
-              Exportar a Excel ({registros.length.toLocaleString('es-AR')})
+            <Boton chico deshabilitado={!visibles.length} title="Bajar a Excel los registros que se ven en pantalla" onClick={exportarExcel}>
+              Exportar a Excel ({visibles.length.toLocaleString('es-AR')})
             </Boton>
           )}
         </div>
-        {!registros.length ? <Texto sutil>{ctx.planifica ? 'No hay registros todavía.' : 'Hoy todavía no cargaste registros.'}</Texto> : registros.map((r) => (
+        {conFiltroReg && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10, minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Entrada value={qReg} onChange={(e) => setQReg(e.target.value)} placeholder="Buscar por equipo, nota o persona…"
+                style={{ maxWidth: cel ? '100%' : 320, flex: cel ? '1 1 100%' : '0 1 320px', minHeight: cel ? 44 : 38 }} />
+              {(qReg || tipoReg) && <Texto sutil style={{ fontSize: 12 }}>{visibles.length} de {registros.length}</Texto>}
+            </div>
+            {tiposEnLista.length > 1 && (
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', maxWidth: '100%', paddingBottom: 4 }}>
+                <Boton chico activo={!tipoReg} onClick={() => setTipoReg('')} style={{ flexShrink: 0 }}>Todos</Boton>
+                {tiposEnLista.map(([k, l]) => (
+                  <Boton key={k} chico activo={tipoReg === k} onClick={() => setTipoReg((p) => (p === k ? '' : k))} style={{ flexShrink: 0 }}>{l}</Boton>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {!registros.length ? <Texto sutil>{ctx.planifica ? 'No hay registros todavía.' : 'Hoy todavía no cargaste registros.'}</Texto>
+          : !visibles.length ? <Texto sutil style={{ padding: '14px 4px' }}>Ningún registro coincide con la búsqueda.</Texto>
+          : visibles.map((r) => (
           <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 4px', borderBottom: `1px solid ${T.border}`, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 180, fontSize: 13.5 }}>
               <b style={{ color: T.text }}>{r.equipo}</b> · {r.tipo_label}{r.valor != null ? <b style={{ color: T.ink }}> {r.valor} {r.unidad}</b> : ''}

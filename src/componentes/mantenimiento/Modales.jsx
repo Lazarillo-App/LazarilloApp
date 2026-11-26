@@ -109,8 +109,15 @@ export function OrdenModal({ businessId, orden, abierto, onCerrar, onCambio, ctx
     setError('');
     try { const r = await MantenimientoAPI.accion(businessId, o.id, accion, body); setO(r.orden); onCambio?.(); return true; } catch (e) { setError(textoError(e)); return false; }
   };
+  const puedeHacer = o.estado === 'pendiente' && o.puede_hacer;
   return (
     <Modal abierto={abierto} onCerrar={onCerrar} cel={cel} ancho={560}
+      pie={puedeHacer ? <>
+        {error && <span style={{ color: T.bad, fontFamily: FB, fontSize: 12.5, marginRight: 'auto' }}>{error}</span>}
+        <Boton primario deshabilitado={o.nota_obligatoria && !nota.trim()} onClick={async () => {
+          if (await hacer('hacer', { nota, costo: costo === '' ? null : costo, proveedor })) onCerrar();
+        }} style={{ minHeight: 44, flex: cel ? 1 : undefined }}>✓ Hecho</Boton>
+      </> : null}
       titulo={<div><div style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>{o.titulo}</div>
         <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text3 }}>{RUBRO[o.rubro]?.emoji} {o.equipo}{o.ubicacion ? ` · ${o.ubicacion}` : ''}</div></div>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: FB }}>
@@ -122,25 +129,21 @@ export function OrdenModal({ businessId, orden, abierto, onCerrar, onCambio, ctx
         </div>
         {o.descripcion && <Texto style={{ whiteSpace: 'pre-wrap' }}>{o.descripcion}</Texto>}
         {o.reporto && o.tipo === 'correctivo' && <Texto sutil>Lo reportó {o.reporto}.</Texto>}
-        {error && <div style={{ color: T.bad, fontSize: 13 }}>{error}</div>}
+        {error && !puedeHacer && <div style={{ color: T.bad, fontSize: 13 }}>{error}</div>}
 
-        {o.estado === 'pendiente' && o.puede_hacer && (
+        {puedeHacer && (
           <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <Campo label={o.nota_obligatoria ? 'Qué se hizo (obligatorio)' : 'Qué se hizo (opcional)'}>
               <Entrada value={nota} maxLength={1000} onChange={(e) => setNota(e.target.value)} placeholder="Ej.: se cambió el burlete de la puerta" />
             </Campo>
             {ctx?.gestor && (
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexDirection: cel ? 'column' : 'row' }}>
                 <Campo label="Costo (opcional)" style={{ flex: 1 }}><CampoImporte size="small" sx={sxFecha} placeholder="0" value={costo} onChange={setCosto} /></Campo>
                 <Campo label="Lo hizo (técnico / proveedor)" style={{ flex: 2 }}><Entrada value={proveedor} maxLength={80} onChange={(e) => setProveedor(e.target.value)} /></Campo>
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <Boton primario deshabilitado={o.nota_obligatoria && !nota.trim()} onClick={async () => {
-                if (await hacer('hacer', { nota, costo: costo === '' ? null : costo, proveedor })) onCerrar();
-              }} style={{ minHeight: 42 }}>✓ Hecho</Boton>
-              <span style={{ flex: 1 }} />
-              <Campo label="Pasarlo a" style={{ width: 160 }}><CampoFecha sx={sxFecha} value={fecha} onChange={setFecha} /></Campo>
+              <Campo label="Pasarlo a otro día" style={{ width: 160 }}><CampoFecha sx={sxFecha} value={fecha} onChange={setFecha} /></Campo>
               <Boton deshabilitado={!fecha || fecha === o.fecha} onClick={() => hacer('reprogramar', { fecha })}>Reprogramar</Boton>
             </div>
           </div>
@@ -282,8 +285,16 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
   };
   const e = d?.equipo;
   const est = ESTADO_EQUIPO[v.estado] || ESTADO_EQUIPO.activo;
+  const borrar = async () => {
+    if (!window.confirm('¿Borrar el equipo con sus planes? Si solo se dejó de usar, mejor ponelo «De baja».')) return;
+    try { await MantenimientoAPI.borrarEquipo(businessId, e.id); onCambio?.(); onCerrar(); } catch (x) { setError(textoError(x)); }
+  };
   return (
     <Modal abierto={abierto} onCerrar={onCerrar} cel={cel} ancho={720}
+      pie={solapa === 'datos' && puede ? <>
+        {!nuevo && <Boton peligro onClick={borrar} style={{ minHeight: 44, marginRight: 'auto' }}>Borrar</Boton>}
+        <Boton primario deshabilitado={!v.nombre?.trim()} onClick={guardar} style={{ minHeight: 44, flex: cel ? 1 : undefined }}>{nuevo ? 'Crear equipo' : 'Guardar'}</Boton>
+      </> : null}
       titulo={nuevo ? 'Nuevo equipo' : <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontFamily: FT, fontWeight: 700, fontSize: 17, color: T.text }}>{RUBRO[v.rubro]?.emoji} {e?.nombre}</span>
         <Pastilla color={est.color} fondo={est.fondo}>{est.label}</Pastilla></div>}>
@@ -314,15 +325,6 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
           <Campo label="Instalación"><CampoFecha sx={sxFecha} disabled={!puede} value={v.fecha_instalacion || ''} onChange={set('fecha_instalacion')} /></Campo>
           {ctx?.gestor && <Campo label="Precio de compra"><CampoImporte size="small" sx={sxFecha} placeholder="0" value={v.precio ?? ''} onChange={set('precio')} /></Campo>}
           <Campo label="Notas" style={{ gridColumn: '1 / -1' }}><Entrada disabled={!puede} value={v.notas || ''} onChange={(x) => set('notas')(x.target.value)} /></Campo>
-          {puede && (
-            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              {!nuevo && <Boton peligro onClick={async () => {
-                if (!window.confirm('¿Borrar el equipo con sus planes? Si solo se dejó de usar, mejor ponelo «De baja».')) return;
-                try { await MantenimientoAPI.borrarEquipo(businessId, e.id); onCambio?.(); onCerrar(); } catch (x) { setError(textoError(x)); }
-              }}>Borrar</Boton>}
-              <Boton primario deshabilitado={!v.nombre?.trim()} onClick={guardar}>{nuevo ? 'Crear equipo' : 'Guardar'}</Boton>
-            </div>
-          )}
         </div>
       )}
 

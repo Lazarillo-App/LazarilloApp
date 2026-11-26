@@ -49,10 +49,11 @@ export function Modal({ abierto, onCerrar, titulo, children, pie, ancho = 560, c
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: `1px solid ${T.border}` }}>
           <div style={{ flex: 1, minWidth: 0 }}>{typeof titulo === 'string' ? <Titulo chico={cel}>{titulo}</Titulo> : titulo}</div>
-          <span onClick={onCerrar} role="button" aria-label="Cerrar" style={{ cursor: 'pointer', color: T.text3, fontSize: 20, lineHeight: 1, padding: 4 }}>✕</span>
+          <span onClick={onCerrar} role="button" aria-label="Cerrar" style={{ cursor: 'pointer', color: T.text3, fontSize: 20, lineHeight: 1, padding: 4,
+            ...(cel ? { minWidth: 44, minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', margin: -8 } : null) }}>✕</span>
         </div>
         <div style={{ padding: 16, overflowY: 'auto', flex: 1 }}>{children}</div>
-        {pie && <div style={{ padding: '12px 16px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>{pie}</div>}
+        {pie && <div style={{ padding: cel ? '10px 16px calc(10px + env(safe-area-inset-bottom))' : '12px 16px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center', background: T.band }}>{pie}</div>}
       </div>
     </div>
   );
