@@ -89,6 +89,8 @@ export default function RrhhCronogramas() {
   const [semanasIdx, setSemanasIdx] = useState([]);     // listado liviano del back
   const [filas, setFilas] = useState([]);               // [{key, idBack?, turnoId, ownerEmpleadoId, celdas:{dia:{empleadoId,puesto,horas}}}]
   const [semanaExiste, setSemanaExiste] = useState(false);
+  // Semana que se armó sola repitiendo la última guardada (usuaria 26/11/2026): id de la semana de origen.
+  const [repetidaDe, setRepetidaDe] = useState(null);
   const [cargandoSemana, setCargandoSemana] = useState(false);
   const [guardado, setGuardado] = useState('ok');       // ok | pendiente | guardando | error
   const [celdaSel, setCeldaSel] = useState(null);
@@ -222,10 +224,42 @@ export default function RrhhCronogramas() {
     return out;
   }, []);
 
+  // El horario se repite solo (usuaria 26/11/2026): al abrir una semana de hoy en adelante que todavía no
+  // tiene cronograma, se copia la última semana guardada de ese espacio y se guarda, así no hay que tocar
+  // «+ Semana» ni cargarlo de nuevo; después se edita solo lo puntual. Las semanas pasadas vacías no se tocan.
+  const semanasIdxRef = useRef(semanasIdx);
+  semanasIdxRef.current = semanasIdx;
+  const filasDeSemana = (sem) => {
+    const turnosOk = new Set((espacio?.turnos || []).map((t) => t.id));
+    const fs = [];
+    (sem?.turnos || []).forEach((t) => {
+      if (!turnosOk.has(t.turnoId)) return;
+      (t.filas || []).forEach((f) => {
+        const celdas = {};
+        (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null }; });
+        fs.push({ key: nuevaKey(), turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
+      });
+    });
+    return fs;
+  };
+  const repetirUltima = async (esp, semId) => {
+    if (semId < idDeSemana(domingoDeHoy())) return null;
+    const previas = (semanasIdxRef.current || [])
+      .filter((x) => x.espacioId === esp.id && Number(x.semana) < semId).map((x) => Number(x.semana));
+    if (!previas.length) return null;
+    const origen = Math.max(...previas);
+    const r = await RrhhAPI.getSemana(origen, esp.id);
+    if (!r?.found) return null;
+    const fs = filasDeSemana(r.semana);
+    if (!fs.some((f) => Object.keys(f.celdas).length)) return null;
+    return { origen, fs };
+  };
+
   useEffect(() => {
     if (!espacio) return;
     let alive = true;
     setCargandoSemana(true);
+    setRepetidaDe(null);
     // Primero persistir lo que quedó pendiente del espacio/semana anterior:
     // así este GET (y el del regreso) ya encuentran todo guardado.
     Promise.resolve(flushRef.current())
@@ -243,11 +277,41 @@ export default function RrhhCronogramas() {
           });
           setFilas(fs);
           setSemanaExiste(true);
-        } else {
-          setFilas(filasVacias(espacio));
-          setSemanaExiste(false);
+          setGuardado('ok');
+          return;
         }
-        setGuardado('ok');
+        return repetirUltima(espacio, semanaId).then(async (rep) => {
+          if (!alive) return;
+          if (!rep) {
+            setFilas(filasVacias(espacio));
+            setSemanaExiste(false);
+            setGuardado('ok');
+            return;
+          }
+          setFilas(rep.fs);
+          setGuardado('guardando');
+          const body = armarBody(rep.fs, startDeId(semanaId));
+          const g = await RrhhAPI.putSemana(semanaId, body);
+          if (!alive) return;
+          setSemanaExiste(true);
+          setRepetidaDe(rep.origen);
+          setGuardado('ok');
+          setSemanasIdx((prev) => (prev.some((x) => Number(x.semana) === semanaId && x.espacioId === espacio.id) ? prev
+            : [...prev, { id: g?.semana?.id, espacioId: espacio.id, semana: semanaId, fechaInicio: startDeId(semanaId) }]));
+          // Recargar con los ids del servidor para que lo que se edite después pise esta misma semana.
+          const r2 = await RrhhAPI.getSemana(semanaId, espacio.id);
+          if (alive && r2?.found) {
+            const fs2 = [];
+            (r2.semana.turnos || []).forEach((t) => {
+              (t.filas || []).forEach((f) => {
+                const celdas = {};
+                (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null }; });
+                fs2.push({ key: nuevaKey(), idBack: f.id, turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
+              });
+            });
+            setFilas(fs2);
+          }
+        });
       })
       .catch(() => { if (alive) { setFilas(filasVacias(espacio)); setSemanaExiste(false); } })
       .finally(() => { if (alive) setCargandoSemana(false); });
@@ -1085,6 +1149,11 @@ export default function RrhhCronogramas() {
         </div>
       ) : (
         <>
+          {repetidaDe && semanaExiste && !cargandoSemana && (
+            <div style={{ fontFamily: FB, fontSize: 12.5, color: T.text2, background: T.band, border: `1px solid ${T.border}`, borderRadius: 10, padding: '7px 12px', marginBottom: 10 }}>
+              ↻ Esta semana repite el horario de la semana del {rangoLargo(startDeId(repetidaDe))}. Cambiá solo lo puntual: se guarda solo.
+            </div>
+          )}
           {!semanaExiste && !cargandoSemana && (
             <div style={{ fontFamily: FB, fontSize: 12.5, color: T.warn, background: T.warn + '18', border: `1px solid ${T.warn}55`, borderRadius: 10, padding: '7px 12px', marginBottom: 10 }}>
               Esta semana todavía no tiene cronograma en {espacio?.nombre}: se guarda sola al cargar el primer empleado.
