@@ -119,6 +119,16 @@ const esTodoGroupByName = (g) => {
   return n === 'todo' || n === 'sin agrupacion' || n === 'sin agrupar' || n === 'sin grupo';
 };
 
+// ¿Se lee letra blanca sobre este color? Contraste WCAG ≥ 3 (botones con texto en negrita).
+const contrastaConBlanco = (color) => {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || '').trim());
+  if (!m) return false;
+  const hex = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+  const lin = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(0) + 0.7152 * lin(2) + 0.0722 * lin(4);
+  return 1.05 / (L + 0.05) >= 3;
+};
+
 export default function ArticulosMain(props) {
   const {
     syncVersion: syncVersionProp = 0,
@@ -1682,7 +1692,10 @@ export default function ArticulosMain(props) {
     return {
       nombre: b.name || '',
       logo: branding.logo_url || '',
-      ink: branding.secondary || '#2a2320',
+      // Color de los botones activos de Diseño de carta (con letra blanca encima): el color del negocio
+      // solo si contrasta con blanco. Comercio tiene el secundario casi blanco y los botones activos
+      // quedaban invisibles (usuaria 26/11/2026) → se prueba el primario y, si tampoco, el marrón base.
+      ink: [branding.secondary, branding.primary].find(contrastaConBlanco) || '#2a2320',
       telefono: contact.phone || '',
       web: contact.web || '',
       instagram: social.instagram || '',
