@@ -1508,6 +1508,37 @@ export default function VistaCartaMenu({
     });
   }, [setMaqueta]);
 
+  // Un bloque de rubro/sub soltado en OTRA columna o sobre otra sección (usuaria 26/11/2026: «arrastro un
+  // rubro a otra columna y no lo mueve»): sale de su sección y queda como sección propia en ese lugar,
+  // con sus artículos en el mismo orden. La sección de origen conserva el resto.
+  const moverBloqueAColumna = useCallback((secId, campoBloque, rubro, destColIdx, destPos) => {
+    if (!campoBloque || !rubro) return;
+    setMaqueta((m) => {
+      const sec = m.secciones[secId];
+      if (!sec) return m;
+      const deEste = (id) => !String(id).startsWith("__sep__")
+        && (((artById.get(String(id))?.[campoBloque]) || "Otros").toString() === rubro);
+      const mover = (sec.itemIds || []).filter(deEste);
+      if (!mover.length) return m;
+      const queda = (sec.itemIds || []).filter((id) => !deEste(id));
+      const nuevoId = "sec-" + Date.now();
+      const secciones = {
+        ...m.secciones,
+        [secId]: { ...sec, itemIds: queda },
+        [nuevoId]: { id: nuevoId, titulo: rubro, origen: rubro, tipo: "rubro", itemIds: mover },
+      };
+      const hojas = m.hojas.map((h) => {
+        if (h.id !== hoja.id) return h;
+        const columnas = h.columnas.map((c) => c.slice());
+        const dest = columnas[destColIdx] || columnas[0];
+        const pos = destPos == null ? dest.length : Math.max(0, Math.min(dest.length, destPos));
+        dest.splice(pos, 0, nuevoId);
+        return { ...h, columnas };
+      });
+      return { ...m, secciones, hojas };
+    });
+  }, [artById, hoja, setMaqueta]);
+
   // Mover un bloque de rubro/sub completo dentro de su sección (reordenar bloques).
   // Saca todos los items cuyo campoBloque === rubroDesde y los reinserta en la
   // posición donde arranca rubroHasta. artById/campoBloque vienen del render.
@@ -1938,6 +1969,7 @@ export default function VistaCartaMenu({
     else if (d.tipo === "hoja") traerHojaAActiva(d.hojaId, destColIdx);
     else if (d.tipo === "catalogo-seccion") traerSeccionDelCatalogo(d.titulo, destColIdx);
     else if (d.tipo === "item") onDropItemAHojaDestino(d.secId, d.artId, destColIdx);
+    else if (d.tipo === "bloque") moverBloqueAColumna(d.secId, d.campoBloque, d.rubro, destColIdx, destPos);
     dragRef.current = null;
   };
 
@@ -2965,10 +2997,17 @@ export default function VistaCartaMenu({
                               .filter(Number.isFinite);
                             return (
                               <div key={sid}
-                                onDragOver={(e) => { if (dragRef.current?.tipo === "seccion" || dragRef.current?.tipo === "item") { e.preventDefault(); e.stopPropagation(); } }}
+                                onDragOver={(e) => { if (dragRef.current?.tipo === "seccion" || dragRef.current?.tipo === "item" || dragRef.current?.tipo === "bloque") { e.preventDefault(); e.stopPropagation(); } }}
                                 onDrop={(e) => {
                                   const t = dragRef.current?.tipo;
                                   if (t === "seccion") { e.preventDefault(); e.stopPropagation(); const pos = (colSecIds || []).indexOf(sid); onDropCol(colIdx, pos); }
+                                  else if (t === "bloque") {
+                                    e.preventDefault(); e.stopPropagation();
+                                    // en su propia sección no se parte nada (se reordena soltándolo sobre otro rubro)
+                                    if (dragRef.current.secId === sid) { dragRef.current = null; return; }
+                                    const pos = (colSecIds || []).indexOf(sid) + 1;
+                                    onDropCol(colIdx, pos);
+                                  }
                                   else if (t === "item") { e.preventDefault(); e.stopPropagation(); onDropItem(sid, null); }
                                 }}
                                 style={{ position: "relative", borderRadius: 6, padding: 4, marginBottom: 6, border: "1px dashed transparent" }}
@@ -2984,8 +3023,10 @@ export default function VistaCartaMenu({
                                       style={{ flex: 1, font: "inherit", color: "inherit", border: "1px solid #d8d3ca", borderRadius: 4, padding: "2px 6px", background: "#fff" }} />
                                   ) : (
                                     <span onDoubleClick={(e) => { e.stopPropagation(); setEditSec(sid); }}
-                                      title="Doble clic para renombrar (por ahora solo en la carta)"
-                                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "text" }}>
+                                      draggable
+                                      onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "seccion", secId: sid }; e.dataTransfer.effectAllowed = "move"; }}
+                                      title="Arrastrá para moverla a otra columna · doble clic para renombrar (solo en la carta)"
+                                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "grab" }}>
                                       <span
                                         onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setIconPickerPos({ x: r.left, y: r.top }); setIconPickerFor(iconPickerFor === sec.titulo ? null : sec.titulo); }}
                                         title="Cambiar icono"
@@ -3107,7 +3148,7 @@ export default function VistaCartaMenu({
                                       draggable
                                       onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "seccion", secId: sid }; e.dataTransfer.effectAllowed = "move"; }}
                                       title="Arrastrá para mover la sección entre columnas"
-                                      style={{ fontSize: 12, color: "#bbb", fontWeight: 400, cursor: "grab" }}>⠿</span>
+                                      style={{ fontSize: 16, color: "#999", fontWeight: 400, cursor: "grab", padding: "0 3px", lineHeight: 1 }}>⠿</span>
                                   </span>
                                 </div>
                                 {/* ítems (con posible subdivisión en bloques por rubro/sub,
@@ -3211,7 +3252,7 @@ export default function VistaCartaMenu({
                                         encabezadoBloque = (
                                           <div
                                             draggable
-                                            onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "bloque", secId: sid, rubro: rubroDeEste }; e.dataTransfer.effectAllowed = "move"; }}
+                                            onDragStart={(e) => { e.stopPropagation(); dragRef.current = { tipo: "bloque", secId: sid, rubro: rubroDeEste, campoBloque }; e.dataTransfer.effectAllowed = "move"; }}
                                             onDragOver={(e) => { if (dragRef.current?.tipo === "bloque" && dragRef.current?.secId === sid) { e.preventDefault(); e.stopPropagation(); } }}
                                             onDrop={(e) => {
                                               if (dragRef.current?.tipo === "bloque" && dragRef.current?.secId === sid) {
@@ -3222,7 +3263,7 @@ export default function VistaCartaMenu({
                                                 dragRef.current = null;
                                               }
                                             }}
-                                            title="Arrastrá para mover este bloque dentro de la agrupación"
+                                            title="Arrastrá para reordenarlo en la agrupación, o soltalo en otra columna para que quede como sección propia"
                                             style={{
                                               display: "flex", alignItems: "center", justifyContent: "space-between",
                                               fontFamily: "inherit", fontWeight: 700, fontSize: "0.82em",
