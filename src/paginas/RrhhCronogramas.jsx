@@ -77,7 +77,23 @@ import {
   ModalTurno,
   ModalEspacio,
   ModalAsignar,
+  ModalNovedades,
+  NOVEDAD,
 } from './RrhhCronogramasModales';
+
+// Al repetir una semana, lo puntual de un día no se copia: la celda vuelve al horario que tenía antes
+// de la novedad (base); si la novedad era un día que no estaba en el horario (base vacía), no se copia.
+const celdasSinNovedad = (celdas) => {
+  const out = {};
+  Object.entries(celdas || {}).forEach(([d, c]) => {
+    if (!c?.empleadoId) return;
+    if (!c.novedad) { out[d] = { ...c, novedad: null }; return; }
+    const b = c.novedad.base;
+    if (!b) return;
+    out[d] = { ...c, entrada: b.entrada || null, salida: b.salida || null, horas: b.horas || c.horas, puesto: b.puesto || null, novedad: null };
+  });
+  return out;
+};
 
 /* ═══════════════ página ═══════════════ */
 export default function RrhhCronogramas() {
@@ -101,6 +117,7 @@ export default function RrhhCronogramas() {
   const [nuevaSem, setNuevaSem] = useState(null);       // null | { cargando } | { origen, destino, celdasDestino }
   const [vaciarOpen, setVaciarOpen] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
+  const [novedadesOpen, setNovedadesOpen] = useState(false);
   const [dropSobre, setDropSobre] = useState(null);     // `${filaKey}:${dia}` resaltada al arrastrar
   const [otrasDelMes, setOtrasDelMes] = useState([]);   // celdas de las OTRAS semanas del mes: [{iso, empleadoId, horas}]
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
@@ -236,8 +253,8 @@ export default function RrhhCronogramas() {
       if (!turnosOk.has(t.turnoId)) return;
       (t.filas || []).forEach((f) => {
         const celdas = {};
-        (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null }; });
-        fs.push({ key: nuevaKey(), turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
+        (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null, novedad: c.novedad || null }; });
+        fs.push({ key: nuevaKey(), turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas: celdasSinNovedad(celdas) });
       });
     });
     return fs;
@@ -271,7 +288,7 @@ export default function RrhhCronogramas() {
           (r.semana.turnos || []).forEach((t) => {
             (t.filas || []).forEach((f) => {
               const celdas = {};
-              (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null }; });
+              (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null, novedad: c.novedad || null }; });
               fs.push({ key: nuevaKey(), idBack: f.id, turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
             });
           });
@@ -305,7 +322,7 @@ export default function RrhhCronogramas() {
             (r2.semana.turnos || []).forEach((t) => {
               (t.filas || []).forEach((f) => {
                 const celdas = {};
-                (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null }; });
+                (f.celdas || []).forEach((c) => { celdas[c.dia] = { empleadoId: c.empleadoId, puesto: c.puesto || null, horas: Number(c.horas) || JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null, novedad: c.novedad || null }; });
                 fs2.push({ key: nuevaKey(), idBack: f.id, turnoId: t.turnoId, ownerEmpleadoId: f.ownerEmpleadoId || null, celdas });
               });
             });
@@ -329,7 +346,7 @@ export default function RrhhCronogramas() {
         ownerEmpleadoId: f.ownerEmpleadoId || duenoDe(f) || null,
         celdas: Object.entries(f.celdas)
           .filter(([, c]) => c && c.empleadoId)
-          .map(([dia, c]) => ({ dia: Number(dia), empleadoId: c.empleadoId, puesto: c.puesto || null, horas: c.horas != null ? c.horas : JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null })),
+          .map(([dia, c]) => ({ dia: Number(dia), empleadoId: c.empleadoId, puesto: c.puesto || null, horas: c.horas != null ? c.horas : JORNADA_HS, entrada: c.entrada || null, salida: c.salida || null, novedad: c.novedad || null })),
       });
     });
     return {
@@ -556,6 +573,7 @@ export default function RrhhCronogramas() {
           horas: valor.horas === undefined ? c.horas : valor.horas,
           entrada: valor.entrada === undefined ? (c.entrada || null) : valor.entrada,
           salida: valor.salida === undefined ? (c.salida || null) : valor.salida,
+          novedad: c.novedad || null,
         };
       });
       return { ...f, celdas, ownerEmpleadoId: valor.empleadoId };
@@ -579,12 +597,20 @@ export default function RrhhCronogramas() {
     // alcance: 'dia' (solo esta celda) · 'semana' (los 7 días; después se sacan los francos)
     //          · 'fila' (lo editado se aplica a todos los días cargados de la fila)
     const alcance = valor?.alcance || 'dia';
-    const nueva = valor ? { empleadoId: valor.empleadoId, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null, salida: valor.salida ?? null } : null;
+    // Novedad del día: guarda el horario de siempre (base) la primera vez, así al repetir la semana se vuelve a él.
+    const previa = filasRef.current.find((f) => f.key === filaKey)?.celdas?.[dia] || null;
+    let novedad = null;
+    if (valor?.novedad) {
+      const base = previa?.novedad ? (previa.novedad.base ?? null)
+        : (previa?.empleadoId ? { entrada: previa.entrada || null, salida: previa.salida || null, horas: previa.horas, puesto: previa.puesto || null } : null);
+      novedad = { tipo: valor.novedad.tipo, nota: valor.novedad.nota || '', base };
+    }
+    const nueva = valor ? { empleadoId: valor.empleadoId, puesto: valor.puesto ?? null, horas: valor.horas ?? JORNADA_HS, entrada: valor.entrada ?? null, salida: valor.salida ?? null, novedad } : null;
     mutarFilas((fs) => fs.map((f) => {
       if (f.key !== filaKey) return f;
       let celdas = { ...f.celdas };
       if (!nueva) delete celdas[dia];
-      else if (alcance === 'semana') { for (let d = 0; d < 7; d++) if (!celdas[d]) celdas[d] = { ...nueva }; celdas[dia] = { ...nueva }; }
+      else if (alcance === 'semana') { for (let d = 0; d < 7; d++) if (!celdas[d]) celdas[d] = { ...nueva, novedad: null }; celdas[dia] = { ...nueva }; }
       else if (alcance === 'fila') {
         celdas[dia] = { ...nueva };
         Object.keys(celdas).forEach((d) => {
@@ -698,7 +724,7 @@ export default function RrhhCronogramas() {
     const turnosOk = new Set((espacio.turnos || []).map((t) => t.id));
     let fs;
     if (modo === 'completa') {
-      fs = base.filter((f) => turnosOk.has(f.turnoId)).map((f) => ({ key: nuevaKey(), turnoId: f.turnoId, ownerEmpleadoId: duenoDe(f), celdas: JSON.parse(JSON.stringify(f.celdas)) }));
+      fs = base.filter((f) => turnosOk.has(f.turnoId)).map((f) => ({ key: nuevaKey(), turnoId: f.turnoId, ownerEmpleadoId: duenoDe(f), celdas: celdasSinNovedad(JSON.parse(JSON.stringify(f.celdas))) }));
     } else if (modo === 'estructura') {
       fs = base.filter((f) => turnosOk.has(f.turnoId)).map((f) => ({ key: nuevaKey(), turnoId: f.turnoId, ownerEmpleadoId: duenoDe(f), celdas: {} }));
     } else {
@@ -1105,6 +1131,7 @@ export default function RrhhCronogramas() {
         <div style={{ width: 1, alignSelf: 'stretch', background: T.border2, margin: '0 4px' }} />
         <span ref={refsTour.copiar} style={{ display: 'inline-flex' }}><Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana} title="Crear la semana siguiente copiando esta">+ Semana</Boton></span>
         <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)} title="Vaciar esta semana">Vaciar</Boton>
+        <Boton deshabilitado={sinNomina} onClick={() => setNovedadesOpen(true)} title="Faltas, llegadas tarde, horas extra y cambios de cada día, por empleado">📋 Novedades del mes</Boton>
       </div>
       </>)}
 
@@ -1281,6 +1308,12 @@ export default function RrhhCronogramas() {
                                               title={c.salida ? `Entra ${c.entrada || t.entrada || '—'} · sale ${c.salida}` : `Entra ${c.entrada} (el turno entra ${t.entrada || '—'})`}>{h}</span>;
                                           })()}
                                           {c.horas !== JORNADA_HS && !c.salida && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 6, padding: '0 4px' }} title="Horas de la jornada">{c.horas}h</span>}
+                                          {c.novedad && NOVEDAD[c.novedad.tipo] && (
+                                            <span title={`${NOVEDAD[c.novedad.tipo].label}${c.novedad.nota ? `: ${c.novedad.nota}` : ''} (solo este día)`}
+                                              style={{ fontFamily: FB, fontWeight: 800, fontSize: 9.5, lineHeight: '13px', color: '#fff', background: NOVEDAD[c.novedad.tipo].color, borderRadius: 6, padding: '0 4px', whiteSpace: 'nowrap' }}>
+                                              {cel ? '●' : NOVEDAD[c.novedad.tipo].corto}
+                                            </span>
+                                          )}
                                         </div>
                                       </>
                                     ) : (
@@ -1420,6 +1453,9 @@ export default function RrhhCronogramas() {
           onAbrimos={abrimosFecha}
           onCerrar={() => setFechaSel(null)}
         />
+      )}
+      {novedadesOpen && (
+        <ModalNovedades mesInicial={sumarDias(fechaInicio, 3).slice(0, 7)} onCerrar={() => setNovedadesOpen(false)} />
       )}
       {celdaSel && espacio && (
         <ModalAsignar

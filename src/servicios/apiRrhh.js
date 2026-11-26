@@ -53,6 +53,8 @@ export const RrhhAPI = {
     }),
   borrarSemana: (semana, espacioId) =>
     api(`${base()}/semanas/${semana}${qs({ espacioId })}`, { method: 'DELETE' }),
+  // Novedades del día (faltó, horas extra…) de todos los espacios en un rango de fechas (26/11/2026).
+  novedades: (desde, hasta) => api(`${base()}/novedades${qs({ desde, hasta })}`),
 };
 
 export default RrhhAPI;

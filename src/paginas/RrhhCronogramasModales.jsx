@@ -2,6 +2,8 @@
 // RRHH › Cronogramas — modales (asignar, fila completa, turno, fecha especial,
 // + Semana, Vaciar, calendario) y la imagen para WhatsApp.
 import React, { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
+import { RrhhAPI } from '../servicios/apiRrhh';
 import {
   T,
   FT,
@@ -748,6 +750,10 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
   // salida opcional: si se carga, las horas se calculan solas (se pueden corregir)
   const [salida, setSalida] = useState(ctx.salidaMixta ? '' : (ctx.celda ? (ctx.celda.salida || '') : (ctx.salidaFila || '')));
   const [salidaTocada, setSalidaTocada] = useState(false);
+  // Novedad de ESTE día (usuaria 26/11/2026): no cambia el horario general, queda para el historial del mes.
+  const [nov, setNov] = useState(ctx.celda?.novedad?.tipo || '');
+  const [notaNov, setNotaNov] = useState(ctx.celda?.novedad?.nota || '');
+  const conNovedad = !ctx.modoFila;
   const recalcularHoras = (ent, sal) => {
     const h = horasEntre(ent || ctx.turnoEntrada, sal);
     if (h) setHoras(h);
@@ -905,6 +911,30 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
           <div />
         </div>
 
+        {conNovedad && (
+          <div style={{ marginTop: 14, border: `1px solid ${nov ? (NOVEDAD[nov]?.color || T.violet) + '66' : T.border}`, borderRadius: 12, padding: '10px 12px', background: nov ? (NOVEDAD[nov]?.color || T.violet) + '0D' : T.head }}>
+            <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Novedad de este día <span style={{ textTransform: 'none', color: T.text3 }}>(no cambia el horario general · queda en el historial)</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <Chip color={T.text3} activoBg={!nov} onClick={() => setNov('')}>Ninguna</Chip>
+              {Object.entries(NOVEDAD).map(([k, n]) => (
+                <Chip key={k} color={n.color} activoBg={nov === k} onClick={() => setNov(k)}>{n.label}</Chip>
+              ))}
+            </div>
+            {nov && (
+              <input value={notaNov} maxLength={300} onChange={(e) => setNotaNov(e.target.value)}
+                placeholder={NOVEDAD[nov]?.ejemplo || 'Nota (opcional)'}
+                style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', height: 38, fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band }} />
+            )}
+            {nov && (nov === 'cambio_horario' || nov === 'horas_extra' || nov === 'llego_tarde') && (
+              <div style={{ fontFamily: FB, fontSize: 11.5, color: T.text3, marginTop: 5 }}>
+                Cambiá arriba la entrada, la salida o las horas de hoy: la semana que viene vuelve al horario de siempre.
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
           {ctx.modoFila ? (
             ctx.diasCargados ? <Boton peligro onClick={() => onGuardar(null)}>Vaciar la fila</Boton> : <span />
@@ -922,7 +952,9 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
                 // undefined = cada día conserva la suya (fila con horas distintas, sin tocar)
                 entrada: ctx.entradaMixta && !entradaTocada ? undefined : (entrada && entrada !== ctx.turnoEntrada ? entrada : null),
                 salida: ctx.salidaMixta && !salidaTocada ? undefined : (salida || null),
+                novedad: ctx.modoFila ? undefined : (nov ? { tipo: nov, nota: notaNov.trim() } : null),
               });
+              if (!ctx.modoFila && nov) return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Guardar este día</Boton>;
               if (ctx.modoFila) return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Aplicar a la fila</Boton>;
               // fila vacía: ¿solo este día o toda la semana? (después se sacan los francos)
               if (!ctx.celda && !ctx.duenoConDias) {
@@ -1000,7 +1032,102 @@ function EditorPuestos({ puestos = [], onGuardar, sinRotulo = false }) {
   );
 }
 
+/* ───────── novedades del día: tipos y el historial del mes (usuaria 26/11/2026) ───────── */
+const NOVEDAD = {
+  falto: { label: 'Faltó', corto: 'Faltó', color: '#C0392B', ejemplo: 'Ej.: se sentía mal, avisó a las 9' },
+  llego_tarde: { label: 'Llegó tarde', corto: 'Tarde', color: '#D35400', ejemplo: 'Ej.: llegó 10:40, colectivo' },
+  horas_extra: { label: 'Horas extra', corto: 'Extra', color: '#1E8449', ejemplo: 'Ej.: se quedó 2 h más por el evento' },
+  cambio_horario: { label: 'Cambio de horario', corto: 'Cambio', color: '#6C3FC5', ejemplo: 'Ej.: entró a la tarde por turno médico' },
+  diligencia: { label: 'Diligencia', corto: 'Diligencia', color: '#1F6FB2', ejemplo: 'Ej.: fue al banco / trámite' },
+  otro: { label: 'Otro', corto: 'Nota', color: '#5D6D7E', ejemplo: 'Nota' },
+};
+
+function ModalNovedades({ mesInicial, onCerrar }) {
+  const [mes, setMes] = useState(mesInicial); // 'YYYY-MM'
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState('');
+  const [y, m] = mes.split('-').map(Number);
+  const desde = `${mes}-01`;
+  const hasta = isoDe(new Date(y, m, 0));
+  useEffect(() => {
+    let vivo = true;
+    setItems(null); setError('');
+    RrhhAPI.novedades(desde, hasta).then((r) => { if (vivo) setItems(r.novedades || []); })
+      .catch((e) => { if (vivo) setError(e?.data?.message || e.message || 'No se pudo leer el historial.'); });
+    return () => { vivo = false; };
+  }, [desde, hasta]);
+  const mover = (d) => { const f = new Date(y, m - 1 + d, 1); setMes(`${f.getFullYear()}-${dd2(f.getMonth() + 1)}`); };
+  const porEmpleado = useMemo(() => {
+    const g = new Map();
+    (items || []).forEach((n) => { if (!g.has(n.empleadoId)) g.set(n.empleadoId, { nombre: n.empleado, items: [] }); g.get(n.empleadoId).items.push(n); });
+    return [...g.values()];
+  }, [items]);
+  const fechaTxt = (iso) => { const d = new Date(iso + 'T12:00:00'); return `${DIAS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
+  const horarioTxt = (n) => {
+    const hoy = `${n.entrada || 'turno'}${n.salida ? `–${n.salida}` : ''} · ${n.horas} h`;
+    const b = n.novedad?.base;
+    if (!b) return hoy;
+    const antes = `${b.entrada || 'turno'}${b.salida ? `–${b.salida}` : ''} · ${b.horas ?? n.horas} h`;
+    return antes === hoy ? hoy : `${antes} → ${hoy}`;
+  };
+  const exportar = () => {
+    const filas = (items || []).map((n) => ({
+      Empleado: n.empleado, Fecha: n.fecha, Novedad: NOVEDAD[n.novedad?.tipo]?.label || '', Nota: n.novedad?.nota || '',
+      Espacio: n.espacio || '', Turno: n.turno || '', Horario: horarioTxt(n),
+    }));
+    if (!filas.length) return;
+    const hoja = XLSX.utils.json_to_sheet(filas);
+    hoja['!cols'] = Object.keys(filas[0]).map((k) => ({ wch: Math.max(10, k.length + 2, ...filas.map((x) => String(x[k] ?? '').length + 1)) }));
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Novedades');
+    XLSX.writeFile(libro, `novedades-${mes}.xlsx`);
+  };
+  return (
+    <Marco ancho={620} onCerrar={onCerrar}>
+      <TituloModal onCerrar={onCerrar} sub="Lo puntual de cada día (faltas, llegadas tarde, horas extra, cambios, diligencias) para revisar al liquidar. Solo lo ven dueño y admin.">
+        Novedades del mes
+      </TituloModal>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <Boton onClick={() => mover(-1)}>‹</Boton>
+        <span style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text, minWidth: 130, textAlign: 'center' }}>{MESES_C[m - 1]} {y}</span>
+        <Boton onClick={() => mover(1)}>›</Boton>
+        <span style={{ flex: 1 }} />
+        <Boton deshabilitado={!items?.length} onClick={exportar} title="Bajar a Excel las novedades del mes">Exportar a Excel ({items?.length || 0})</Boton>
+      </div>
+      <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+        {error && <div style={{ fontFamily: FB, fontSize: 13, color: T.bad }}>{error}</div>}
+        {!error && items === null && <div style={{ fontFamily: FB, fontSize: 13, color: T.text3 }}>Cargando…</div>}
+        {!error && items && !items.length && <div style={{ fontFamily: FB, fontSize: 13, color: T.text3, padding: '10px 0' }}>Sin novedades este mes.</div>}
+        {porEmpleado.map((g) => {
+          const cuenta = {};
+          g.items.forEach((n) => { const t = n.novedad?.tipo; cuenta[t] = (cuenta[t] || 0) + 1; });
+          return (
+            <div key={g.nombre} style={{ border: `1px solid ${T.border}`, borderRadius: 12, padding: '10px 12px', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 14, color: T.text, marginRight: 4 }}>{g.nombre}</span>
+                {Object.entries(cuenta).map(([t, c]) => (
+                  <span key={t} style={{ fontFamily: FB, fontSize: 11, fontWeight: 700, color: NOVEDAD[t]?.color || T.text3, border: `1px solid ${(NOVEDAD[t]?.color || T.text3)}55`, borderRadius: 6, padding: '0 6px' }}>{NOVEDAD[t]?.label || t} × {c}</span>
+                ))}
+              </div>
+              {g.items.map((n, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '4px 0', borderTop: i ? `1px solid ${T.border}` : 'none', fontFamily: FB, fontSize: 12.5, flexWrap: 'wrap' }}>
+                  <span style={{ minWidth: 64, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{fechaTxt(n.fecha)}</span>
+                  <span style={{ minWidth: 96, fontWeight: 700, color: NOVEDAD[n.novedad?.tipo]?.color || T.text }}>{NOVEDAD[n.novedad?.tipo]?.label || ''}</span>
+                  <span style={{ flex: 1, minWidth: 160, color: T.text }}>{n.novedad?.nota || <span style={{ color: T.text3 }}>sin nota</span>}</span>
+                  <span style={{ color: T.text3, fontSize: 11.5 }}>{[n.espacio, n.turno].filter(Boolean).join(' · ')} · {horarioTxt(n)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </Marco>
+  );
+}
+
 export {
+  NOVEDAD,
+  ModalNovedades,
   EditorPuestos,
   ModalExportar,
   ModalFecha,
