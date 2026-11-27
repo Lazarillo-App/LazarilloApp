@@ -125,6 +125,16 @@ const Seccion = ({ children, derecha }) => (
     <span>{children}</span>{derecha && <span style={{ marginLeft: "auto" }}>{derecha}</span>}
   </div>
 );
+function Indicador({ valor, titulo, sub, chico }) {
+  return (
+    <div style={{ border: `1px solid ${BORDE}`, borderRadius: 12, padding: "8px 9px", minWidth: 0 }}>
+      <div style={{ fontSize: chico ? 15 : 22, fontWeight: 700, lineHeight: chico ? "25px" : 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" }}>{valor}</div>
+      <div style={{ fontSize: 11.5, color: GRIS, marginTop: 2, whiteSpace: "nowrap" }}>{titulo}</div>
+      {sub && <div style={{ fontSize: 11.5, color: GRIS, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" }}>{sub}</div>}
+    </div>
+  );
+}
+
 function Fila({ nombre, importe, total, sub, color = CELESTE }) {
   const p = pct(importe, total);
   return (
@@ -401,9 +411,14 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
         {comp && <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", color: comp.v >= 0 ? "#047857" : "#dc2626" }}>{comp.v >= 0 ? "▲" : "▼"} {Math.abs(Math.round(comp.v * 100))}% {comp.txt}</span>}
       </div>
       <div style={{ fontSize: 12, color: GRIS, marginTop: 2 }}>
-        {num(d.tickets)} tickets
-        {esMes && d.dias.length > 0 && <> · <span style={{ whiteSpace: "nowrap" }}>{$(d.total / d.dias.filter((x) => x.importe > 0).length || 0)}</span> por día</>}
-        {!esMes && d.comparacion && <> · promedio de los últimos {d.comparacion.n} {DIAS_PL[dow]} <span style={{ whiteSpace: "nowrap" }}>{$(d.comparacion.valor)}</span></>}
+        {esMes && d.dias.length > 0 && <><span style={{ whiteSpace: "nowrap" }}>{$(d.total / d.dias.filter((x) => x.importe > 0).length || 0)}</span> por día</>}
+        {!esMes && d.comparacion && <>promedio de los últimos {d.comparacion.n} {DIAS_PL[dow]} <span style={{ whiteSpace: "nowrap" }}>{$(d.comparacion.valor)}</span></>}
+      </div>
+      {/* Tickets y cubiertos a la vista (Diego 27/11/2026: «son los principales datos»). */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${d.cubiertos > 0 ? 3 : 2}, minmax(0, 1fr))`, gap: 8, marginTop: 10 }}>
+        <Indicador valor={num(d.tickets)} titulo="tickets" />
+        {d.cubiertos > 0 && <Indicador valor={num(d.cubiertos)} titulo="cubiertos" sub={`${$(d.total / d.cubiertos)} c/u`} />}
+        <Indicador valor={$(d.tickets ? d.total / d.tickets : 0)} titulo="por ticket" sub="promedio" chico />
       </div>
 
       {/* tira de días del mes */}
