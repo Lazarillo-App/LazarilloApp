@@ -3222,6 +3222,9 @@ export default function VistaCartaMenu({
                                     const a = artById.get(String(artId));
                                     if (!a) return null;
                                     const descActual = descripciones[String(artId)] || "";
+                                    // Vinculación sin descripción escrita: abajo van los nombres de sus artículos
+                                    // (artById ya los arma; antes solo se mostraba lo escrito a mano, 27/11/2026).
+                                    const descMostrar = descActual || (a.esGrupoVinculado ? (a.descripcion || "") : "");
                                     const editando = editDesc === String(artId);
                                     // Nivel que el bloque no muestra: va inline junto al título del bloque ("RUBRO - subrubro").
                                     const rubItem = clean(a.rubro);
@@ -3368,7 +3371,23 @@ export default function VistaCartaMenu({
                                               <input type="checkbox" readOnly checked={vincularSel.some((s) => s.artId === artId)}
                                                 style={{ marginRight: 8, cursor: "pointer" }} />
                                             )}
-                                            <span className="nm">{a.esGrupoVinculado ? "🔗 " : ""}{a.nombre}</span>
+                                            {a.esGrupoVinculado && !a.nombre && !editando ? (
+                                              // Vinculación recién creada: el título se escribe acá mismo (antes quedaba solo el 🔗).
+                                              <span className="nm" style={{ display: "inline-flex", alignItems: "center", gap: 4, flex: "0 1 auto" }}
+                                                onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                                                🔗
+                                                <input
+                                                  key={`titulo-${artId}`}
+                                                  draggable={false}
+                                                  onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                                  placeholder="Título de la vinculación…"
+                                                  onBlur={(e) => { const t = e.target.value.trim(); if (t) renombrarEnCarta(a.id, t); }}
+                                                  onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                                                  style={{ font: "inherit", width: 190, maxWidth: "100%", color: "inherit", border: "1px dashed #d8d3ca", borderRadius: 5, padding: "1px 6px", background: "#fffdf8" }} />
+                                              </span>
+                                            ) : (
+                                              <span className="nm">{a.esGrupoVinculado ? "🔗 " : ""}{a.nombre}</span>
+                                            )}
                                             <span className="dots" />
                                             <span className="pr">{a.precio != null && a.precio !== "" ? "$" + Number(a.precio).toLocaleString("es-AR") : ""}</span>
                                             {/* Siempre visibles (como antes) — el corte del precio no era por
@@ -3466,8 +3485,8 @@ export default function VistaCartaMenu({
                                                   if (e.key === "Enter") e.target.blur();
                                                   if (e.key === "Escape") { e.target.value = a.nombre; e.target.blur(); }
                                                 }}
-                                                placeholder="Nombre del artículo…"
-                                                title="Renombra el artículo (afecta la tabla; protege el nombre de MaxiRest)"
+                                                placeholder={a.esGrupoVinculado ? "Título de la vinculación…" : "Nombre del artículo…"}
+                                                title={a.esGrupoVinculado ? "Título de la vinculación (solo en la carta)" : "Renombra el artículo (afecta la tabla; protege el nombre de MaxiRest)"}
                                                 style={{ width: "100%", fontSize: 13, fontWeight: 600, color: "#2a2320", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", boxSizing: "border-box" }}
                                               />
                                               <input
@@ -3479,12 +3498,13 @@ export default function VistaCartaMenu({
                                                 defaultValue={descActual}
                                                 onBlur={(e) => setDescripciones((d) => ({ ...d, [String(artId)]: e.target.value }))}
                                                 onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                                                placeholder="Descripción / ingredientes…"
+                                                placeholder={a.esGrupoVinculado ? (a.descripcion || "Descripción…") : "Descripción / ingredientes…"}
                                                 style={{ width: "100%", fontSize: 12, fontStyle: "italic", color: "#555", border: "1px solid #d8d3ca", borderRadius: 5, padding: "3px 6px", boxSizing: "border-box" }}
                                               />
                                             </div>
-                                          ) : (descActual ? (
-                                            <div className="ds" style={{ cursor: "pointer" }} onClick={() => setEditDesc(String(artId))}>{descActual}</div>
+                                          ) : (descMostrar ? (
+                                            <div className="ds" style={{ cursor: "pointer" }} onClick={() => setEditDesc(String(artId))}
+                                              title={a.esGrupoVinculado && !descActual ? "Artículos de la vinculación · clic para escribir otra descripción" : undefined}>{descMostrar}</div>
                                           ) : null)}
                                         </div>
                                         {a.esGrupoVinculado && gruposAbiertos[String(artId).replace("__grupo__", "")] && (() => {
