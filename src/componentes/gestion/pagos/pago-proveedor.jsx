@@ -251,7 +251,7 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
     const difComp = !editando && modo.tipo === "facturas" && importeLeido > 0 ? importeLeido - modo.saldo : 0;
     return (<div onDragOver={(e) => { if (!usado) { e.preventDefault(); setArrastrando(true); } }} onDragLeave={() => setArrastrando(false)}
         onDrop={(e) => { e.preventDefault(); setArrastrando(false); if (!usado) void adjuntar(editando ? [e.dataTransfer.files?.[0]] : e.dataTransfer.files); }}
-        className={cn("border-t border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950 px-6 py-3 shadow-[0_-4px_10px_rgba(0,0,0,0.06)] shrink-0 -mx-6", arrastrando && "outline-2 outline-dashed outline-[#5BC2EA] -outline-offset-4")}>
+        className={cn("border-t border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950 px-6 py-3 shadow-[0_-4px_10px_rgba(0,0,0,0.06)] shrink-0 -mx-6 max-h-[70vh] overflow-y-auto", arrastrando && "outline-2 outline-dashed outline-[#5BC2EA] -outline-offset-4")}>
       <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -296,29 +296,40 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
                     onChange={(e) => { const n = Number(e.target.value); setCantCuotas(e.target.value); if (n >= 2 && n <= 120) armarCuotas(n); }}
                     className={cn(input, "w-16 flex-none sm:w-16 text-center")}/> cuotas</span>}
               </div>
-              {enCuotas && (<div className="mt-1.5 rounded-md border border-sky-200 dark:border-sky-900 bg-white dark:bg-zinc-900 p-2">
-                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1.5 text-[13px]">
-                    <span className="text-muted-foreground">1ª</span>
-                    <span className="text-muted-foreground">hoy · {fecha ? fecha.split("-").reverse().join("/") : ""}</span>
-                    <span className="tabular-nums text-right font-semibold">{fmtPesos(valor)}</span>
-                    {resto.map((x, i) => (<React.Fragment key={x.ver}>
-                        <span className="text-muted-foreground">{i + 2}ª</span>
-                        <span className="flex items-center gap-1.5">vence <FechaInput key={`v${x.ver}`} value={x.vence} onChange={(v) => setResto((rs) => rs.map((r, j) => (j === i ? { ...r, vence: v } : r)))} className={cn(input, "w-32 sm:w-32 tabular-nums")}/></span>
-                        <ImporteInput value={x.importe} onChange={(v) => setResto((rs) => rs.map((r, j) => (j === i ? { ...r, importe: v } : r)))} className={cn(input, "w-32 sm:w-32 text-right tabular-nums")}/>
-                      </React.Fragment>))}
-                  </div>
-                  {(() => {
-                    const suma = valor + resto.reduce((a, x) => a + (parsearImporteAR(x.importe) ?? 0), 0);
-                    const dif = modo.saldo - suma;
-                    return <div className={cn("mt-1.5 text-[11.5px]", Math.abs(dif) > 0.5 ? "font-semibold text-[#b45309]" : "text-muted-foreground")}>
-                        Las {resto.length + 1} cuotas suman {fmtPesos(suma)}{Math.abs(dif) > 0.5 ? (dif > 0 ? ` · faltan ${fmtPesos(dif)} para el saldo` : ` · se pasan ${fmtPesos(-dif)} del saldo`) : " = saldo de las facturas"}.
-                      </div>;
-                  })()}
-                  <label className="mt-1.5 flex items-center gap-2 cursor-pointer select-none text-[12.5px] min-h-9">
-                    <input type="checkbox" checked={recordarCuotas} onChange={(e) => setRecordarCuotas(e.target.checked)} className="h-4 w-4"/>
-                    Avisarme el día que vence cada cuota (aviso en pantalla con «Marcar como paga»)
-                  </label>
-                </div>)}
+              {enCuotas && (() => {
+                const suma = valor + resto.reduce((a, x) => a + (parsearImporteAR(x.importe) ?? 0), 0);
+                const dif = modo.saldo - suma;
+                const fila = "grid grid-cols-[2.6rem_minmax(7.5rem,1fr)_minmax(0,1fr)] sm:grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,9rem)] items-center gap-x-2 sm:gap-x-3 px-2 sm:px-3";
+                return (<div className="mt-2 w-full max-w-xl overflow-hidden rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-zinc-900">
+                    <div className={cn(fila, "py-1.5 bg-sky-50 dark:bg-sky-950 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground")}>
+                      <span>Cuota</span><span>Vence</span><span className="text-right">Importe</span>
+                    </div>
+                    {/* Con muchas cuotas, la lista se desplaza sola: la barra no crece de más ni se corta (usuaria 27/11/2026). */}
+                    <div className="max-h-52 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-800">
+                      <div className={cn(fila, "py-2 text-[13px]")}>
+                        <span className="font-semibold">1<span className="max-sm:hidden"> de {resto.length + 1}</span></span>
+                        <span className="text-muted-foreground">Hoy · {fecha ? fecha.split("-").reverse().join("/") : ""}</span>
+                        <span className="tabular-nums text-right font-semibold">{fmtPesos(valor)}</span>
+                      </div>
+                      {resto.map((x, i) => (<div key={x.ver} className={cn(fila, "py-1.5 text-[13px]")}>
+                          <span className="font-semibold">{i + 2}<span className="max-sm:hidden"> de {resto.length + 1}</span></span>
+                          <FechaInput key={`v${x.ver}`} value={x.vence} onChange={(v) => setResto((rs) => rs.map((r, j) => (j === i ? { ...r, vence: v } : r)))} className={cn(input, "w-full sm:w-36 px-1.5 sm:px-2 tabular-nums")}/>
+                          <ImporteInput value={x.importe} onChange={(v) => setResto((rs) => rs.map((r, j) => (j === i ? { ...r, importe: v } : r)))} className={cn(input, "w-full sm:w-full text-right tabular-nums")}/>
+                        </div>))}
+                    </div>
+                    <div className={cn(fila, "py-2 border-t border-sky-100 dark:border-sky-900 bg-zinc-50 dark:bg-zinc-900/60 text-[12.5px]")}>
+                      <span className="font-semibold">Total</span>
+                      <span className={cn(Math.abs(dif) > 0.5 ? "font-semibold text-[#b45309]" : "text-muted-foreground")}>
+                        {Math.abs(dif) > 0.5 ? (dif > 0 ? `Faltan ${fmtPesos(dif)} para el saldo` : `Se pasa ${fmtPesos(-dif)} del saldo`) : "Igual al saldo ✓"}
+                      </span>
+                      <span className="tabular-nums text-right font-semibold">{fmtPesos(suma)}</span>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer select-none border-t border-sky-100 dark:border-sky-900 px-3 py-2 text-[12.5px] min-h-10">
+                      <input type="checkbox" checked={recordarCuotas} onChange={(e) => setRecordarCuotas(e.target.checked)} className="h-4 w-4"/>
+                      Avisarme el día que vence cada cuota
+                    </label>
+                  </div>);
+              })()}
             </div>)}
           {leyendo && <div className="mt-1.5 text-xs text-[#0d6fa8]">Leyendo el comprobante…</div>}
           {comp && !leyendo && (<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]">
