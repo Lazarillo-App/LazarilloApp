@@ -12,6 +12,10 @@ import {
   resolverCodigoPublico, pedirAccesoPublico, confirmarAccesoPublico,
 } from '@/servicios/apiAccesoEquipo';
 
+// Alta por celular apagada (usuaria 27/11/2026): todavía no hay envío de códigos por mensaje de texto,
+// así que solo se entra con email. Para volver a ofrecerla, poner esto en true (el resto sigue armado).
+const CELULAR_HABILITADO = false;
+
 // Prefijos de los países donde opera el negocio hoy. Argentina lleva el "9"
 // después del 54 porque así lo exige la API de WhatsApp para celulares
 // argentinos, aunque nadie lo marque al llamar.
@@ -88,7 +92,7 @@ export default function AltaPorQR() {
   const [paso, setPaso] = useState('form'); // form | confirmar | listo
 
   const [nombre, setNombre] = useState('');
-  const [canal, setCanal] = useState('celular');
+  const [canal, setCanal] = useState(CELULAR_HABILITADO ? 'celular' : 'email');
   const [pais, setPais] = useState(PAISES[0].dial);
   const [numeroLocal, setNumeroLocal] = useState('');
   const [valor, setValor] = useState('');
@@ -228,15 +232,15 @@ export default function AltaPorQR() {
               <input id="nombre" className="input" value={nombre} onChange={(e) => setNombre(e.target.value)}
                 placeholder="Ej: Ana López" autoFocus />
 
-              <label className="auth-label">Cómo querés entrar</label>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+              {CELULAR_HABILITADO && <label className="auth-label">Cómo querés entrar</label>}
+              {CELULAR_HABILITADO && <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
                 <button type="button" className="btn"
                   style={{ flex: 1, background: canal === 'celular' ? 'var(--color-primary,#3b82f6)' : 'transparent', color: canal === 'celular' ? '#fff' : 'inherit', border: '1px solid #d8d3ca' }}
                   onClick={() => setCanal('celular')}>Celular</button>
                 <button type="button" className="btn"
                   style={{ flex: 1, background: canal === 'email' ? 'var(--color-primary,#3b82f6)' : 'transparent', color: canal === 'email' ? '#fff' : 'inherit', border: '1px solid #d8d3ca' }}
                   onClick={() => setCanal('email')}>Email</button>
-              </div>
+              </div>}
 
               <label className="auth-label" htmlFor="valor">{canal === 'celular' ? 'Celular' : 'Email'}</label>
               {canal === 'celular' ? (
