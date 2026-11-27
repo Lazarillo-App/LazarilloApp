@@ -629,19 +629,30 @@ export default function Navbar() {
                     <Divider key="fz-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
                     <MenuItem key="mb-bancos" onClick={() => { setNavEl(null); navigate('/movimientos-bancarios?vista=bancos'); }}>Conectá tu banco</MenuItem>,
                   ] : null}
-                  {!enAlta && enRecetas && puedeVer('recetas') && (
+                  {/* Staff (usuaria 27/11/2026: en Producción el ☰ del celular se abría vacío): siempre lo mismo que la
+                      botonera de la compu, esté donde esté. */}
+                  {!enAlta && isStaff ? [
+                    puedeVer('recetas') && <MenuItem key="st-art" component={NavLink} to="/menu" onClick={() => setNavEl(null)} sx={{ minHeight: 44 }}>Artículos</MenuItem>,
+                    puedeVer('recetas') && <MenuItem key="st-ins" component={NavLink} to="/insumos" onClick={() => setNavEl(null)} sx={{ minHeight: 44 }}>Insumos</MenuItem>,
+                    veMenuDiseno && puedeVer('recetas') && <MenuItem key="st-menu" onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }} sx={{ minHeight: 44 }}>Menú</MenuItem>,
+                    <Divider key="st-div" sx={{ borderColor: 'color-mix(in srgb, var(--on-primary) 25%, transparent)' }} />,
+                    <MenuItem key="st-tab" component={NavLink} to="/tableros" onClick={() => setNavEl(null)} sx={{ minHeight: 44 }}>Tableros</MenuItem>,
+                    esCocina && !produccionOculta && <MenuItem key="st-prod" component={NavLink} to="/produccion" onClick={() => setNavEl(null)} sx={{ minHeight: 44 }}>Producción</MenuItem>,
+                    esCocina && !mantenimientoOculto && <MenuItem key="st-mant" component={NavLink} to="/mantenimiento" onClick={() => setNavEl(null)} sx={{ minHeight: 44 }}>Mantenimiento</MenuItem>,
+                  ] : null}
+                  {!enAlta && !isStaff && enRecetas && puedeVer('recetas') && (
                   <MenuItem component={NavLink} to="/menu" onClick={() => setNavEl(null)}>
                     {isAppAdmin ? 'Menú' : 'Artículos'}
                   </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && enRecetas && puedeVer('recetas') && (
+                  {!enAlta && !isAppAdmin && !isStaff && enRecetas && puedeVer('recetas') && (
                     <MenuItem component={NavLink} to="/insumos" onClick={() => setNavEl(null)}>
                       Insumos
                     </MenuItem>
                   )}
 
-                  {!enAlta && !isAppAdmin && veMenuDiseno && enRecetas && puedeVer('recetas') && (
+                  {!enAlta && !isAppAdmin && !isStaff && veMenuDiseno && enRecetas && puedeVer('recetas') && (
                     <MenuItem onClick={() => { setNavEl(null); navigate('/menu?vista=diseno'); }}>
                       Menú
                     </MenuItem>
