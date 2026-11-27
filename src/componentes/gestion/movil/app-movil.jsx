@@ -447,6 +447,18 @@ const plataCorta = (n, dec = 1) => {
 // proyectada va rayada y con borde punteado; adentro, la parte maciza es lo real a hoy, con su valor
 // si entra. Sin real conocido (indicadores en %), toda la barra va rayada.
 const AZUL = "#5BC2EA", AZUL_ELEGIDO = "#0369a1";
+// Línea punteada del promedio de los meses/años cerrados (Diego 27/11/2026: «una línea que marque el
+// promedio en todos esos gráficos»). bottom = mismo alto que tendría una barra con ese valor.
+function LineaPromedio({ bottom }) {
+  return <div className="pointer-events-none absolute inset-x-0 z-[5] border-t-2 border-dashed border-zinc-700/80 dark:border-zinc-200/80" style={{ bottom }}/>;
+}
+function LeyendaPromedio({ texto, de }) {
+  return (<p className="mt-1.5 flex items-center justify-center gap-1.5 text-[11.5px] text-zinc-600 dark:text-zinc-300">
+      <span className="inline-block w-5 border-t-2 border-dashed border-zinc-700/80 dark:border-zinc-200/80"/>
+      promedio {de}: <b className="tabular-nums">{texto}</b>
+    </p>);
+}
+
 function Barra({ alto, proyectada, real, valor, elegido, negativo, etiquetaReal, etiquetaFalta }) {
     if (!proyectada) return <div className="w-full rounded-t-md" style={{ height: alto, background: negativo ? "#f87171" : elegido ? AZUL_ELEGIDO : AZUL }}/>;
     const color = elegido ? AZUL_ELEGIDO : AZUL;
@@ -504,6 +516,9 @@ function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClo
     // La barra más baja queda en 40%: se ven las diferencias sin exagerarlas.
     const alto = (v) => 40 + (max > min ? ((v - min) / (max - min)) * 60 : 40);
     const mesCorto = (m) => MESES[m - 1].slice(0, 3).toLowerCase();
+    // Promedio de los meses cerrados que se ven (sin el proyectado).
+    const cerradosSerie = serie.filter((x) => x.valor != null && !x.proyectado).map((x) => x.valor);
+    const promSerie = cerradosSerie.length >= 2 ? cerradosSerie.reduce((a, v) => a + v, 0) / cerradosSerie.length : null;
     return (<div className="-mx-4 -mt-3 bg-white dark:bg-zinc-950" onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
       <div className="sticky z-10 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 px-4 py-3 backdrop-blur" style={{ top: 56 }}>
         <button type="button" onClick={onClose} aria-label="Volver" className="-ml-2 flex items-center text-sky-700"><ChevronLeft className="size-6"/></button>
@@ -530,12 +545,13 @@ function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClo
         </div>
         {vista !== "mes" && <Historico sel={sel} modo={vista} mes={mesH} hasta={hasta} unidad={u} proy={actual?.proyectado && actual.valor != null ? actual.valor : null} setPeriodo={setPeriodo} detalle={<DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}/>}
         {vista === "mes" && <>
-        <div className="mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
+        <div className="relative mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
+          {promSerie != null && <LineaPromedio bottom={`${alto(promSerie) * 0.8}%`}/>}
           {serie.map((x) => {
             const elegido = esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x);
             return (<div key={`${x.anio}-${x.mes}`} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", esVentas && x.valor != null && "cursor-pointer")}
               onClick={esVentas && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: ymDe(x) }) : undefined}>
-              {x.valor != null && <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{cant ? cantCorta(x.valor, n > 6) : plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
+              {x.valor != null && <span className="relative z-[6] mb-0.5 whitespace-nowrap rounded bg-white/85 dark:bg-zinc-950/85 px-0.5 text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{cant ? cantCorta(x.valor, n > 6) : plata ? plataCorta(x.valor, n > 6 ? 0 : 1) : `${(x.valor * 100).toLocaleString("es-AR", { maximumFractionDigits: n > 6 ? 0 : 1 })}%`}</span>}
               <Barra alto={x.valor != null ? `${alto(x.valor) * 0.8}%` : 0} proyectada={x.proyectado} valor={x.valor} elegido={elegido} negativo={x.valor != null && x.valor < 0}
                 real={x.proyectado ? realDelMes : null} etiquetaReal={x.proyectado && realDelMes != null && n <= 6 ? (cant ? cantCorta(realDelMes, true) : plataCorta(realDelMes, 0)) : null}
                 etiquetaFalta={x.proyectado && realDelMes != null && n <= 6 && x.valor > realDelMes ? `+${cant ? cantCorta(x.valor - realDelMes, true) : plataCorta(x.valor - realDelMes, 0)}` : null}/>
@@ -545,6 +561,7 @@ function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClo
         <div className="flex gap-1.5">
           {serie.map((x) => <span key={`${x.anio}-${x.mes}`} className={cn("min-w-0 flex-1 text-center text-[10.5px] text-zinc-500", esVentas && periodo.modo === "mes" && periodo.mes === ymDe(x) && "font-bold text-sky-700")}>{mesCorto(x.mes)}{x.proyectado ? "*" : ""}</span>)}
         </div>
+        {promSerie != null && <LeyendaPromedio de={`de los ${cerradosSerie.length} meses cerrados`} texto={cant ? cantCorta(promSerie, true) : plata ? plataCorta(promSerie, 1) : `${(promSerie * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`}/>}
         {esVentas && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un mes para verlo abajo</p>}
         </>}
         {esVentas && vista === "mes" && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
@@ -611,6 +628,8 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
     const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
     const alto = (v) => 40 + (max > min ? ((v - min) / (max - min)) * 60 : 40);
     const fmt = (v) => (unidad === "pesos" ? plataCorta(v, vista.length > 6 ? 0 : 1) : cantCorta(v, vista.length > 6));
+    const cerradosHist = vista.filter((x) => x.valor != null && !x.proyectado).map((x) => x.valor);
+    const promHist = cerradosHist.length >= 2 ? cerradosHist.reduce((a, v) => a + v, 0) / cerradosHist.length : null;
     const mc = (m) => MESES[m - 1].slice(0, 3).toLowerCase();
     const nombreIpc = (k) => `${mc(Number(k.slice(5, 7)))} ${k.slice(0, 4)}`;
     const elegido = modo === "hist" && mes > hasta.mes ? hasta.anio - 1 : hasta.anio;
@@ -622,10 +641,11 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
           {qProy ? ` · ${mc(hasta.mes)} ${hasta.anio} proyectado` : ""}
           {unidad === "pesos" ? (ajusta ? ` · pesos de hoy (IPC INDEC a ${nombreIpc(ipc.hasta)})` : " · sin ajustar: no se pudo traer el IPC") : ""}
         </p>
-        <div className="mt-4 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
+        <div className="relative mt-4 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
+          {promHist != null && <LineaPromedio bottom={`${alto(promHist) * 0.8}%`}/>}
           {vista.map((x) => (<div key={x.anio} className={cn("flex h-full min-w-0 flex-1 flex-col items-center justify-end", modo === "hist" && x.valor != null && "cursor-pointer")}
               onClick={modo === "hist" && x.valor != null ? () => setPeriodo({ modo: "mes", dia: null, mes: `${x.anio}-${String(mes).padStart(2, "0")}` }) : undefined}>
-              <span className="mb-0.5 whitespace-nowrap text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{x.valor != null ? fmt(x.valor) : "—"}</span>
+              <span className="relative z-[6] mb-0.5 whitespace-nowrap rounded bg-white/85 dark:bg-zinc-950/85 px-0.5 text-[10px] tabular-nums text-zinc-600 dark:text-zinc-300">{x.valor != null ? fmt(x.valor) : "—"}</span>
               <Barra alto={x.valor != null ? `${alto(x.valor) * 0.8}%` : 0} proyectada={x.proyectado} valor={x.valor} real={x.real} elegido={x.anio === elegido}
                 etiquetaReal={x.proyectado && x.real != null && vista.length <= 6 ? fmt(x.real) : null}
                 etiquetaFalta={x.proyectado && x.real != null && vista.length <= 6 && x.valor > x.real ? `+${fmt(x.valor - x.real)}` : null}/>
@@ -634,6 +654,7 @@ function Historico({ sel, modo, mes, hasta, unidad, proy, setPeriodo, detalle })
         <div className="flex gap-1.5">
           {vista.map((x) => <span key={x.anio} className={cn("min-w-0 flex-1 text-center text-[10.5px]", x.anio === elegido ? "font-bold text-sky-700" : "text-zinc-500")}>{vista.length > 6 ? `'${String(x.anio).slice(2)}` : x.anio}{x.proyectado ? "*" : ""}</span>)}
         </div>
+        {promHist != null && <LeyendaPromedio de={`de los ${cerradosHist.length} años cerrados`} texto={fmt(promHist)}/>}
         {modo === "hist" && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un año para verlo abajo</p>}
         {lista.length > 6 && <div className="text-center"><button type="button" onClick={() => setTodos(!todos)} className="min-h-[36px] text-[13px] font-semibold text-sky-700">{todos ? "ver los últimos 6" : `ver los ${lista.length} años`}</button></div>}
         {detalle}
