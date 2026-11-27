@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { RrhhAPI } from '../servicios/apiRrhh';
+import CampoFecha from '../componentes/CampoFecha';
 import {
   T,
   FT,
@@ -151,6 +152,8 @@ function dibujarCronograma({ titulo, sub, dias, grupos, logo, logoNeg }) {
       ctx.fillText(recortar(ctx, titular(f.nombre), NOM - 8), P + 2, y + FILA / 2 + 4.5);
       for (let j = 0; j < 7; j++) {
         const x = P + NOM + GAP + j * (colW + GAP); const c = f.celdas[j];
+        // día cerrado (27/11/2026): no es franco, el local no abre
+        if (dias[j].cerrado) { ctx.fillStyle = '#EEF1F5'; rrect(ctx, x, y, colW, FILA, 6); ctx.fill(); ctx.textAlign = 'center'; ctx.fillStyle = '#A9B6C6'; ctx.font = "600 10px Archivo, sans-serif"; ctx.fillText('cerrado', x + colW / 2, y + FILA / 2 + 3.5); continue; }
         ctx.fillStyle = c ? IMG.celda : IMG.libre; rrect(ctx, x, y, colW, FILA, 6); ctx.fill();
         ctx.textAlign = 'center';
         if (!c) { ctx.fillStyle = '#A9B6C6'; ctx.font = "500 10px Archivo, sans-serif"; ctx.fillText('franco', x + colW / 2, y + FILA / 2 + 3.5); continue; }
@@ -209,7 +212,8 @@ function ModalExportar({ cel = false, espacio, puestos = [], negocio, sucursal =
     let vivo = true;
     const dias = diasISO.map((iso, j) => {
       const f = fechasMap.get(iso);
-      return { nro: new Date(iso + 'T12:00:00').getDate(), dc: DC[j], ev: f ? (f.nombre || etiquetaTipo(f.tipo)) : '' };
+      return { nro: new Date(iso + 'T12:00:00').getDate(), dc: DC[j], ev: f ? (f.nombre || etiquetaTipo(f.tipo)) : '',
+        cerrado: !!f && !f.abrimos && tipoNorm(f.tipo) === 'cerrado' };
     });
     // mismos colores que la grilla: se calculan sobre toda la semana, no solo los turnos tildados
     const colHoras = coloresHorarios(filas, espacio.turnos);
@@ -716,7 +720,7 @@ function ModalEspacio({ espacio, onGuardar, onQuitar, onCerrar }) {
 }
 
 /* ───────── modal: asignar empleado a una celda ───────── */
-function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onBaja, onPuestos, onGuardar, onCerrar }) {
+function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, onBaja, onPuestos, onGuardar, onCerrar, vacacion = null, onVacaciones, onQuitarVacaciones }) {
   // Una fila = un empleado: si la fila ya tiene días de alguien, la celda es suya (no se elige otro).
   const bloqueado = !ctx.modoFila && !!ctx.duenoConDias;
   const empBloqueado = bloqueado ? empleados.find((e) => e.id === ctx.duenoConDias) : null;
@@ -754,6 +758,14 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
   const [nov, setNov] = useState(ctx.celda?.novedad?.tipo || '');
   const [notaNov, setNotaNov] = useState(ctx.celda?.novedad?.nota || '');
   const conNovedad = !ctx.modoFila;
+  // Vacaciones (27/11/2026): rango de fechas, no tocan el horario.
+  const [vacDesde, setVacDesde] = useState(ctx.iso || '');
+  const [vacHasta, setVacHasta] = useState(ctx.iso || '');
+  const [vacNota, setVacNota] = useState('');
+  const [vacGuardando, setVacGuardando] = useState(false);
+  const vacDias = vacDesde && vacHasta && vacHasta >= vacDesde
+    ? Math.round((new Date(vacHasta + 'T12:00:00') - new Date(vacDesde + 'T12:00:00')) / 86400000) + 1 : 0;
+  const fechaCorta = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
   const recalcularHoras = (ent, sal) => {
     const h = horasEntre(ent || ctx.turnoEntrada, sal);
     if (h) setHoras(h);
@@ -916,13 +928,34 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
             <div style={{ fontFamily: FB, fontSize: 12, color: T.text2, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
               Novedad de este día <span style={{ textTransform: 'none', color: T.text3 }}>(no cambia el horario general · queda en el historial)</span>
             </div>
+            {vacacion && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8, padding: '6px 10px', borderRadius: 10, background: VACACIONES.color + '14', border: `1px solid ${VACACIONES.color}55`, fontFamily: FB, fontSize: 12.5, color: T.text }}>
+                <span>🏖 De vacaciones del <b>{fechaCorta(vacacion.desde)}</b> al <b>{fechaCorta(vacacion.hasta)}</b> ({vacacion.dias} días){vacacion.nota ? ` · ${vacacion.nota}` : ''}</span>
+                {onQuitarVacaciones && <span onClick={() => onQuitarVacaciones(vacacion)} style={{ marginLeft: 'auto', color: T.bad, fontWeight: 700, cursor: 'pointer' }}>Quitar</span>}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <Chip color={T.text3} activoBg={!nov} onClick={() => setNov('')}>Ninguna</Chip>
               {Object.entries(NOVEDAD).map(([k, n]) => (
                 <Chip key={k} color={n.color} activoBg={nov === k} onClick={() => setNov(k)}>{n.label}</Chip>
               ))}
+              {onVacaciones && !vacacion && <Chip color={VACACIONES.color} activoBg={nov === '__vacaciones'} onClick={() => setNov('__vacaciones')}>🏖 Vacaciones</Chip>}
             </div>
-            {nov && (
+            {nov === '__vacaciones' && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div><div style={{ fontFamily: FB, fontSize: 11.5, color: T.text2, marginBottom: 3 }}>Desde</div><CampoFecha size="small" fullWidth value={vacDesde} onChange={setVacDesde} /></div>
+                  <div><div style={{ fontFamily: FB, fontSize: 11.5, color: T.text2, marginBottom: 3 }}>Hasta (inclusive)</div><CampoFecha size="small" fullWidth value={vacHasta} onChange={setVacHasta} /></div>
+                </div>
+                <input value={vacNota} maxLength={300} onChange={(e) => setVacNota(e.target.value)} placeholder="Nota (opcional) · ej.: vacaciones 2026, 1ª parte"
+                  style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', height: 38, fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band }} />
+                <div style={{ fontFamily: FB, fontSize: 11.5, color: vacDesde && vacHasta && vacHasta < vacDesde ? T.bad : T.text3, marginTop: 5 }}>
+                  {vacDesde && vacHasta && vacHasta < vacDesde ? '«Hasta» es anterior a «Desde».'
+                    : vacDias ? `${vacDias} ${vacDias === 1 ? 'día corrido' : 'días corridos'}. El horario no cambia: la grilla marca esos días con 🏖.` : 'Elegí las fechas.'}
+                </div>
+              </div>
+            )}
+            {nov && nov !== '__vacaciones' && (
               <input value={notaNov} maxLength={300} onChange={(e) => setNotaNov(e.target.value)}
                 placeholder={NOVEDAD[nov]?.ejemplo || 'Nota (opcional)'}
                 style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', height: 38, fontFamily: FB, fontSize: 13, padding: '0 10px', borderRadius: 10, border: `1px solid ${T.border2}`, outline: 'none', color: T.text, background: T.band }} />
@@ -954,6 +987,15 @@ function ModalAsignar({ ctx, empleados, puestos, espacio, onCrear, onNoAplica, o
                 salida: ctx.salidaMixta && !salidaTocada ? undefined : (salida || null),
                 novedad: ctx.modoFila ? undefined : (nov ? { tipo: nov, nota: notaNov.trim() } : null),
               });
+              if (!ctx.modoFila && nov === '__vacaciones') {
+                return <Boton activo deshabilitado={!id || !vacDias || vacGuardando} onClick={async () => {
+                  if (!id || !vacDias) return;
+                  setVacGuardando(true);
+                  const ok = await onVacaciones(id, vacDesde, vacHasta, vacNota.trim());
+                  setVacGuardando(false);
+                  if (ok) onCerrar();
+                }}>{vacGuardando ? 'Guardando…' : `Guardar vacaciones${vacDias ? ` (${vacDias} días)` : ''}`}</Boton>;
+              }
               if (!ctx.modoFila && nov) return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Guardar este día</Boton>;
               if (ctx.modoFila) return <Boton activo deshabilitado={!id} onClick={() => id && onGuardar(valor('dia'))}>Aplicar a la fila</Boton>;
               // fila vacía: ¿solo este día o toda la semana? (después se sacan los francos)
@@ -1042,9 +1084,15 @@ const NOVEDAD = {
   otro: { label: 'Otro', corto: 'Nota', color: '#5D6D7E', ejemplo: 'Nota' },
 };
 
-function ModalNovedades({ mesInicial, onCerrar }) {
+const VACACIONES = { label: 'Vacaciones', color: '#0E8C8C' };
+const diasEntre = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000) + 1;
+
+function ModalNovedades({ mesInicial, onCerrar, onCambio }) {
   const [mes, setMes] = useState(mesInicial); // 'YYYY-MM'
   const [items, setItems] = useState(null);
+  const [vacs, setVacs] = useState([]);        // vacaciones que tocan el mes
+  const [vacsAnio, setVacsAnio] = useState([]); // del año, para el total por persona
+  const [recarga, setRecarga] = useState(0);
   const [error, setError] = useState('');
   const [y, m] = mes.split('-').map(Number);
   const desde = `${mes}-01`;
@@ -1052,16 +1100,26 @@ function ModalNovedades({ mesInicial, onCerrar }) {
   useEffect(() => {
     let vivo = true;
     setItems(null); setError('');
-    RrhhAPI.novedades(desde, hasta).then((r) => { if (vivo) setItems(r.novedades || []); })
+    Promise.all([RrhhAPI.novedades(desde, hasta), RrhhAPI.licencias(desde, hasta), RrhhAPI.licencias(`${y}-01-01`, `${y}-12-31`)])
+      .then(([n, l, la]) => { if (vivo) { setItems(n.novedades || []); setVacs(l.licencias || []); setVacsAnio(la.licencias || []); } })
       .catch((e) => { if (vivo) setError(e?.data?.message || e.message || 'No se pudo leer el historial.'); });
     return () => { vivo = false; };
-  }, [desde, hasta]);
+  }, [desde, hasta, y, recarga]);
   const mover = (d) => { const f = new Date(y, m - 1 + d, 1); setMes(`${f.getFullYear()}-${dd2(f.getMonth() + 1)}`); };
+  // días de un período dentro de un rango (el mes o el año)
+  const diasDentro = (v, a, b) => { const d0 = v.desde > a ? v.desde : a; const d1 = v.hasta < b ? v.hasta : b; return d1 >= d0 ? diasEntre(d0, d1) : 0; };
   const porEmpleado = useMemo(() => {
     const g = new Map();
-    (items || []).forEach((n) => { if (!g.has(n.empleadoId)) g.set(n.empleadoId, { nombre: n.empleado, items: [] }); g.get(n.empleadoId).items.push(n); });
-    return [...g.values()];
-  }, [items]);
+    const de = (id, nombre) => { if (!g.has(id)) g.set(id, { nombre, items: [], vacs: [], diasAnio: 0 }); return g.get(id); };
+    (items || []).forEach((n) => de(n.empleadoId, n.empleado).items.push(n));
+    vacs.forEach((v) => de(v.empleadoId, v.empleado).vacs.push(v));
+    vacsAnio.forEach((v) => { if (g.has(v.empleadoId)) g.get(v.empleadoId).diasAnio += diasDentro(v, `${y}-01-01`, `${y}-12-31`); });
+    return [...g.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [items, vacs, vacsAnio, y]); // eslint-disable-line react-hooks/exhaustive-deps
+  const quitarVac = async (v) => {
+    if (!window.confirm(`¿Quitar las vacaciones de ${v.empleado} del ${v.desde.slice(8, 10)}/${v.desde.slice(5, 7)} al ${v.hasta.slice(8, 10)}/${v.hasta.slice(5, 7)}?`)) return;
+    try { await RrhhAPI.borrarLicencia(v.id); setRecarga((x) => x + 1); onCambio?.(); } catch (e) { setError(e?.data?.message || e.message || 'No se pudo quitar.'); }
+  };
   const fechaTxt = (iso) => { const d = new Date(iso + 'T12:00:00'); return `${DIAS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; };
   const horarioTxt = (n) => {
     const hoy = `${n.entrada || 'turno'}${n.salida ? `–${n.salida}` : ''} · ${n.horas} h`;
@@ -1075,29 +1133,30 @@ function ModalNovedades({ mesInicial, onCerrar }) {
       Empleado: n.empleado, Fecha: n.fecha, Novedad: NOVEDAD[n.novedad?.tipo]?.label || '', Nota: n.novedad?.nota || '',
       Espacio: n.espacio || '', Turno: n.turno || '', Horario: horarioTxt(n),
     }));
-    if (!filas.length) return;
-    const hoja = XLSX.utils.json_to_sheet(filas);
-    hoja['!cols'] = Object.keys(filas[0]).map((k) => ({ wch: Math.max(10, k.length + 2, ...filas.map((x) => String(x[k] ?? '').length + 1)) }));
+    const filasVac = vacs.map((v) => ({ Empleado: v.empleado, Desde: v.desde, Hasta: v.hasta, 'Días': v.dias, 'Días en el mes': diasDentro(v, desde, hasta), Nota: v.nota || '' }));
+    if (!filas.length && !filasVac.length) return;
+    const ancho = (fs) => Object.keys(fs[0]).map((k) => ({ wch: Math.max(10, k.length + 2, ...fs.map((x) => String(x[k] ?? '').length + 1)) }));
     const libro = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(libro, hoja, 'Novedades');
+    if (filas.length) { const hoja = XLSX.utils.json_to_sheet(filas); hoja['!cols'] = ancho(filas); XLSX.utils.book_append_sheet(libro, hoja, 'Novedades'); }
+    if (filasVac.length) { const hv = XLSX.utils.json_to_sheet(filasVac); hv['!cols'] = ancho(filasVac); XLSX.utils.book_append_sheet(libro, hv, 'Vacaciones'); }
     XLSX.writeFile(libro, `novedades-${mes}.xlsx`);
   };
   return (
     <Marco ancho={620} onCerrar={onCerrar}>
-      <TituloModal onCerrar={onCerrar} sub="Lo puntual de cada día (faltas, llegadas tarde, horas extra, cambios, diligencias) para revisar al liquidar. Solo lo ven dueño y admin.">
-        Novedades del mes
+      <TituloModal onCerrar={onCerrar} sub="Lo puntual de cada día (faltas, llegadas tarde, horas extra, cambios, diligencias) y las vacaciones, para revisar al liquidar. Solo lo ven dueño y admin.">
+        Novedades y vacaciones del mes
       </TituloModal>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <Boton onClick={() => mover(-1)}>‹</Boton>
         <span style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text, minWidth: 130, textAlign: 'center' }}>{MESES_C[m - 1]} {y}</span>
         <Boton onClick={() => mover(1)}>›</Boton>
         <span style={{ flex: 1 }} />
-        <Boton deshabilitado={!items?.length} onClick={exportar} title="Bajar a Excel las novedades del mes">Exportar a Excel ({items?.length || 0})</Boton>
+        <Boton deshabilitado={!items?.length && !vacs.length} onClick={exportar} title="Bajar a Excel las novedades y vacaciones del mes">Exportar a Excel ({(items?.length || 0) + vacs.length})</Boton>
       </div>
       <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
         {error && <div style={{ fontFamily: FB, fontSize: 13, color: T.bad }}>{error}</div>}
         {!error && items === null && <div style={{ fontFamily: FB, fontSize: 13, color: T.text3 }}>Cargando…</div>}
-        {!error && items && !items.length && <div style={{ fontFamily: FB, fontSize: 13, color: T.text3, padding: '10px 0' }}>Sin novedades este mes.</div>}
+        {!error && items && !items.length && !vacs.length && <div style={{ fontFamily: FB, fontSize: 13, color: T.text3, padding: '10px 0' }}>Sin novedades ni vacaciones este mes.</div>}
         {porEmpleado.map((g) => {
           const cuenta = {};
           g.items.forEach((n) => { const t = n.novedad?.tipo; cuenta[t] = (cuenta[t] || 0) + 1; });
@@ -1108,7 +1167,23 @@ function ModalNovedades({ mesInicial, onCerrar }) {
                 {Object.entries(cuenta).map(([t, c]) => (
                   <span key={t} style={{ fontFamily: FB, fontSize: 11, fontWeight: 700, color: NOVEDAD[t]?.color || T.text3, border: `1px solid ${(NOVEDAD[t]?.color || T.text3)}55`, borderRadius: 6, padding: '0 6px' }}>{NOVEDAD[t]?.label || t} × {c}</span>
                 ))}
+                {g.vacs.length > 0 && (
+                  <span style={{ fontFamily: FB, fontSize: 11, fontWeight: 700, color: VACACIONES.color, border: `1px solid ${VACACIONES.color}55`, borderRadius: 6, padding: '0 6px' }}>
+                    🏖 {g.vacs.reduce((a, v) => a + diasDentro(v, desde, hasta), 0)} días este mes
+                  </span>
+                )}
+                {g.diasAnio > 0 && <span style={{ fontFamily: FB, fontSize: 11, color: T.text3 }}>· {g.diasAnio} días de vacaciones en {y}</span>}
               </div>
+              {g.vacs.map((v) => (
+                <div key={`v${v.id}`} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '4px 0', fontFamily: FB, fontSize: 12.5, flexWrap: 'wrap' }}>
+                  <span style={{ minWidth: 64, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{fechaTxt(v.desde)}</span>
+                  <span style={{ minWidth: 96, fontWeight: 700, color: VACACIONES.color }}>🏖 Vacaciones</span>
+                  <span style={{ flex: 1, minWidth: 160, color: T.text }}>
+                    hasta {fechaTxt(v.hasta)} · {v.dias} días{diasDentro(v, desde, hasta) !== v.dias ? ` (${diasDentro(v, desde, hasta)} en este mes)` : ''}{v.nota ? ` · ${v.nota}` : ''}
+                  </span>
+                  <span onClick={() => quitarVac(v)} style={{ color: T.bad, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Quitar</span>
+                </div>
+              ))}
               {g.items.map((n, i) => (
                 <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '4px 0', borderTop: i ? `1px solid ${T.border}` : 'none', fontFamily: FB, fontSize: 12.5, flexWrap: 'wrap' }}>
                   <span style={{ minWidth: 64, color: T.text2, fontVariantNumeric: 'tabular-nums' }}>{fechaTxt(n.fecha)}</span>
@@ -1127,6 +1202,7 @@ function ModalNovedades({ mesInicial, onCerrar }) {
 
 export {
   NOVEDAD,
+  VACACIONES,
   ModalNovedades,
   EditorPuestos,
   ModalExportar,

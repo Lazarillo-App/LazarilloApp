@@ -79,6 +79,7 @@ import {
   ModalAsignar,
   ModalNovedades,
   NOVEDAD,
+  VACACIONES,
 } from './RrhhCronogramasModales';
 
 // Al repetir una semana, lo puntual de un día no se copia: la celda vuelve al horario que tenía antes
@@ -118,6 +119,7 @@ export default function RrhhCronogramas() {
   const [vaciarOpen, setVaciarOpen] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
   const [novedadesOpen, setNovedadesOpen] = useState(false);
+  const [licencias, setLicencias] = useState([]); // vacaciones que tocan la semana visible (27/11/2026)
   const [dropSobre, setDropSobre] = useState(null);     // `${filaKey}:${dia}` resaltada al arrastrar
   const [otrasDelMes, setOtrasDelMes] = useState([]);   // celdas de las OTRAS semanas del mes: [{iso, empleadoId, horas}]
   const dragRef = useRef(null);                          // { filaKey, dia } de la celda que se arrastra
@@ -336,6 +338,30 @@ export default function RrhhCronogramas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [espacioId, semanaId, config]);
 
+  /* ── vacaciones de la semana visible: no tocan el cronograma, solo marcan los días ── */
+  const cargarLicencias = useCallback(() => {
+    if (!config) return Promise.resolve();
+    return RrhhAPI.licencias(diasISO[0], diasISO[6]).then((r) => setLicencias(r.licencias || [])).catch(() => setLicencias([]));
+  }, [config, diasISO]);
+  useEffect(() => { cargarLicencias(); }, [cargarLicencias]);
+  const vacacionDe = (empId, iso) => (empId && iso ? licencias.find((l) => l.empleadoId === empId && l.desde <= iso && l.hasta >= iso) || null : null);
+  const guardarVacaciones = async (empleadoId, desde, hasta, nota) => {
+    try {
+      await RrhhAPI.crearLicencia({ empleadoId, desde, hasta, nota });
+      await cargarLicencias();
+      avisar(`Vacaciones cargadas ✓ (${Math.round((new Date(hasta + 'T12:00:00') - new Date(desde + 'T12:00:00')) / 86400000) + 1} días)`);
+      return true;
+    } catch (e) {
+      avisar(e?.data?.message || e.message || 'No se pudieron cargar las vacaciones.', 'error');
+      return false;
+    }
+  };
+  const quitarVacaciones = async (v) => {
+    if (!window.confirm(`¿Quitar las vacaciones del ${v.desde.slice(8, 10)}/${v.desde.slice(5, 7)} al ${v.hasta.slice(8, 10)}/${v.hasta.slice(5, 7)}?`)) return;
+    try { await RrhhAPI.borrarLicencia(v.id); await cargarLicencias(); setCeldaSel(null); avisar('Vacaciones quitadas.'); }
+    catch (e) { avisar(e?.data?.message || e.message || 'No se pudieron quitar.', 'error'); }
+  };
+
   /* ── guardado (PUT reemplaza la semana del espacio) ── */
   const armarBody = useCallback((fs, fi = fechaInicio) => {
     const porTurno = new Map();
@@ -533,6 +559,7 @@ export default function RrhhCronogramas() {
       entradaFila: patronFila?.entrada || Object.values(fila.celdas).find((c) => c?.entrada)?.entrada || '',
       salidaFila: Object.values(fila.celdas).find((c) => c?.salida)?.salida || '',
       nroDia: new Date(diasISO[dia] + 'T12:00:00').getDate(),
+      iso: diasISO[dia],
       celda, ownerEmpleadoId: fila.ownerEmpleadoId, puestoFila: patronFila?.puesto || '',
       // regla: una fila = un empleado. Si la fila ya tiene días de alguien, la celda es de esa persona.
       duenoConDias: Object.values(fila.celdas).some((c) => c?.empleadoId) ? duenoDe(fila) : null,
@@ -887,22 +914,30 @@ export default function RrhhCronogramas() {
     catch (e) { avisar(e?.data?.message || e.message || 'No se pudo cambiar la provincia.', 'error'); }
   };
 
+  // Día «Cerrado» (fecha especial, usuaria 27/11/2026): el local no abre, nadie viene. La columna queda
+  // deshabilitada, no suma días ni horas y NO cuenta como franco. Lo cargado ese día queda guardado
+  // (vuelve si se saca el cierre), pero no se muestra ni se cuenta.
+  const esCerradoIso = useCallback((iso) => {
+    const e = fechasMap.get(iso);
+    return !!e && !e.abrimos && tipoNorm(e.tipo) === 'cerrado';
+  }, [fechasMap]);
+
   /* ── totales por empleado (semana del espacio) ── */
   const totales = useMemo(() => {
     const m = new Map(); // empleadoId → {semCnt, hs, dias:Set}
     filas.forEach((f) => Object.entries(f.celdas).forEach(([dia, c]) => {
-      if (!c?.empleadoId) return;
+      if (!c?.empleadoId || esCerradoIso(diasISO[Number(dia)])) return;
       if (!m.has(c.empleadoId)) m.set(c.empleadoId, { semCnt: 0, hs: 0, dias: new Set() });
       const t = m.get(c.empleadoId);
       t.semCnt += 1; t.hs += Number(c.horas) || JORNADA_HS; t.dias.add(Number(dia));
     }));
     const out = new Map();
     m.forEach((t, id) => {
-      const francos = t.semCnt === 0 ? [] : DIAS.filter((_, j) => !t.dias.has(j));
+      const francos = t.semCnt === 0 ? [] : DIAS.filter((_, j) => !t.dias.has(j) && !esCerradoIso(diasISO[j]));
       out.set(id, { ...t, francos });
     });
     return out;
-  }, [filas]);
+  }, [filas, diasISO, esCerradoIso]);
 
   const mesRef = useMemo(() => mesDeSemana(fechaInicio), [fechaInicio]);
   useEffect(() => {
@@ -929,12 +964,12 @@ export default function RrhhCronogramas() {
   const totalesMes = useMemo(() => {
     const m = new Map();
     const sumar = (id, hs) => { const t = m.get(id) || { dias: 0, hs: 0 }; t.dias += 1; t.hs += hs; m.set(id, t); };
-    otrasDelMes.forEach((c) => { if (enMes(c.iso, mesRef)) sumar(c.empleadoId, c.horas); });
+    otrasDelMes.forEach((c) => { if (enMes(c.iso, mesRef) && !esCerradoIso(c.iso)) sumar(c.empleadoId, c.horas); });
     filas.forEach((f) => Object.entries(f.celdas).forEach(([dia, c]) => {
-      if (c?.empleadoId && enMes(diasISO[Number(dia)], mesRef)) sumar(c.empleadoId, Number(c.horas) || JORNADA_HS);
+      if (c?.empleadoId && enMes(diasISO[Number(dia)], mesRef) && !esCerradoIso(diasISO[Number(dia)])) sumar(c.empleadoId, Number(c.horas) || JORNADA_HS);
     }));
     return m;
-  }, [otrasDelMes, filas, diasISO, mesRef]);
+  }, [otrasDelMes, filas, diasISO, mesRef, esCerradoIso]);
   const semanasCreadas = useMemo(
     () => new Set(semanasIdx.filter((s) => s.espacioId === espacioId).map((s) => Number(s.semana))),
     [semanasIdx, espacioId]
@@ -1131,7 +1166,7 @@ export default function RrhhCronogramas() {
         <div style={{ width: 1, alignSelf: 'stretch', background: T.border2, margin: '0 4px' }} />
         <span ref={refsTour.copiar} style={{ display: 'inline-flex' }}><Boton deshabilitado={sinNomina || !espacio} onClick={abrirNuevaSemana} title="Crear la semana siguiente copiando esta">+ Semana</Boton></span>
         <Boton peligro deshabilitado={sinNomina || !espacio || !semanaExiste} onClick={() => setVaciarOpen(true)} title="Vaciar esta semana">Vaciar</Boton>
-        <Boton deshabilitado={sinNomina} onClick={() => setNovedadesOpen(true)} title="Faltas, llegadas tarde, horas extra y cambios de cada día, por empleado">📋 Novedades del mes</Boton>
+        <Boton deshabilitado={sinNomina} onClick={() => setNovedadesOpen(true)} title="Faltas, llegadas tarde, horas extra, cambios y vacaciones, por empleado">📋 Novedades del mes</Boton>
       </div>
       </>)}
 
@@ -1270,6 +1305,17 @@ export default function RrhhCronogramas() {
                               </div>
                             </td>
                             {diasISO.map((iso, dia) => {
+                              if (esCerradoIso(iso)) {
+                                return (
+                                  <td key={iso} title="El local está cerrado este día: no se carga a nadie y no cuenta como franco (se cambia tocando la fecha arriba)"
+                                    style={{ padding: '4px 2px', borderBottom: `1px solid ${T.border}`, borderLeft: `1px solid ${T.border}`, minWidth: cel ? 0 : 78, cursor: 'not-allowed',
+                                      background: `repeating-linear-gradient(135deg, ${T.head}, ${T.head} 6px, ${T.border} 6px, ${T.border} 7px)` }}>
+                                    <div style={{ minHeight: cel ? 34 : 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FB, fontSize: cel ? 9 : 10.5, fontWeight: 700, color: T.text3, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                                      {cel ? '✕' : 'Cerrado'}
+                                    </div>
+                                  </td>
+                                );
+                              }
                               const c = f.celdas[dia];
                               const emp = c ? empleadosMap.get(c.empleadoId) : null;
                               return (
@@ -1308,6 +1354,12 @@ export default function RrhhCronogramas() {
                                               title={c.salida ? `Entra ${c.entrada || t.entrada || '—'} · sale ${c.salida}` : `Entra ${c.entrada} (el turno entra ${t.entrada || '—'})`}>{h}</span>;
                                           })()}
                                           {c.horas !== JORNADA_HS && !c.salida && <span style={{ fontFamily: FB, fontWeight: 700, fontSize: 9.5, lineHeight: '13px', color: T.text3, border: `1px solid ${T.border2}`, borderRadius: 6, padding: '0 4px' }} title="Horas de la jornada">{c.horas}h</span>}
+                                          {vacacionDe(c.empleadoId, iso) && (
+                                            <span title={`Vacaciones del ${vacacionDe(c.empleadoId, iso).desde.slice(8, 10)}/${vacacionDe(c.empleadoId, iso).desde.slice(5, 7)} al ${vacacionDe(c.empleadoId, iso).hasta.slice(8, 10)}/${vacacionDe(c.empleadoId, iso).hasta.slice(5, 7)}`}
+                                              style={{ fontFamily: FB, fontWeight: 800, fontSize: 9.5, lineHeight: '13px', color: '#fff', background: VACACIONES.color, borderRadius: 6, padding: '0 4px', whiteSpace: 'nowrap' }}>
+                                              {cel ? '🏖' : '🏖 Vacaciones'}
+                                            </span>
+                                          )}
                                           {c.novedad && NOVEDAD[c.novedad.tipo] && (
                                             <span title={`${NOVEDAD[c.novedad.tipo].label}${c.novedad.nota ? `: ${c.novedad.nota}` : ''} (solo este día)`}
                                               style={{ fontFamily: FB, fontWeight: 800, fontSize: 9.5, lineHeight: '13px', color: '#fff', background: NOVEDAD[c.novedad.tipo].color, borderRadius: 6, padding: '0 4px', whiteSpace: 'nowrap' }}>
@@ -1455,7 +1507,7 @@ export default function RrhhCronogramas() {
         />
       )}
       {novedadesOpen && (
-        <ModalNovedades mesInicial={sumarDias(fechaInicio, 3).slice(0, 7)} onCerrar={() => setNovedadesOpen(false)} />
+        <ModalNovedades mesInicial={sumarDias(fechaInicio, 3).slice(0, 7)} onCerrar={() => setNovedadesOpen(false)} onCambio={cargarLicencias} />
       )}
       {celdaSel && espacio && (
         <ModalAsignar
@@ -1469,6 +1521,9 @@ export default function RrhhCronogramas() {
           onPuestos={guardarPuestos}
           onGuardar={guardarCelda}
           onCerrar={() => setCeldaSel(null)}
+          vacacion={celdaSel.modoFila ? null : vacacionDe(celdaSel.celda?.empleadoId || celdaSel.duenoConDias || null, celdaSel.iso)}
+          onVacaciones={guardarVacaciones}
+          onQuitarVacaciones={quitarVacaciones}
         />
       )}
       {toast && (

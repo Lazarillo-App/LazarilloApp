@@ -55,6 +55,10 @@ export const RrhhAPI = {
     api(`${base()}/semanas/${semana}${qs({ espacioId })}`, { method: 'DELETE' }),
   // Novedades del día (faltó, horas extra…) de todos los espacios en un rango de fechas (26/11/2026).
   novedades: (desde, hasta) => api(`${base()}/novedades${qs({ desde, hasta })}`),
+  // Vacaciones por rango (27/11/2026): no tocan el cronograma.
+  licencias: (desde, hasta) => api(`${base()}/licencias${qs({ desde, hasta })}`),
+  crearLicencia: (body) => api(`${base()}/licencias`, { method: 'POST', body }),
+  borrarLicencia: (id) => api(`${base()}/licencias/${id}`, { method: 'DELETE' }),
 };
 
 export default RrhhAPI;
