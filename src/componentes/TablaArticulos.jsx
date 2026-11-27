@@ -1140,7 +1140,8 @@ export default function TablaArticulos({
       );
     } else if (agrupacionSeleccionada) {
       if (esTodoGroup(agrupacionSeleccionada)) {
-        base = allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
+        // Staff: «Todo» = todo lo que puede ver (el servidor ya lo filtró por sus áreas), no «sin agrupación» (27/11/2026).
+        base = isStaff ? allArticulos : allArticulos.filter((a) => idsSinAgrup.has(getId(a)));
       } else if (esVistaVentas(agrupacionSeleccionada) || estaEnPromociones) {
         // Top 20 es una agrupación virtual: no guarda articulos propios, la
         // membresía llega vía `visibleIds` (= filterIds más abajo).
@@ -1158,7 +1159,7 @@ export default function TablaArticulos({
     }
     if (filterIds instanceof Set) base = base.filter((a) => filterIds.has(getId(a)));
     return base;
-  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds, estaEnPromociones, pSuc]);
+  }, [categoriaSeleccionada, agrupacionSeleccionada, idsSinAgrup, baseById, allArticulos, filterIds, estaEnPromociones, pSuc, isStaff]);
 
   const filtroDefer = useDeferredValue(filtroBusqueda);
   const articulosFiltrados = useMemo(() => {

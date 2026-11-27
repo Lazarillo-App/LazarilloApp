@@ -2138,6 +2138,11 @@ export default function ArticulosMain(props) {
 
     const todoId = todoInfo?.todoGroupId;
 
+    // Staff (usuaria 27/11/2026: «cargaron y desaparecieron»): para el staff «Todo» es TODO lo que puede ver.
+    // El servidor ya le manda solo lo de sus áreas (o todo, si es jefe de cocina); para el resto «Todo» es
+    // «sin agrupación», y en un negocio con todo agrupado eso daba vacío.
+    if (isStaff && (isRealTodoGroup(sel, todoId) || esTodoGroupByName(sel))) return null;
+
     if (isRealTodoGroup(sel, todoId) || esTodoGroupByName(sel)) {
       const countFromBackend = todoInfo?.idsSinAgrupCount ?? -1;
       if (countFromBackend === 0) return new Set();
@@ -2168,7 +2173,7 @@ export default function ArticulosMain(props) {
       s.add(id);
     }
     return s;
-  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids, vendenPocoIds, promoIdsResumen]);
+  }, [agrupacionSeleccionada, agrupaciones, todoInfo, todoIdsFromTree, discIds, top20Ids, vendenPocoIds, promoIdsResumen, isStaff]);
 
   // Si hay lista activa en el sidebar → usar esos IDs como filtro
   const effectiveVisibleIds = useMemo(() => {

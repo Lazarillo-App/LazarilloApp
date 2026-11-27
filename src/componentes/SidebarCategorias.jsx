@@ -320,6 +320,8 @@ function SidebarCategorias({
 
   const activeIds = useMemo(() => {
     const g = agrupacionSeleccionada;
+    // Staff: «Todo» = todo lo que puede ver (ya filtrado por sus áreas en el servidor), no «sin agrupación».
+    if (staff && g && esTodoGroup(g)) return null;
     if (g && (esTodoGroup(g) || esVistaVentas(g))) {
       // Igual que "Sin agrupación": membresía calculada, no viene de
       // `g.articulos` (que para estas agrupaciones fijas siempre está vacío)
@@ -335,7 +337,7 @@ function SidebarCategorias({
     arr.forEach((a) => { const id = safeId(a); if (id != null) s.add(id); });
     appIds.forEach(id => { const n = Number(id); if (n > 0) s.add(n); });
     return s;
-  }, [agrupaciones, agrupacionSeleccionada, visibleIds]);
+  }, [agrupaciones, agrupacionSeleccionada, visibleIds, staff]);
 
   useEffect(() => {
     if (!agrupacionSeleccionada) return;
@@ -439,7 +441,7 @@ function SidebarCategorias({
     return out;
   }, [categoriasSafe, activeIds, activeIdsIntersectsTree, pasaFiltroArticulo, getAmountForId, metaById]);
 
-  const todoVacio = agrupacionSeleccionada && esTodoGroup(agrupacionSeleccionada) &&
+  const todoVacio = !staff && agrupacionSeleccionada && esTodoGroup(agrupacionSeleccionada) &&
     !(activeIds instanceof Set && activeIds.size > 0);
   const listaParaMostrar = todoVacio ? [] :
     (localListMode === 'by-categoria' ? treeByCategoria : treeBySubrubro);
