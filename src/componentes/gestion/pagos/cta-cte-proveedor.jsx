@@ -117,6 +117,9 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     }, [form?.tipo, form?.pagoId]);
     const [leido, setLeido] = useState(null); // comprobante adjunto en la barra de pago (Diego 23/11/2026)
     const [guardando, setGuardando] = useState(false);
+    // Planes en cuotas del proveedor (usuaria 27/11/2026)
+    const [planes, setPlanes] = useState([]);
+    const [planesVer, setPlanesVer] = useState(0);
     const [anulando, setAnulando] = useState(null);
     const { data: locales } = useFetchQuery(["locales"], "/api/locales");
     // Sucursal (Diego 10/11/2026): la que se mira en la app por defecto, «Todas» como opción, y
@@ -147,6 +150,30 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
     };
     const clickOrden = (campo) => setOrden((o) => (o.campo === campo ? { campo, dir: (-o.dir) } : { campo, dir: campo === "fecha" ? -1 : 1 }));
     const flecha = (c) => (orden.campo === c ? (orden.dir === 1 ? " ▲" : " ▼") : "");
+    useEffect(() => {
+        if (!data?.codPro) { setPlanes([]); return; }
+        let vivo = true;
+        gestionFetch(`/api/pagos-cuotas?codPro=${encodeURIComponent(data.codPro)}`).then((r) => (r.ok ? r.json() : null)).then((j) => { if (vivo) setPlanes(j?.planes || []); }).catch(() => {});
+        return () => { vivo = false; };
+    }, [data?.codPro, planesVer]);
+    useEffect(() => {
+        // una cuota pagada desde el aviso flotante: refrescar facturas y planes
+        const f = () => { setPlanesVer((v) => v + 1); for (const k of ["cta-cte", "impagas", "detalle", "pivot", "actividad"]) void queryClient.invalidateQueries({ queryKey: [k] }); };
+        window.addEventListener("gestion:pagos-cambio", f);
+        return () => window.removeEventListener("gestion:pagos-cambio", f);
+    }, [queryClient]);
+    async function pagarCuota(plan, c) {
+        const err = await llamar(`/api/pagos-cuotas/${plan.id}/cuotas/${c.n}/pagar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }, `Cuota ${c.n} de ${plan.cantidad} pagada`);
+        if (err) toast.error(err);
+        setPlanesVer((v) => v + 1);
+        try { window.dispatchEvent(new CustomEvent("gestion:cuotas-cambio")); } catch { /* noop */ }
+    }
+    async function editarPlanCuotas(plan, body, ok) {
+        const err = await llamar(`/api/pagos-cuotas/${plan.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, ok);
+        if (err) toast.error(err);
+        setPlanesVer((v) => v + 1);
+        try { window.dispatchEvent(new CustomEvent("gestion:cuotas-cambio")); } catch { /* noop */ }
+    }
     const etiquetaPeriodo = per === "hist" ? "histórico" : per === "anio" ? String(anio) : `${MESES[mes]} ${anio}`;
     const t = busca.trim().toLowerCase();
     const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0) * orden.dir;
@@ -198,8 +225,33 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
         }
         // Varios comprobantes = varios pagos, uno detrás del otro sobre las mismas facturas (cada uno toma
         // lo que le queda de saldo; lo que sobra queda a cuenta).
-        const { extras = [], ...principal } = b;
+        const { extras = [], cuotasPlan = null, ...principal } = b;
         const facts = form.tipo === "facturas" ? { facturas: elegidas.map((f) => ({ pdvId: f.pdvId, comprobante: f.comprobante })) } : {};
+        // En cuotas (usuaria 27/11/2026): la 1ª cuota es un pago normal; con su id se guarda el plan con las demás.
+        if (cuotasPlan && facts.facturas?.length) {
+            setGuardando(true);
+            try {
+                const r1 = await gestionFetch("/api/pagos-proveedor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ codPro: data.codPro, ...principal, ...facts }) });
+                const j1 = await r1.json().catch(() => null);
+                if (!r1.ok) return j1?.error ?? "No se pudo guardar.";
+                const cuotas = [{ importe: principal.importe, vence: principal.fecha, pagoId: j1?.id ?? null }, ...cuotasPlan.cuotas];
+                const r2 = await gestionFetch("/api/pagos-cuotas", { method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ codPro: data.codPro, proveedor: data.proveedor, facturas: facts.facturas, medio: principal.medio, pdvPagaId: principal.pdvPagaId, recordar: cuotasPlan.recordar, cuotas }) });
+                const j2 = await r2.json().catch(() => null);
+                if (!r2.ok) toast.error(`La 1ª cuota quedó pagada, pero no se pudo guardar el plan: ${j2?.error ?? "probá de nuevo"}.`);
+                else toast.success(`1ª cuota pagada · plan de ${cuotas.length} cuotas guardado${cuotasPlan.recordar ? " (te aviso cuando venza cada una)" : ""}`);
+                for (const k of ["cta-cte", "impagas", "detalle", "pivot", "actividad"]) void queryClient.invalidateQueries({ queryKey: [k] });
+                try { window.dispatchEvent(new CustomEvent("gestion:cuotas-cambio")); } catch { /* noop */ }
+                setPlanesVer((v) => v + 1);
+                setForm(null); setTildadas(new Set()); setLeido(null);
+                if (soloPago && onCerrar) onCerrar();
+                return null;
+            } catch {
+                return "No se pudo guardar. Intentá de nuevo.";
+            } finally {
+                setGuardando(false);
+            }
+        }
         let err = null, hechos = 0, resto = form.tipo === "facturas" ? saldoElegidas : 0;
         for (const p of [principal, ...extras]) {
             const ult = hechos === extras.length;
@@ -579,6 +631,23 @@ export function CtaCteContenido({ origen: origenInicial, resaltado, pagar, onCer
                 return onCerrar(); if (form.tipo === "facturas")
                 setTildadas(new Set()); setForm(null); setLeido(null); }} onConfirm={confirmarPago}/></div>);
         })()}
+
+      {/* ===== planes en cuotas (usuaria 27/11/2026) ===== */}
+      {planes.length > 0 && !(soloPago && elegidas.length > 0) && (<div className="mt-2 shrink-0 grid gap-1.5">
+          {planes.map((p) => {
+            const prox = p.cuotas.find((c) => !c.pagoId);
+            return (<div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-sky-200 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/40 px-3 py-2 text-[13px]">
+                <span>💳 <b>En cuotas</b> · {p.pagadas} de {p.cantidad} pagadas · saldo <b className="tabular-nums">{fmtPesos(p.saldo)}</b></span>
+                <span className="text-muted-foreground">{p.facturas.map((f) => fmtComprobante(f.comprobante)).join(", ")}</span>
+                {prox && <span className="text-muted-foreground">próxima: cuota {prox.n} · vence {prox.vence.split("-").reverse().join("/")} · <span className="tabular-nums">{fmtPesos(prox.importe)}</span></span>}
+                <span className="ml-auto flex flex-wrap gap-2">
+                  {prox && <button type="button" disabled={guardando} onClick={() => void pagarCuota(p, prox)} className="h-9 sm:h-7 px-2.5 rounded-md bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 text-[12.5px] disabled:opacity-40">Pagar cuota {prox.n}</button>}
+                  <button type="button" disabled={guardando} onClick={() => void editarPlanCuotas(p, { recordar: !p.recordar }, p.recordar ? "Ya no te aviso de estas cuotas" : "Te aviso el día que vence cada cuota")} className="h-9 sm:h-7 px-2.5 rounded-md border border-zinc-300 dark:border-zinc-600 text-[12.5px]">{p.recordar ? "🔔 Avisos: sí" : "🔕 Avisos: no"}</button>
+                  <button type="button" disabled={guardando} onClick={() => { if (window.confirm("¿Cancelar el plan en cuotas? Lo ya pagado queda como pagos normales y las facturas quedan con su saldo.")) void editarPlanCuotas(p, { cancelar: true }, "Plan en cuotas cancelado"); }} className="h-9 sm:h-7 px-2.5 rounded-md border border-zinc-300 dark:border-zinc-600 text-[12.5px] text-[#c62828]">Cancelar plan</button>
+                </span>
+              </div>);
+          })}
+        </div>)}
 
       {/* ===== pie: totales de lo que se ve ===== */}
       {data && !(soloPago && elegidas.length > 0) && (<div className="mt-3 -mx-6 -mb-4 px-6 max-sm:-mx-4 max-sm:px-4 py-2.5 border-t border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/60 flex flex-wrap items-center gap-x-6 gap-y-1 shrink-0 text-[13.5px]">

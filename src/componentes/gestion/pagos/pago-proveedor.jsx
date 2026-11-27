@@ -1,6 +1,6 @@
 /* eslint-disable */
 // Traído de lazarillo_gestion/components/cta-cte/pago-proveedor.tsx (mismas pantallas; datos de Lazarillo vía @/gestion/compat).
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { cn } from "@/gestion/compat";
 import { fmtPesos } from "@/gestion/impagasClasificar";
 import { importeAInput, normalizarReferencia, parsearImporteAR } from "@/gestion/impagasAperturas";
@@ -22,6 +22,14 @@ const fmtCuit = (c) => (c && c.length === 11 ? `${c.slice(0, 2)}-${c.slice(2, 10
 const filaDeComprobante = (r, pdvDefault) => {
     const d = r?.datos || {};
     return { comp: r, importe: d.importe > 0 ? importeAInput(d.importe) : "", fecha: d.fecha || hoyISO(), medio: r?.medio || "", referencia: d.operacion || "", pdvPaga: pdvDefault, fechaVer: 0 };
+};
+// Cuotas (usuaria 27/11/2026): mismo día de los meses siguientes (si el mes es más corto, el último día).
+const sumarMeses = (iso, k) => {
+    const [y, m, d] = String(iso || "").split("-").map(Number);
+    if (!y || !m || !d) return "";
+    const ult = new Date(y, m - 1 + k + 1, 0).getDate();
+    const f = new Date(y, m - 1 + k, Math.min(d, ult));
+    return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}-${String(f.getDate()).padStart(2, "0")}`;
 };
 const textoCuenta = (c) => [c.titular, c.banco, c.cbu && `${c.tipoCuenta || "CBU"} ${c.cbu}`, c.alias && `alias ${c.alias}`, c.cuit && `CUIT ${fmtCuit(c.cuit)}`].filter(Boolean).join(" · ");
 export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDefault, aCuenta, guardando, onCancel, onConfirm, leido, onLeido }) {
@@ -54,6 +62,20 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
         if (!pdvElegido.current && pdvDefault != null) setPdvPagaSel(pdvDefault);
     }
     const [error, setError] = useState(null);
+    // ── En cuotas (usuaria 27/11/2026): el Importe de arriba es la 1ª cuota (se paga hoy); las demás quedan
+    // en un plan con su vencimiento y, si se tilda, un aviso flotante el día que vence cada una.
+    const [enCuotas, setEnCuotas] = useState(false);
+    const [cantCuotas, setCantCuotas] = useState(3);
+    const [resto, setResto] = useState([]); // cuotas 2..N: { importe: "texto", vence: "YYYY-MM-DD", ver }
+    const [recordarCuotas, setRecordarCuotas] = useState(true);
+    function armarCuotas(n, fechaBase = fecha) {
+        const total = modo.tipo === "facturas" ? modo.saldo : 0;
+        const nn = Math.max(2, Math.min(120, Math.round(Number(n) || 2)));
+        const una = Math.floor((total / nn) * 100) / 100;
+        const ultima = Math.round((total - una * (nn - 1)) * 100) / 100;
+        setImporte(importeAInput(una));
+        setResto(Array.from({ length: nn - 1 }, (_, i) => ({ importe: importeAInput(i === nn - 2 ? ultima : una), vence: sumarMeses(fechaBase, i + 1), ver: Date.now() + i })));
+    }
     // "cuenta:ID" = usar el disponible de un pago a cuenta (no crea otro pago).
     const usado = medio.startsWith("cuenta:") ? aCuenta.find((p) => p.id === Number(medio.slice(7))) ?? null : null;
     const conId = !usado && ((lista.find((m) => m.nombre === medio)?.pideId ?? false) || !!referencia || !!comp);
@@ -191,7 +213,20 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
             if (r && r === ref) { setError(`El comprobante ${i + 2} tiene el mismo ID que el primero.`); return; }
             otros.push({ fecha: x.fecha, medio: med, referencia: r, pdvPagaId: x.pdvPaga ?? pdvPaga, importe: imp, comprobanteId: x.comp?.comprobanteId ?? null });
         }
-        const err = await onConfirm({ fecha, medio, referencia: ref, pdvPagaId: pdvPaga, importe: valor, comprobanteId: comp?.comprobanteId ?? null, ...(otros.length ? { extras: otros } : {}) });
+        let cuotasPlan = null;
+        if (enCuotas && modo.tipo === "facturas") {
+            const cs = [];
+            for (const [i, x] of resto.entries()) {
+                const imp = parsearImporteAR(x.importe) ?? 0;
+                if (!(imp > 0)) { setError(`Cargá el importe de la cuota ${i + 2}.`); return; }
+                if (!x.vence) { setError(`Cargá cuándo vence la cuota ${i + 2}.`); return; }
+                cs.push({ importe: imp, vence: x.vence });
+            }
+            const suma = valor + cs.reduce((a, c) => a + c.importe, 0);
+            if (suma > modo.saldo + 0.5) { setError(`Las cuotas suman ${fmtPesos(suma)} y el saldo es ${fmtPesos(modo.saldo)}.`); return; }
+            cuotasPlan = { cuotas: cs, recordar: recordarCuotas };
+        }
+        const err = await onConfirm({ fecha, medio, referencia: ref, pdvPagaId: pdvPaga, importe: valor, comprobanteId: comp?.comprobanteId ?? null, ...(otros.length ? { extras: otros } : {}), ...(cuotasPlan ? { cuotasPlan } : {}) });
         if (err)
             setError(err);
     }
@@ -205,6 +240,7 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
         ? (valor > modo.pago.importe + 0.005 ? `Lo que sumás (${fmtPesos(valor - modo.pago.importe)}) queda a cuenta de ${proveedor}.`
             : valor < modo.pago.importe - 0.005 ? "Si no alcanza para lo que ya pagó, se suelta primero lo de las facturas más nuevas (quedan parciales o impagas)."
                 : "Fecha, medio, ID, PDV que paga e importe.")
+        : enCuotas ? `Hoy se paga la 1ª cuota (el Importe de arriba): las facturas quedan parciales y las otras ${resto.length} cuotas quedan en el plan.`
         : usado ? `No crea un pago nuevo: se aplica el disponible de ${numeroPago(usado.id)}, de la factura más vieja a la más nueva.`
             : modo.tipo === "cuenta" ? `Queda a cuenta de ${proveedor}. Después lo aplicás tildando facturas.`
                 : excedente > 0.5 ? `Salda las facturas tildadas y ${fmtPesos(excedente)} quedan a cuenta de ${proveedor}.`
@@ -224,7 +260,7 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
             {extras.length > 0 && !usado && <span className="tabular-nums font-semibold whitespace-nowrap">· {extras.length + 1} pagos por {fmtPesos(totalPagos)}</span>}
           </div>
           <div className="grid w-full sm:w-fit grid-cols-1 sm:grid-cols-[auto_auto_auto] items-center gap-x-5 gap-y-2 text-sm">
-            <label className="flex items-center gap-1.5"><span className={etiqueta}>Importe</span>
+            <label className="flex items-center gap-1.5"><span className={cn(etiqueta, enCuotas && "w-auto whitespace-nowrap")} title={enCuotas ? "1ª cuota (se paga hoy)" : undefined}>{enCuotas ? "1ª cuota" : "Importe"}</span>
               <ImporteInput value={importe} onChange={setImporte} className={cn(input, "sm:w-40 text-right tabular-nums")}/>
             </label>
             <label className="flex items-center gap-1.5"><span className={etiqueta}>Medio</span>
@@ -250,6 +286,40 @@ export function FormPagoProveedor({ modo, proveedor, proveedorCuit, pdvs, pdvDef
               </label>)}
           </div>
           <div className="mt-1.5 text-[11px] text-muted-foreground">{ayuda}</div>
+          {modo.tipo === "facturas" && !editando && !usado && extras.length === 0 && modo.saldo > 0.5 && (<div className="mt-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none min-h-9">
+                  <input type="checkbox" checked={enCuotas} onChange={(e) => { const v = e.target.checked; setEnCuotas(v); if (v) armarCuotas(cantCuotas); else setImporte(importeAInput(modo.saldo)); }} className="h-4 w-4"/>
+                  <b>En cuotas</b>
+                </label>
+                {enCuotas && <span className="inline-flex items-center gap-1.5">· <input type="number" min={2} max={120} value={cantCuotas} aria-label="Cantidad de cuotas"
+                    onChange={(e) => { const n = Number(e.target.value); setCantCuotas(e.target.value); if (n >= 2 && n <= 120) armarCuotas(n); }}
+                    className={cn(input, "w-16 flex-none sm:w-16 text-center")}/> cuotas</span>}
+              </div>
+              {enCuotas && (<div className="mt-1.5 rounded-md border border-sky-200 dark:border-sky-900 bg-white dark:bg-zinc-900 p-2">
+                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1.5 text-[13px]">
+                    <span className="text-muted-foreground">1ª</span>
+                    <span className="text-muted-foreground">hoy · {fecha ? fecha.split("-").reverse().join("/") : ""}</span>
+                    <span className="tabular-nums text-right font-semibold">{fmtPesos(valor)}</span>
+                    {resto.map((x, i) => (<React.Fragment key={x.ver}>
+                        <span className="text-muted-foreground">{i + 2}ª</span>
+                        <span className="flex items-center gap-1.5">vence <FechaInput key={`v${x.ver}`} value={x.vence} onChange={(v) => setResto((rs) => rs.map((r, j) => (j === i ? { ...r, vence: v } : r)))} className={cn(input, "w-32 sm:w-32 tabular-nums")}/></span>
+                        <ImporteInput value={x.importe} onChange={(v) => setResto((rs) => rs.map((r, j) => (j === i ? { ...r, importe: v } : r)))} className={cn(input, "w-32 sm:w-32 text-right tabular-nums")}/>
+                      </React.Fragment>))}
+                  </div>
+                  {(() => {
+                    const suma = valor + resto.reduce((a, x) => a + (parsearImporteAR(x.importe) ?? 0), 0);
+                    const dif = modo.saldo - suma;
+                    return <div className={cn("mt-1.5 text-[11.5px]", Math.abs(dif) > 0.5 ? "font-semibold text-[#b45309]" : "text-muted-foreground")}>
+                        Las {resto.length + 1} cuotas suman {fmtPesos(suma)}{Math.abs(dif) > 0.5 ? (dif > 0 ? ` · faltan ${fmtPesos(dif)} para el saldo` : ` · se pasan ${fmtPesos(-dif)} del saldo`) : " = saldo de las facturas"}.
+                      </div>;
+                  })()}
+                  <label className="mt-1.5 flex items-center gap-2 cursor-pointer select-none text-[12.5px] min-h-9">
+                    <input type="checkbox" checked={recordarCuotas} onChange={(e) => setRecordarCuotas(e.target.checked)} className="h-4 w-4"/>
+                    Avisarme el día que vence cada cuota (aviso en pantalla con «Marcar como paga»)
+                  </label>
+                </div>)}
+            </div>)}
           {leyendo && <div className="mt-1.5 text-xs text-[#0d6fa8]">Leyendo el comprobante…</div>}
           {comp && !leyendo && (<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]">
               <span className="inline-flex items-center gap-1 rounded-md border border-[#5BC2EA] bg-white px-1.5 py-0.5 text-[#0e7490] dark:bg-zinc-900">

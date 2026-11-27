@@ -1,3 +1,4 @@
+import AvisoCuotas from './gestion/pagos/AvisoCuotas';
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -753,6 +754,7 @@ export default function Navbar() {
             {!isAppAdmin && logged && !enAlta && (
               <Box data-tour="hdr-campana" sx={{ ml: 1, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                 <NotificationsPanel businessId={activeBusinessId} />
+                <AvisoCuotas businessId={activeBusinessId} />
               </Box>
             )}
             {/* ⚙ Configuración, a la derecha de la campana (pedido de Diego, 06/11). */}
