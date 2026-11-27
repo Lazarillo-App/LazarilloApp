@@ -233,6 +233,14 @@ function SidebarCategorias({
       };
       middle.sort((a, b) => montoDeAgrup(b) - montoDeAgrup(a));
     }
+    // Staff (usuaria 27/11/2026: «el desplegable de agrupaciones sí debe verlo, así tenga solo 1»):
+    // «Todos» (todo lo que puede ver) + las agrupaciones con artículos suyos. El servidor ya le manda solo
+    // esas (o todas, si es jefe de cocina); sin Top 20, promociones ni discontinuados.
+    if (staff) {
+      const conArts = middle.filter((g) => (g.articulos?.length || 0) > 0 || (g.app_articles_ids?.length || 0) > 0);
+      const todosOpt = todo || (Number.isFinite(todoIdNum) ? { id: todoIdNum, nombre: 'TODO', articulos: [] } : null);
+      return todosOpt ? [todosOpt, ...conArts] : conArts;
+    }
     const todoCount = todo ? (todoCountOverride[todo.id] ?? todo.articulos?.length ?? 0) : 0;
     // Mismo orden que Insumos: Top 20 → Sin agrupación → Promociones → las del
     // negocio (por monto) → Discontinuados, al final de todo.
@@ -245,7 +253,9 @@ function SidebarCategorias({
     ordered.push(...middle);
     if (isMainDivision) ordered.push(...discontinuados);
     return ordered;
-  }, [agrupaciones, todoGroupId, todoCountOverride, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision, getAmountForId]);
+  }, [agrupaciones, todoGroupId, todoCountOverride, assignedAgrupacionIds, activeDivisionAgrupacionIds, isMainDivision, getAmountForId, staff]);
+  // Para el staff, «Todo» se llama «Todos»: son todos los artículos que puede ver, no «sin agrupación».
+  const labelVis = (g) => (staff && esTodoGroup(g) ? 'Todos' : labelVisible(g));
   const selectedAgrupValue = useMemo(() => {
     const idsOpciones = opcionesSelect.map((g) => Number(g.id));
     const actualId = agrupacionSeleccionada ? Number(agrupacionSeleccionada.id) : null;
@@ -268,10 +278,12 @@ function SidebarCategorias({
       // sector, directo), nunca se queda pegada en una agrupación puntual vieja
       // ni en la favorita del owner.
       if (agrupacionSeleccionada && esTodoGroup(agrupacionSeleccionada)) return;
+      // Ahora el staff elige agrupación (27/11/2026): si la elegida está en su lista, se respeta.
+      if (agrupacionSeleccionada && (opcionesSelect || []).some((o) => Number(o.id) === Number(agrupacionSeleccionada.id))) return;
       const todoIdNum = Number(todoGroupId);
-      const todoOpt = Number.isFinite(todoIdNum)
+      const todoOpt = (opcionesSelect || []).find((g) => esTodoGroup(g)) || (Number.isFinite(todoIdNum)
         ? (agrupaciones || []).find((g) => Number(g?.id) === todoIdNum)
-        : null;
+        : null);
       const fallback = todoOpt || (Array.isArray(opcionesSelect) ? opcionesSelect[0] : null) || null;
       if (fallback) {
         setAgrupacionSeleccionada?.(fallback);
@@ -557,20 +569,20 @@ function SidebarCategorias({
     };
     return (
       <div style={{ display: 'flex', gap: 8, minWidth: 0 }}>
-        {!staff && (
+        {(
           <FormControl size="small" sx={{ flex: 1, minWidth: 0 }} data-tour="art-agrupacion">
             <InputLabel sx={etiqueta}>Agrupación</InputLabel>
             <Select label="Agrupación" value={selectedAgrupValue} onChange={handleAgrupacionChange} sx={campo}
-              renderValue={(value) => { const g = opcionesSelect.find((x) => String(x.id) === String(value)); return g ? labelVisible(g) : 'Sin agrupación'; }}
+              renderValue={(value) => { const g = opcionesSelect.find((x) => String(x.id) === String(value)); return g ? labelVis(g) : (staff ? 'Todos' : 'Sin agrupación'); }}
               MenuProps={downwardMenuProps()}>
               {opcionesSelect.map((g) => (
-                <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)} sx={{ minHeight: 44 }}>{labelVisible(g)}</MenuItem>
+                <MenuItem key={g.id} value={g._virtual ? g.id : Number(g.id)} sx={{ minHeight: 44 }}>{labelVis(g)}</MenuItem>
               ))}
             </Select>
           </FormControl>
         )}
         {verRubros && (
-          <FormControl size="small" sx={{ flex: staff ? 1 : '0 0 42%', minWidth: 0 }} data-tour="art-rubro">
+          <FormControl size="small" sx={{ flex: '0 0 42%', minWidth: 0 }} data-tour="art-rubro">
             <InputLabel shrink sx={etiqueta}>{localListMode === 'by-categoria' ? 'Subrubro' : 'Rubro'}</InputLabel>
             <Select label={localListMode === 'by-categoria' ? 'Subrubro' : 'Rubro'} notched displayEmpty sx={campo}
               value={categoriaSeleccionada ? String(categoriaSeleccionada.subrubro ?? '') : ''}
@@ -628,7 +640,7 @@ function SidebarCategorias({
             encima podía mostrar agrupaciones sin ningún producto visible para su
             sector. Un efecto más abajo lo deja siempre en "Todo" (todos los rubros
             permitidos de su sector, directo, sin ese paso). */}
-        {sidebarMode === 'agrupaciones' && !staff && (
+        {sidebarMode === 'agrupaciones' && (
           <FormControl size="small" fullWidth sx={{ mb: 1 }} data-tour="art-agrupacion">
             <InputLabel>Agrupaciones</InputLabel>
             <Select
@@ -641,7 +653,7 @@ function SidebarCategorias({
               onChange={handleAgrupacionChange}
               renderValue={(value) => {
                 const g = opcionesSelect.find((x) => String(x.id) === String(value));
-                return g ? labelVisible(g) : 'Sin agrupación';
+                return g ? labelVis(g) : (staff ? 'Todos' : 'Sin agrupación');
               }}
               MenuProps={downwardMenuProps()}
             >
@@ -672,7 +684,7 @@ function SidebarCategorias({
                         sistema: esTodoGroup(g) || esPromoGroup(g),
                         discontinuados: esDiscontinuadosGroup(g),
                       })}>
-                        {labelVisible(g)}
+                        {labelVis(g)}
                         {!staff && gMonto > 0 && !esDiscontinuadosGroup(g) && (
                           <span style={{ fontSize: '0.72rem', color: 'var(--color-primary)', marginLeft: 6, fontWeight: 600, fontStyle: 'normal' }}>
                             {fmtCurrency(gMonto)}

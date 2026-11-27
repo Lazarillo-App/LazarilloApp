@@ -3282,7 +3282,7 @@ export default function TablaArticulos({
       <div className="tabla-articulos-container" style={{ height: "100%" }}>
         <div ref={tablaWrapRef} style={{ height: "100%", width: "100%" }}>
           <div ref={tablaHeaderRef} className="table-col-header">
-            {isTodo && resumenEstableArticulos && resumenEstableArticulos.total > 0 && (
+            {!isStaff && isTodo && resumenEstableArticulos && resumenEstableArticulos.total > 0 && (
               <Box sx={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                 px: 1.75, py: 1, mb: 1, borderRadius: 2,
