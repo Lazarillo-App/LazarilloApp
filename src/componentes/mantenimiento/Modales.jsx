@@ -214,6 +214,16 @@ export function FallaModal({ businessId, abierto, onCerrar, onListo, equipos, eq
   );
 }
 
+// Fecha + N días/semanas/meses (para la primera alerta a partir del último service).
+const sumarIntervalo = (iso, n, unidad) => {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  if (unidad === 'dias') d.setDate(d.getDate() + n);
+  else if (unidad === 'semanas') d.setDate(d.getDate() + 7 * n);
+  else { const dia = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 function FormPlan({ plan, ctx, onGuardar, onCancelar }) {
   const [v, setV] = useState(() => ({
     nombre: plan?.nombre || '', descripcion: plan?.descripcion || '', cada_n: String(plan?.cada_n || 1), unidad: plan?.unidad || 'meses',
@@ -260,6 +270,11 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
   const [planEdit, setPlanEdit] = useState(null);
   const [error, setError] = useState('');
   const nuevo = !equipoId;
+  // Alta con mantenimiento (usuaria 27/11/2026): fecha del último service y alerta para el que se repite.
+  const [conMant, setConMant] = useState(false);
+  const [ultService, setUltService] = useState('');
+  const [alerta, setAlerta] = useState({ on: true, nombre: 'Service', cada_n: '6', unidad: 'meses', proxima: '' });
+  const proximaSugerida = alerta.proxima || (ultService ? sumarIntervalo(ultService, Number(alerta.cada_n) || 1, alerta.unidad) : isoHoy());
   const cargar = useCallback(async () => {
     if (!equipoId) return;
     try { const r = await MantenimientoAPI.equipo(businessId, equipoId); setD(r); setV({ ...r.equipo }); } catch (e) { setError(textoError(e)); }
@@ -275,7 +290,27 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
   const guardar = async () => {
     setError('');
     try {
-      const r = await MantenimientoAPI.guardarEquipo(businessId, { ...v, precio: v.precio === '' || v.precio == null ? null : v.precio });
+      let r = await MantenimientoAPI.guardarEquipo(businessId, { ...v, precio: v.precio === '' || v.precio == null ? null : v.precio });
+      if (nuevo && conMant && r?.equipo?.id) {
+        const eqId = r.equipo.id;
+        let planId = null;
+        try {
+          if (alerta.on && alerta.nombre.trim()) {
+            r = await MantenimientoAPI.guardarPlan(businessId, eqId, {
+              nombre: alerta.nombre.trim(), descripcion: '', cada_n: Number(alerta.cada_n) || 1, unidad: alerta.unidad,
+              dias_semana: [], responsable_user_id: null, nota_obligatoria: false, proxima: proximaSugerida, activo: true,
+            });
+            planId = (r?.planes || []).find((p) => p.nombre === alerta.nombre.trim())?.id || null;
+          }
+          if (ultService) {
+            await MantenimientoAPI.cargarHistorico(businessId, {
+              equipo_id: eqId, fecha: ultService, tipo: 'preventivo', titulo: alerta.on && alerta.nombre.trim() ? alerta.nombre.trim() : 'Service',
+              ...(planId ? { plan_id: planId } : {}),
+            });
+            r = await MantenimientoAPI.equipo(businessId, eqId);
+          }
+        } catch (e) { setError(`El equipo se creó, pero no se pudo guardar el mantenimiento: ${textoError(e)}`); }
+      }
       setD(r); setV({ ...r.equipo }); onCambio?.();
       if (nuevo) setSolapa('mant');
     } catch (e) { setError(textoError(e)); }
@@ -325,6 +360,35 @@ export function EquipoModal({ businessId, equipoId, abierto, onCerrar, onCambio,
           <Campo label="Instalación"><CampoFecha sx={sxFecha} disabled={!puede} value={v.fecha_instalacion || ''} onChange={set('fecha_instalacion')} /></Campo>
           {ctx?.gestor && <Campo label="Precio de compra"><CampoImporte size="small" sx={sxFecha} placeholder="0" value={v.precio ?? ''} onChange={set('precio')} /></Campo>}
           <Campo label="Notas" style={{ gridColumn: '1 / -1' }}><Entrada disabled={!puede} value={v.notas || ''} onChange={(x) => set('notas')(x.target.value)} /></Campo>
+          {nuevo && puede && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              {!conMant ? (
+                <Boton chico onClick={() => setConMant(true)}>🔧 Mantenimiento</Boton>
+              ) : (
+                <div style={{ background: T.head, border: `1px solid ${T.border}`, borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: FT, fontWeight: 700, fontSize: 14, color: T.text }}>🔧 Mantenimiento</span>
+                    <span onClick={() => setConMant(false)} style={{ fontFamily: FB, fontSize: 12, color: T.text3, cursor: 'pointer' }}>Quitar</span>
+                  </div>
+                  <Campo label="Último service (opcional)" ayuda="Queda en el historial del equipo." style={{ maxWidth: 220 }}>
+                    <CampoFecha sx={sxFecha} value={ultService} onChange={setUltService} />
+                  </Campo>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontFamily: FB, fontSize: 13, color: T.text2 }}>
+                    <input type="checkbox" checked={alerta.on} onChange={(e) => setAlerta((a) => ({ ...a, on: e.target.checked }))} /> Necesita mantenimiento cada tanto: crear alerta
+                  </label>
+                  {alerta.on && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                      <Campo label="Qué hay que hacer" style={{ flex: '1 1 180px' }}><Entrada value={alerta.nombre} maxLength={100} onChange={(e) => setAlerta((a) => ({ ...a, nombre: e.target.value }))} placeholder="Ej.: Service, limpieza de filtros" /></Campo>
+                      <Campo label="Cada" style={{ width: 70 }}><Entrada inputMode="numeric" value={alerta.cada_n} onChange={(e) => setAlerta((a) => ({ ...a, cada_n: e.target.value.replace(/[^\d]/g, ''), proxima: '' }))} /></Campo>
+                      <Campo label=" " style={{ width: 120 }}><Selector value={alerta.unidad} onChange={(x) => setAlerta((a) => ({ ...a, unidad: x, proxima: '' }))} opciones={[{ value: 'dias', label: 'días' }, { value: 'semanas', label: 'semanas' }, { value: 'meses', label: 'meses' }]} /></Campo>
+                      <Campo label="Próximo aviso" style={{ width: 160 }}><CampoFecha sx={sxFecha} value={proximaSugerida} onChange={(x) => setAlerta((a) => ({ ...a, proxima: x }))} /></Campo>
+                    </div>
+                  )}
+                  {alerta.on && <Texto sutil style={{ fontSize: 12 }}>La orden aparece sola en la agenda una semana antes y se repite después de cada service.</Texto>}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
