@@ -498,6 +498,9 @@ function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClo
     const cant = u !== "pesos";
     // En unidades, el mes proyectado se estima con la misma proporción que las ventas.
     const delMes = anualActual.find((m) => m.mes === hasta.mes);
+    // Proyección del mes en curso para el detalle de abajo: la MISMA que la barra (Guía 27/11/2026).
+    const proyMes = actual?.proyectado && delMes?.ventas > 0 && actual.valor != null
+        ? { mes: `${hasta.anio}-${String(hasta.mes).padStart(2, "0")}`, factor: actual.valor / delMes.ventas } : null;
     const actualU = !cant || !actual ? actual
         : { ...actual, valor: actual.proyectado && delMes?.ventas > 0 && actual.valor != null ? (delMes[u] ?? 0) * (actual.valor / delMes.ventas) : delMes?.[u] ?? null };
     const serie = serieIndicador({
@@ -543,7 +546,7 @@ function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClo
             <span className="self-center px-2 text-[12px] text-zinc-500">meses</span>
           </div>}
         </div>
-        {vista !== "mes" && <Historico sel={sel} modo={vista} mes={mesH} hasta={hasta} unidad={u} proy={actual?.proyectado && actual.valor != null ? actual.valor : null} setPeriodo={setPeriodo} detalle={<DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}/>}
+        {vista !== "mes" && <Historico sel={sel} modo={vista} mes={mesH} hasta={hasta} unidad={u} proy={actual?.proyectado && actual.valor != null ? actual.valor : null} setPeriodo={setPeriodo} detalle={<DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo} proy={proyMes}/>}/>}
         {vista === "mes" && <>
         <div className="relative mt-5 flex h-44 items-end gap-1.5 border-b border-zinc-200 dark:border-zinc-700">
           {promSerie != null && <LineaPromedio bottom={`${alto(promSerie) * 0.8}%`}/>}
@@ -564,7 +567,7 @@ function Evolucion({ clave, sel, fcGen = null, hasta, anualActual, actual, onClo
         {promSerie != null && <LeyendaPromedio de={`de los ${cerradosSerie.length} meses cerrados`} texto={cant ? cantCorta(promSerie, true) : plata ? plataCorta(promSerie, 1) : `${(promSerie * 100).toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`}/>}
         {esVentas && <p className="mt-1 text-center text-[11px] text-zinc-500">tocá un mes para verlo abajo</p>}
         </>}
-        {esVentas && vista === "mes" && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo}/>}
+        {esVentas && vista === "mes" && <DetalleVentas sel={sel} periodo={periodo} setPeriodo={setPeriodo} proy={proyMes}/>}
         {vista === "mes" && <>
         <div className="mt-4">
           {[...serie].reverse().map((x) => (<div key={`${x.anio}-${x.mes}`} className="flex items-baseline gap-2 border-b border-zinc-100 dark:border-zinc-800 py-2 text-[14px]">
