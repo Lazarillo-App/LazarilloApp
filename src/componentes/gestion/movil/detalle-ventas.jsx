@@ -326,7 +326,7 @@ const Nota = ({ children }) => <div style={{ marginTop: 12, border: "1px dashed 
 const titulo2 = (t) => { const x = String(t || ""); return x === x.toUpperCase() ? titulo(x) : x; };
 
 // ── componente ─────────────────────────────────────────────────────────────
-export function DetalleVentas({ sel, periodo, setPeriodo }) {
+export function DetalleVentas({ sel, periodo, setPeriodo, proy = null }) {
   const [turno, setTurno] = useState(null);
   const [tab, setTab] = useState("servicio");
   const [hoja, setHoja] = useState(null);
@@ -395,6 +395,11 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
   const maxDia = Math.max(1, ...d.dias.map((x) => x.importe));
   const diaSel = !esMes && desde ? Number(desde.slice(8)) : null;
   const arts = d.articulos;
+  // Mes en curso: se muestra la proyección al cierre, la misma de la barra del gráfico (Guía 27/11/2026),
+  // con lo real a hoy al lado. Tickets y cubiertos se proyectan con la misma proporción que las ventas.
+  const f = esMes && proy && mesAct === proy.mes && proy.factor > 0 ? proy.factor : null;
+  const ultDia = f ? Math.max(0, ...d.dias.filter((x) => x.importe > 0).map((x) => Number(x.dia ?? String(x.fecha ?? "").slice(8)) || 0)) : 0;
+  const alDia = f && ultDia ? ` al ${String(ultDia).padStart(2, "0")}/${mesAct.slice(5, 7)}` : "";
 
   return (
     <div style={caja}>
@@ -407,17 +412,18 @@ export function DetalleVentas({ sel, periodo, setPeriodo }) {
         <Flecha onClick={() => mover(1)} deshabilitada={sigDeshabilitado}>›</Flecha>
       </div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
-        <b style={{ fontSize: 26, whiteSpace: "nowrap" }}>{$(d.total)}</b>
+        <b style={{ fontSize: 26, whiteSpace: "nowrap" }}>{$(f ? d.total * f : d.total)}</b>
         {comp && <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", color: comp.v >= 0 ? "#047857" : "#dc2626" }}>{comp.v >= 0 ? "▲" : "▼"} {Math.abs(Math.round(comp.v * 100))}% {comp.txt}</span>}
       </div>
       <div style={{ fontSize: 12, color: GRIS, marginTop: 2 }}>
-        {esMes && d.dias.length > 0 && <><span style={{ whiteSpace: "nowrap" }}>{$(d.total / d.dias.filter((x) => x.importe > 0).length || 0)}</span> por día</>}
+        {f && <>proyectado · real <b style={{ whiteSpace: "nowrap" }}>{$(d.total)}</b>{alDia}</>}
+        {!f && esMes && d.dias.length > 0 && <><span style={{ whiteSpace: "nowrap" }}>{$(d.total / d.dias.filter((x) => x.importe > 0).length || 0)}</span> por día</>}
         {!esMes && d.comparacion && <>promedio de los últimos {d.comparacion.n} {DIAS_PL[dow]} <span style={{ whiteSpace: "nowrap" }}>{$(d.comparacion.valor)}</span></>}
       </div>
       {/* Tickets y cubiertos a la vista (Diego 27/11/2026: «son los principales datos»). */}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${d.cubiertos > 0 ? 3 : 2}, minmax(0, 1fr))`, gap: 8, marginTop: 10 }}>
-        <Indicador valor={num(d.tickets)} titulo="tickets" />
-        {d.cubiertos > 0 && <Indicador valor={num(d.cubiertos)} titulo="cubiertos" sub={`${$(d.total / d.cubiertos)} c/u`} />}
+        <Indicador valor={num(f ? Math.round(d.tickets * f) : d.tickets)} titulo={f ? "tickets proy." : "tickets"} sub={f ? `real ${num(d.tickets)}` : null} />
+        {d.cubiertos > 0 && <Indicador valor={num(f ? Math.round(d.cubiertos * f) : d.cubiertos)} titulo={f ? "cubiertos proy." : "cubiertos"} sub={f ? `real ${num(d.cubiertos)}` : `${$(d.total / d.cubiertos)} c/u`} />}
         <Indicador valor={$(d.tickets ? d.total / d.tickets : 0)} titulo="por ticket" sub="promedio" chico />
       </div>
 
